@@ -4,19 +4,30 @@ A lightweight CRM for freelancers and small agencies to manage clients, projects
 
 > Portfolio project. Every module (Clients, Projects, Tasks, Invoices) is a complete CRUD slice with search, filtering, sorting, and pagination, built on Server Components and Server Actions with no client-side data-fetching library.
 
+## Live demo
+
+No public demo is deployed yet. Once the app is deployed to Vercel, add the URL here:
+
+```
+Live demo: <add production URL after deploying>
+```
+
+Demo login credentials can be generated locally by running the seed script (see [Database setup](#database-setup-prisma) below) — it creates two working Supabase Auth accounts and prints their email/password to the console.
+
 ## Screenshots
 
 <!--
-Add real screenshots before publishing. Suggested set:
-- docs/screenshots/dashboard.png      — metrics + recent activity
-- docs/screenshots/clients-list.png   — list view with search/filter/sort
-- docs/screenshots/client-form.png    — create/edit form with validation
-- docs/screenshots/login.png          — auth
+Add real screenshots before publishing. Place image files in docs/images/
+and reference them below, for example:
+- docs/images/dashboard.png      — metrics + recent activity
+- docs/images/clients-list.png   — list view with search/filter/sort
+- docs/images/client-form.png    — create/edit form with validation
+- docs/images/login.png          — auth
 -->
 
 | Dashboard | Clients |
 |---|---|
-| ![Dashboard screenshot placeholder](docs/screenshots/dashboard.png) | ![Clients list screenshot placeholder](docs/screenshots/clients-list.png) |
+| ![Dashboard screenshot placeholder](docs/images/dashboard.png) | ![Clients list screenshot placeholder](docs/images/clients-list.png) |
 
 ## Features
 
@@ -130,23 +141,11 @@ Copy the example file and fill in your Supabase project's values (see [Environme
 cp .env.example .env
 ```
 
-### 3. Apply the database schema
+### 3. Set up the database
 
-```bash
-npx prisma migrate deploy
-```
+Follow [Database setup](#database-setup-prisma) below to apply the schema (and optionally seed demo data).
 
-### 4. (Optional) Seed demo data
-
-Requires `SUPABASE_SERVICE_ROLE_KEY` to be set — the seed script creates two real Supabase Auth accounts via the Admin API, then fills them with realistic sample clients, projects, tasks, and invoices.
-
-```bash
-npm run db:seed
-```
-
-This prints the demo login credentials (email + password) to the console.
-
-### 5. Run the dev server
+### 4. Run the dev server
 
 ```bash
 npm run dev
@@ -164,7 +163,35 @@ Visit [http://localhost:3000](http://localhost:3000).
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API | Supabase client (browser-safe) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (**keep secret**) | `prisma/seed.ts` only — bypasses RLS to create demo auth users. Never used in application code, never sent to the browser. |
 
+No real values are shown here — copy `.env.example` to `.env` and fill in your own Supabase project's credentials.
+
 `DATABASE_URL` uses the pgbouncer transaction pooler because it's what the deployed app talks to under serverless/edge concurrency. `DIRECT_URL` bypasses the pooler because schema migrations need a session-scoped connection — this split is configured in `prisma.config.ts` (CLI operations use `DIRECT_URL`) and `src/lib/prisma.ts` (the app's runtime client uses `DATABASE_URL`).
+
+## Database setup (Prisma)
+
+The data model lives in `prisma/schema.prisma` (`User`, `Client`, `Project`, `Task`, `Invoice`, plus their status/priority enums) and is versioned as SQL migrations under `prisma/migrations/`.
+
+1. **Apply the schema** to your database (non-interactive, safe for a fresh database or CI):
+
+   ```bash
+   npx prisma migrate deploy
+   ```
+
+2. **(Optional) Seed demo data.** Requires `SUPABASE_SERVICE_ROLE_KEY` to be set — the seed script (`prisma/seed.ts`) creates two real Supabase Auth accounts via the Admin API, then fills them with realistic sample clients, projects, tasks, and invoices:
+
+   ```bash
+   npm run db:seed
+   ```
+
+   This prints the demo login credentials (email + password) to the console.
+
+3. **(Optional) Browse the database** with Prisma Studio:
+
+   ```bash
+   npx prisma studio
+   ```
+
+During active development, use `npx prisma migrate dev` instead of `migrate deploy` when you change `schema.prisma` — it creates a new migration file and applies it in one step.
 
 ## Deployment (Vercel)
 
@@ -193,10 +220,21 @@ No further configuration is needed — there's no separate backend to deploy; Se
 | `npm run build` | Production build |
 | `npm run start` | Run the production build |
 | `npm run lint` | ESLint |
-| `npm run db:seed` | Seed demo data (see [Setup](#4-optional-seed-demo-data)) |
+| `npm run db:seed` | Seed demo data (see [Database setup](#database-setup-prisma)) |
 | `npx prisma migrate dev` | Create/apply a migration in development |
 | `npx prisma migrate deploy` | Apply pending migrations (production-safe, non-interactive) |
 | `npx prisma studio` | Browse the database |
+
+## Roadmap
+
+Ideas for future iterations. None of these are implemented yet:
+
+- **Enforce the `Role` field.** `User.role` (`OWNER` / `ADMIN` / `MEMBER`) already exists in the schema but isn't checked anywhere in the app — every authenticated user currently has full access to their own data only. A real multi-user/team mode would need role-based permission checks in the Server Actions.
+- **Team/shared workspaces.** Today every `Client`/`Project` is owned by exactly one `User`; there's no concept of a team sharing the same clients.
+- **File attachments** on clients, projects, or invoices (e.g. contracts, deliverables) — no file storage is wired up yet.
+- **Invoice PDF export / email delivery** — invoices currently exist only as database records with a status field; there's no PDF generation or send-by-email flow.
+- **Automated tests** — the project currently has no test suite (unit, integration, or e2e).
+- **Public live demo deployment** — see [Live demo](#live-demo) above.
 
 ## License
 
