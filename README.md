@@ -6,28 +6,27 @@ A lightweight CRM for freelancers and small agencies to manage clients, projects
 
 ## Live demo
 
-No public demo is deployed yet. Once the app is deployed to Vercel, add the URL here:
+**[client-portal-crm.vercel.app](https://client-portal-crm.vercel.app)**
 
-```
-Live demo: <add production URL after deploying>
-```
+Demo credentials:
 
-Demo login credentials can be generated locally by running the seed script (see [Database setup](#database-setup-prisma) below) — it creates two working Supabase Auth accounts and prints their email/password to the console.
+| | |
+|---|---|
+| Email | `demo@clientportal.dev` |
+| Password | `DemoPassword123!` |
+
+This account is seeded via `prisma/seed.ts` (see [Database setup](#database-setup-prisma)) and comes preloaded with sample clients, projects, tasks, and invoices.
 
 ## Screenshots
 
-<!--
-Add real screenshots before publishing. Place image files in docs/images/
-and reference them below, for example:
-- docs/images/dashboard.png      — metrics + recent activity
-- docs/images/clients-list.png   — list view with search/filter/sort
-- docs/images/client-form.png    — create/edit form with validation
-- docs/images/login.png          — auth
--->
-
-| Dashboard | Clients |
+| | |
 |---|---|
-| ![Dashboard screenshot placeholder](docs/images/dashboard.png) | ![Clients list screenshot placeholder](docs/images/clients-list.png) |
+| **Dashboard** — live metrics and recent activity | **Clients** — search, filter, sort, pagination |
+| ![Dashboard](docs/images/dashboard.png) | ![Clients](docs/images/clients.png) |
+| **Projects** | **Tasks** |
+| ![Projects](docs/images/projects.png) | ![Tasks](docs/images/tasks.png) |
+| **Invoices** | **Login** |
+| ![Invoices](docs/images/invoices.png) | ![Login](docs/images/login.png) |
 
 ## Features
 
@@ -234,7 +233,6 @@ Ideas for future iterations. None of these are implemented yet:
 - **File attachments** on clients, projects, or invoices (e.g. contracts, deliverables) — no file storage is wired up yet.
 - **Invoice PDF export / email delivery** — invoices currently exist only as database records with a status field; there's no PDF generation or send-by-email flow.
 - **Automated tests** — the project currently has no test suite (unit, integration, or e2e).
-- **Public live demo deployment** — see [Live demo](#live-demo) above.
 
 ## License
 
