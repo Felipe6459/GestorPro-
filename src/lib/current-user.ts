@@ -201,6 +201,26 @@ export async function getCurrentUserOrganization() {
 }
 
 /**
+ * Like getCurrentUserOrganization(), but also resolves the current user's
+ * own Membership row in the active organization — needed by anything whose
+ * behavior varies by role (e.g. who's allowed to invite members). The
+ * lookup can't miss: resolveActiveOrganizationId() only ever returns an
+ * organizationId backed by an existing Membership for this user.
+ */
+export async function getCurrentMembership() {
+  const { user, organizationId } = await getCurrentUserOrganization();
+  const membership = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId: user.id, organizationId } },
+  });
+
+  if (!membership) {
+    throw new Error("No membership found for the active organization.");
+  }
+
+  return { user, organizationId, membership };
+}
+
+/**
  * Switches the current user's active organization, after verifying they
  * actually hold a Membership there — callers must never set the cookie
  * directly. Must be called from a Server Action or Route Handler; cookies()

@@ -33,3 +33,11 @@ export type InvoiceFormState = {
     >
   >;
 };
+
+export type InvitationFormState = {
+  error: string | null;
+  fieldErrors?: Partial<Record<"email" | "role", string>>;
+  message?: string | null;
+  /** Set on success so the UI can render a copyable invite link. */
+  token?: string;
+};
