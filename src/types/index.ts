@@ -45,3 +45,7 @@ export type InvitationFormState = {
 export type InviteAcceptState = {
   error: string | null;
 };
+
+export type MembershipActionState = {
+  error: string | null;
+};
