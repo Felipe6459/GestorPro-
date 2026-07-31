@@ -1,8 +1,22 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { Role } from "@/generated/prisma/enums";
+
+const ACTIVE_ORG_COOKIE = "active_organization_id";
+const ACTIVE_ORG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+
+function activeOrgCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: ACTIVE_ORG_COOKIE_MAX_AGE,
+  };
+}
 
 /**
  * Ensures a Prisma User row exists for the currently authenticated Supabase
@@ -131,11 +145,78 @@ export async function getOrCreateOrganizationId(user: {
 }
 
 /**
+ * Resolves which organization the current request should operate against.
+ *
+ * Prefers the user's explicitly chosen "active organization" — persisted in
+ * an httpOnly cookie purely as a UX preference — but only after confirming a
+ * Membership row proves they still belong to it; the cookie is never trusted
+ * as an authorization decision by itself. Falls back to their OWNER
+ * organization (auto-provisioning one via getOrCreateOrganizationId if this
+ * is their first time) when no cookie is set, or when the cookie names an
+ * organization they're no longer (or never were) a member of — so a user who
+ * has never switched keeps working exactly as before this change.
+ */
+async function resolveActiveOrganizationId(user: {
+  id: string;
+  name: string;
+  email: string;
+}): Promise<string> {
+  const cookieStore = await cookies();
+  const requestedOrganizationId = cookieStore.get(ACTIVE_ORG_COOKIE)?.value;
+
+  if (requestedOrganizationId) {
+    const membership = await prisma.membership.findUnique({
+      where: {
+        userId_organizationId: { userId: user.id, organizationId: requestedOrganizationId },
+      },
+      select: { organizationId: true },
+    });
+    if (membership) {
+      return membership.organizationId;
+    }
+  }
+
+  const organizationId = await getOrCreateOrganizationId(user);
+  try {
+    // Stabilizes the resolved default for subsequent requests. Only takes
+    // effect when called from a Server Action or Route Handler — thrown
+    // (and ignored here) when called from a Server Component, same as the
+    // Supabase cookie adapter's own setAll in lib/supabase/server.ts.
+    cookieStore.set(ACTIVE_ORG_COOKIE, organizationId, activeOrgCookieOptions());
+  } catch {
+    // Server Component context; the cookie simply isn't written yet — the
+    // next request re-resolves the same default via getOrCreateOrganizationId.
+  }
+  return organizationId;
+}
+
+/**
  * Convenience wrapper for the common case: pages/actions that need both the
- * current User row and the organizationId to scope Client queries by.
+ * current User row and the active organizationId to scope queries by.
  */
 export async function getCurrentUserOrganization() {
   const user = await getOrCreateUser();
-  const organizationId = await getOrCreateOrganizationId(user);
+  const organizationId = await resolveActiveOrganizationId(user);
   return { user, organizationId };
+}
+
+/**
+ * Switches the current user's active organization, after verifying they
+ * actually hold a Membership there — callers must never set the cookie
+ * directly. Must be called from a Server Action or Route Handler; cookies()
+ * cannot be mutated from a Server Component.
+ */
+export async function setActiveOrganization(organizationId: string): Promise<void> {
+  const user = await getOrCreateUser();
+  const membership = await prisma.membership.findUnique({
+    where: { userId_organizationId: { userId: user.id, organizationId } },
+    select: { organizationId: true },
+  });
+
+  if (!membership) {
+    throw new Error("You are not a member of this organization.");
+  }
+
+  const cookieStore = await cookies();
+  cookieStore.set(ACTIVE_ORG_COOKIE, membership.organizationId, activeOrgCookieOptions());
 }
