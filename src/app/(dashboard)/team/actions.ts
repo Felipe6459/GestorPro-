@@ -13,6 +13,7 @@ import {
 } from "@/lib/current-user";
 import { parseInviteForm } from "@/lib/validation/invitation";
 import { withToast } from "@/lib/toast-url";
+import { sendInvitationEmail } from "@/lib/email/invitations";
 import type { InvitationFormState, MembershipActionState } from "@/types";
 
 const CHANGEABLE_ROLES = [Role.MEMBER, Role.ADMIN, Role.OWNER];
@@ -88,9 +89,36 @@ export async function inviteMemberAction(
 
   revalidatePath("/team");
 
+  // The Invitation row is already committed at this point — an email
+  // provider failure below only affects delivery, never rolls this back.
+  // The org's name is looked up fresh (not trusted from client input).
+  const organization = await prisma.organization.findUniqueOrThrow({
+    where: { id: organizationId },
+    select: { name: true },
+  });
+
+  const emailResult = await sendInvitationEmail({
+    to: values.email,
+    organizationName: organization.name,
+    role: values.role,
+    invitedByName: user.name,
+    invitationToken: token,
+    expiresAt,
+  });
+
+  if (!emailResult.delivered) {
+    return {
+      error: null,
+      message:
+        "Invitation created, but the email could not be sent. Copy the invitation link manually.",
+      token,
+      emailFailed: true,
+    };
+  }
+
   return {
     error: null,
-    message: "Invitation created.",
+    message: "Invitation sent.",
     token,
   };
 }
@@ -112,7 +140,7 @@ export async function resendInvitationAction(
   // simply doesn't match, indistinguishable from a nonexistent one.
   const invitation = await prisma.invitation.findFirst({
     where: { id: invitationId, organizationId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, email: true, role: true },
   });
 
   if (!invitation) {
@@ -124,7 +152,9 @@ export async function resendInvitationAction(
   }
 
   // PENDING, EXPIRED, or REVOKED all get a fresh token/expiry and land back
-  // in PENDING — role and email are never touched by a resend.
+  // in PENDING — role and email are never touched by a resend. The old
+  // token is invalidated by this same update, so only the new one below is
+  // ever emailed out.
   const token = randomUUID();
   const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
 
@@ -139,6 +169,35 @@ export async function resendInvitationAction(
   });
 
   revalidatePath("/team");
+
+  // Invitation is already updated and PENDING regardless of what happens
+  // next — a delivery failure here never reverts it or regenerates the
+  // token a second time (this call is made exactly once).
+  const organization = await prisma.organization.findUniqueOrThrow({
+    where: { id: organizationId },
+    select: { name: true },
+  });
+
+  const emailResult = await sendInvitationEmail({
+    to: invitation.email,
+    organizationName: organization.name,
+    // Invitation.role is typed as the full Role enum, but inviteMemberAction
+    // (the only writer) only ever stores ADMIN/MEMBER — OWNER is excluded by
+    // INVITABLE_ROLES — same cast RoleSelect's caller already relies on.
+    role: invitation.role as "ADMIN" | "MEMBER",
+    invitedByName: user.name,
+    invitationToken: token,
+    expiresAt,
+  });
+
+  if (!emailResult.delivered) {
+    return {
+      error: null,
+      message: "Invitation updated, but the email could not be sent.",
+      token,
+      emailFailed: true,
+    };
+  }
 
   return {
     error: null,

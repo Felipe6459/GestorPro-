@@ -63,8 +63,19 @@ export function InviteForm({
       )}
 
       {state.token && (
-        <div className="rounded-md border border-green-200 bg-green-50 p-3">
-          <p role="status" className="text-sm font-medium text-green-800">
+        <div
+          className={`rounded-md border p-3 ${
+            state.emailFailed
+              ? "border-amber-200 bg-amber-50"
+              : "border-green-200 bg-green-50"
+          }`}
+        >
+          <p
+            role="status"
+            className={`text-sm font-medium ${
+              state.emailFailed ? "text-amber-800" : "text-green-800"
+            }`}
+          >
             {state.message ?? "Invitation created."}
           </p>
           <div className="mt-2">
@@ -75,7 +86,7 @@ export function InviteForm({
 
       <div className="flex gap-3 pt-2">
         <Button type="submit" loading={pending}>
-          {pending ? "Sending…" : "Send invite"}
+          {pending ? "Sending invitation…" : "Send invite"}
         </Button>
       </div>
     </form>

@@ -41,7 +41,10 @@ export function ResendInvitationForm({
         </p>
       )}
       {state.message && !state.error && (
-        <p role="status" className="text-xs text-green-700">
+        <p
+          role="status"
+          className={`text-xs ${state.emailFailed ? "text-amber-700" : "text-green-700"}`}
+        >
           {state.message}
         </p>
       )}
