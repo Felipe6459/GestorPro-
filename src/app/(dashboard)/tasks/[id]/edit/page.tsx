@@ -15,11 +15,11 @@ export default async function EditTaskPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { user, organizationId } = await getCurrentUserOrganization();
+  const { organizationId } = await getCurrentUserOrganization();
 
   const [task, projects] = await Promise.all([
     prisma.task.findFirst({
-      where: { id, project: { ownerId: user.id } },
+      where: { id, project: { organizationId } },
     }),
     prisma.project.findMany({
       where: { organizationId },

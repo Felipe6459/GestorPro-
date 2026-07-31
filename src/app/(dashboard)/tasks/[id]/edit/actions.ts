@@ -18,7 +18,7 @@ export async function updateTaskAction(
     return { error: null, fieldErrors };
   }
 
-  const { user, organizationId } = await getCurrentUserOrganization();
+  const { organizationId } = await getCurrentUserOrganization();
 
   // Changing the project is allowed, but only to one owned by this org —
   // re-verify server-side regardless of what the <select> offered.
@@ -34,10 +34,10 @@ export async function updateTaskAction(
     };
   }
 
-  // Ownership-scoped through the task's *current* project — never by id
-  // alone. Also need the existing completedAt to derive the new value.
+  // Scoped through the task's *current* project's organization — never by
+  // id alone. Also need the existing completedAt to derive the new value.
   const existingTask = await prisma.task.findFirst({
-    where: { id: taskId, project: { ownerId: user.id } },
+    where: { id: taskId, project: { organizationId } },
     select: { completedAt: true },
   });
 
@@ -46,7 +46,7 @@ export async function updateTaskAction(
   }
 
   const result = await prisma.task.updateMany({
-    where: { id: taskId, project: { ownerId: user.id } },
+    where: { id: taskId, project: { organizationId } },
     data: {
       title: values.title,
       description: values.description,

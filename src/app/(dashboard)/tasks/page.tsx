@@ -33,11 +33,11 @@ export default async function TasksPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  const { user, organizationId } = await getCurrentUserOrganization();
+  const { organizationId } = await getCurrentUserOrganization();
   const resolvedSearchParams = await searchParams;
   const listParams = parseTaskListParams(resolvedSearchParams);
 
-  const where = buildTaskWhere(user.id, listParams);
+  const where = buildTaskWhere(organizationId, listParams);
   const orderBy = buildTaskOrderBy(listParams);
 
   const [projectCount, [tasks, total]] = await Promise.all([

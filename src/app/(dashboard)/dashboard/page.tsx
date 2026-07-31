@@ -28,11 +28,11 @@ export default async function DashboardPage() {
       where: { organizationId, status: "IN_PROGRESS" },
     }),
     prisma.task.count({
-      where: { project: { ownerId: user.id }, status: { not: "DONE" } },
+      where: { project: { organizationId }, status: { not: "DONE" } },
     }),
     prisma.task.count({
       where: {
-        project: { ownerId: user.id },
+        project: { organizationId },
         status: { not: "DONE" },
         dueDate: { lt: now },
       },
@@ -53,7 +53,7 @@ export default async function DashboardPage() {
     }),
     prisma.task.findMany({
       where: {
-        project: { ownerId: user.id },
+        project: { organizationId },
         status: { not: "DONE" },
         dueDate: { not: null },
       },
