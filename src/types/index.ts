@@ -41,3 +41,7 @@ export type InvitationFormState = {
   /** Set on success so the UI can render a copyable invite link. */
   token?: string;
 };
+
+export type InviteAcceptState = {
+  error: string | null;
+};

@@ -1,15 +1,24 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { parseSearchParam, type RawSearchParams } from "@/lib/list-params";
+import { sanitizeRedirectPath } from "@/lib/safe-redirect";
 import { LoginForm } from "./login-form";
 
-export default async function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<RawSearchParams>;
+}) {
+  const resolvedSearchParams = await searchParams;
+  const redirectTo = sanitizeRedirectPath(parseSearchParam(resolvedSearchParams.redirectTo));
+
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (user) {
-    redirect("/dashboard");
+    redirect(redirectTo);
   }
 
   return (
@@ -18,7 +27,7 @@ export default async function LoginPage() {
         <h1 className="mb-6 text-2xl font-semibold tracking-tight text-gray-900">
           Sign in
         </h1>
-        <LoginForm />
+        <LoginForm redirectTo={redirectTo} />
       </div>
     </main>
   );
