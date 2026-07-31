@@ -240,3 +240,55 @@ export async function setActiveOrganization(organizationId: string): Promise<voi
   const cookieStore = await cookies();
   cookieStore.set(ACTIVE_ORG_COOKIE, membership.organizationId, activeOrgCookieOptions());
 }
+
+export type OrganizationSwitcherItem = {
+  organizationId: string;
+  name: string;
+  slug: string;
+  role: Role;
+  isActive: boolean;
+};
+
+const ROLE_RANK: Record<Role, number> = {
+  [Role.OWNER]: 0,
+  [Role.ADMIN]: 1,
+  [Role.MEMBER]: 2,
+};
+
+/**
+ * Lists every organization the current user belongs to, for the
+ * organization switcher — active organization first, then grouped by role
+ * (OWNER, ADMIN, MEMBER), then alphabetically by name within each group.
+ * Queried fresh on every call (no caching layer sits in front of this), so
+ * a Membership removed a moment ago simply won't be in the result.
+ */
+export async function getOrganizationSwitcherItems(): Promise<
+  OrganizationSwitcherItem[]
+> {
+  const { user, organizationId: activeOrganizationId } =
+    await getCurrentUserOrganization();
+
+  const memberships = await prisma.membership.findMany({
+    where: { userId: user.id },
+    select: {
+      organizationId: true,
+      role: true,
+      organization: { select: { name: true, slug: true } },
+    },
+  });
+
+  return memberships
+    .map((m) => ({
+      organizationId: m.organizationId,
+      name: m.organization.name,
+      slug: m.organization.slug,
+      role: m.role,
+      isActive: m.organizationId === activeOrganizationId,
+    }))
+    .sort((a, b) => {
+      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+      const roleDiff = ROLE_RANK[a.role] - ROLE_RANK[b.role];
+      if (roleDiff !== 0) return roleDiff;
+      return a.name.localeCompare(b.name);
+    });
+}
