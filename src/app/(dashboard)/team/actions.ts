@@ -86,3 +86,84 @@ export async function inviteMemberAction(
     token,
   };
 }
+
+function canManageInvitations(role: Role): boolean {
+  return role === Role.OWNER || role === Role.ADMIN;
+}
+
+export async function resendInvitationAction(
+  invitationId: string,
+): Promise<InvitationFormState> {
+  const { user, organizationId, membership } = await getCurrentMembership();
+
+  if (!canManageInvitations(membership.role)) {
+    return { error: "You don't have permission to manage invitations." };
+  }
+
+  // Scoped by id + organizationId together — a foreign org's invitation id
+  // simply doesn't match, indistinguishable from a nonexistent one.
+  const invitation = await prisma.invitation.findFirst({
+    where: { id: invitationId, organizationId },
+    select: { id: true, status: true },
+  });
+
+  if (!invitation) {
+    return { error: "Invitation not found." };
+  }
+
+  if (invitation.status === "ACCEPTED") {
+    return { error: "This invitation has already been accepted." };
+  }
+
+  // PENDING, EXPIRED, or REVOKED all get a fresh token/expiry and land back
+  // in PENDING — role and email are never touched by a resend.
+  const token = randomUUID();
+  const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
+
+  await prisma.invitation.update({
+    where: { id: invitation.id },
+    data: {
+      token,
+      status: "PENDING",
+      expiresAt,
+      invitedById: user.id,
+    },
+  });
+
+  revalidatePath("/team");
+
+  return {
+    error: null,
+    message: "Invitation resent.",
+    token,
+  };
+}
+
+export async function cancelInvitationAction(invitationId: string): Promise<void> {
+  const { organizationId, membership } = await getCurrentMembership();
+
+  if (!canManageInvitations(membership.role)) {
+    throw new Error("You don't have permission to manage invitations.");
+  }
+
+  const invitation = await prisma.invitation.findFirst({
+    where: { id: invitationId, organizationId },
+    select: { id: true, status: true },
+  });
+
+  if (!invitation) {
+    throw new Error("Invitation not found.");
+  }
+
+  if (invitation.status === "PENDING") {
+    await prisma.invitation.update({
+      where: { id: invitation.id },
+      data: { status: "REVOKED" },
+    });
+  }
+  // Any other status (most commonly already REVOKED, from a repeat click)
+  // is left untouched — canceling is idempotent, never an error, and the
+  // token is never cleared or reused.
+
+  revalidatePath("/team");
+}

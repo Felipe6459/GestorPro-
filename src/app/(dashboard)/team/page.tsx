@@ -13,7 +13,13 @@ import {
 } from "@/components/ui/table";
 import { CopyLinkButton } from "@/components/team/copy-link-button";
 import { InviteForm } from "@/components/team/invite-form";
-import { inviteMemberAction } from "./actions";
+import { ResendInvitationForm } from "@/components/team/resend-invitation-form";
+import { CancelInvitationButton } from "@/components/team/cancel-invitation-button";
+import {
+  inviteMemberAction,
+  resendInvitationAction,
+  cancelInvitationAction,
+} from "./actions";
 
 export default async function TeamPage() {
   const { user, organizationId, membership } = await getCurrentMembership();
@@ -34,7 +40,7 @@ export default async function TeamPage() {
     }),
   ]);
 
-  const canInvite = membership.role === Role.OWNER || membership.role === Role.ADMIN;
+  const canManage = membership.role === Role.OWNER || membership.role === Role.ADMIN;
 
   return (
     <div className="space-y-10">
@@ -99,7 +105,9 @@ export default async function TeamPage() {
                 <TableHeaderCell>Role</TableHeaderCell>
                 <TableHeaderCell>Invited by</TableHeaderCell>
                 <TableHeaderCell>Expires</TableHeaderCell>
-                <TableHeaderCell align="right">Link</TableHeaderCell>
+                <TableHeaderCell align="right">
+                  {canManage ? "Actions" : "Link"}
+                </TableHeaderCell>
               </tr>
             </TableHead>
             <TableBody>
@@ -116,7 +124,20 @@ export default async function TeamPage() {
                   </TableCell>
                   <TableCell>{invitation.expiresAt.toLocaleDateString()}</TableCell>
                   <TableCell align="right">
-                    <CopyLinkButton token={invitation.token} />
+                    {canManage ? (
+                      <div className="flex items-center justify-end gap-4">
+                        <ResendInvitationForm
+                          action={resendInvitationAction.bind(null, invitation.id)}
+                          initialToken={invitation.token}
+                        />
+                        <CancelInvitationButton
+                          action={cancelInvitationAction.bind(null, invitation.id)}
+                          email={invitation.email}
+                        />
+                      </div>
+                    ) : (
+                      <CopyLinkButton token={invitation.token} />
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -125,7 +146,7 @@ export default async function TeamPage() {
         )}
       </section>
 
-      {canInvite && (
+      {canManage && (
         <section>
           <h2 className="text-lg font-semibold tracking-tight text-gray-900">
             Invite a member
