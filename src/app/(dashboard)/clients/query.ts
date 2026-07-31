@@ -36,11 +36,11 @@ export function parseClientListParams(
 }
 
 export function buildClientWhere(
-  userId: string,
+  organizationId: string,
   { q, status }: Pick<ClientListParams, "q" | "status">,
 ): Prisma.ClientWhereInput {
   return {
-    userId,
+    organizationId,
     ...(status ? { status } : {}),
     ...(q
       ? {

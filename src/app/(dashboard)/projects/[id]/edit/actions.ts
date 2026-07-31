@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { parseProjectForm } from "@/lib/validation/project";
 import { withToast } from "@/lib/toast-url";
 import type { ProjectFormState } from "@/types";
@@ -18,12 +18,12 @@ export async function updateProjectAction(
     return { error: null, fieldErrors };
   }
 
-  const user = await getOrCreateUser();
+  const { user, organizationId } = await getCurrentUserOrganization();
 
-  // Changing the client is allowed, but only to one owned by this user —
+  // Changing the client is allowed, but only to one owned by this org —
   // re-verify server-side regardless of what the <select> offered.
   const client = await prisma.client.findFirst({
-    where: { id: values.clientId, userId: user.id },
+    where: { id: values.clientId, organizationId },
     select: { id: true },
   });
 

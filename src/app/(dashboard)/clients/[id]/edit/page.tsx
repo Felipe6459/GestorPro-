@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { ClientForm } from "@/components/clients/client-form";
 import { updateClientAction } from "./actions";
@@ -11,10 +11,10 @@ export default async function EditClientPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const user = await getOrCreateUser();
+  const { organizationId } = await getCurrentUserOrganization();
 
   const client = await prisma.client.findFirst({
-    where: { id, userId: user.id },
+    where: { id, organizationId },
   });
 
   if (!client) {

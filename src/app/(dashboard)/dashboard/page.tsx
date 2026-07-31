@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/format";
 import { MetricCard } from "@/components/dashboard/metric-card";
@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 const UNPAID_INVOICE_STATUSES = ["DRAFT", "SENT", "OVERDUE"] as const;
 
 export default async function DashboardPage() {
-  const user = await getOrCreateUser();
+  const { user, organizationId } = await getCurrentUserOrganization();
   const now = new Date();
 
   const [
@@ -23,7 +23,7 @@ export default async function DashboardPage() {
     upcomingTasks,
     recentUnpaidInvoices,
   ] = await Promise.all([
-    prisma.client.count({ where: { userId: user.id } }),
+    prisma.client.count({ where: { organizationId } }),
     prisma.project.count({
       where: { ownerId: user.id, status: "IN_PROGRESS" },
     }),
