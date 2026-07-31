@@ -37,11 +37,11 @@ export default async function ProjectsPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  const { user, organizationId } = await getCurrentUserOrganization();
+  const { organizationId } = await getCurrentUserOrganization();
   const resolvedSearchParams = await searchParams;
   const listParams = parseProjectListParams(resolvedSearchParams);
 
-  const where = buildProjectWhere(user.id, listParams);
+  const where = buildProjectWhere(organizationId, listParams);
   const orderBy = buildProjectOrderBy(listParams);
 
   const [clientCount, [projects, total]] = await Promise.all([

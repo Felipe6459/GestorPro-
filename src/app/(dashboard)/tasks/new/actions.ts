@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { parseTaskForm, deriveCompletedAt } from "@/lib/validation/task";
 import { withToast } from "@/lib/toast-url";
 import type { TaskFormState } from "@/types";
@@ -17,13 +17,13 @@ export async function createTaskAction(
     return { error: null, fieldErrors };
   }
 
-  const user = await getOrCreateUser();
+  const { organizationId } = await getCurrentUserOrganization();
 
-  // The <select> only lists this user's projects, but the submitted value
+  // The <select> only lists this org's projects, but the submitted value
   // is still client-controlled input — re-verify ownership server-side so a
-  // tampered projectId can never attach a task to another user's project.
+  // tampered projectId can never attach a task to another org's project.
   const project = await prisma.project.findFirst({
-    where: { id: values.projectId, ownerId: user.id },
+    where: { id: values.projectId, organizationId },
     select: { id: true },
   });
 

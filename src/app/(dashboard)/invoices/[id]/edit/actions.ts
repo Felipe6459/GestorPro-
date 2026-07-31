@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { parseInvoiceForm } from "@/lib/validation/invoice";
 import { withToast } from "@/lib/toast-url";
 import type { InvoiceFormState } from "@/types";
@@ -19,12 +19,12 @@ export async function updateInvoiceAction(
     return { error: null, fieldErrors };
   }
 
-  const user = await getOrCreateUser();
+  const { user, organizationId } = await getCurrentUserOrganization();
 
-  // Changing the project is allowed, but only to one owned by this user —
+  // Changing the project is allowed, but only to one owned by this org —
   // re-verify server-side regardless of what the <select> offered.
   const project = await prisma.project.findFirst({
-    where: { id: values.projectId, ownerId: user.id },
+    where: { id: values.projectId, organizationId },
     select: { id: true, clientId: true },
   });
 

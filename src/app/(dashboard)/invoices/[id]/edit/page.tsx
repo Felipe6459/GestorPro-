@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { InvoiceForm } from "@/components/invoices/invoice-form";
 import { updateInvoiceAction } from "./actions";
@@ -15,14 +15,14 @@ export default async function EditInvoicePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const user = await getOrCreateUser();
+  const { user, organizationId } = await getCurrentUserOrganization();
 
   const [invoice, projects] = await Promise.all([
     prisma.invoice.findFirst({
       where: { id, project: { ownerId: user.id } },
     }),
     prisma.project.findMany({
-      where: { ownerId: user.id },
+      where: { organizationId },
       orderBy: { name: "asc" },
       select: { id: true, name: true, client: { select: { name: true } } },
     }),

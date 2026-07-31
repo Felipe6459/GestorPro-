@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { formatStatusLabel } from "@/lib/format";
 import { PAGE_SIZE, getOffset, getTotalPages, type RawSearchParams } from "@/lib/list-params";
@@ -33,7 +33,7 @@ export default async function TasksPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  const user = await getOrCreateUser();
+  const { user, organizationId } = await getCurrentUserOrganization();
   const resolvedSearchParams = await searchParams;
   const listParams = parseTaskListParams(resolvedSearchParams);
 
@@ -41,7 +41,7 @@ export default async function TasksPage({
   const orderBy = buildTaskOrderBy(listParams);
 
   const [projectCount, [tasks, total]] = await Promise.all([
-    prisma.project.count({ where: { ownerId: user.id } }),
+    prisma.project.count({ where: { organizationId } }),
     prisma.$transaction([
       prisma.task.findMany({
         where,

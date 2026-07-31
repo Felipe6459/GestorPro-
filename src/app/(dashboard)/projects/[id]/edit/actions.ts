@@ -18,7 +18,7 @@ export async function updateProjectAction(
     return { error: null, fieldErrors };
   }
 
-  const { user, organizationId } = await getCurrentUserOrganization();
+  const { organizationId } = await getCurrentUserOrganization();
 
   // Changing the client is allowed, but only to one owned by this org —
   // re-verify server-side regardless of what the <select> offered.
@@ -35,7 +35,7 @@ export async function updateProjectAction(
   }
 
   const result = await prisma.project.updateMany({
-    where: { id: projectId, ownerId: user.id },
+    where: { id: projectId, organizationId },
     data: {
       name: values.name,
       status: values.status,

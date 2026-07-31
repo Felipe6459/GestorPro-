@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { TaskForm } from "@/components/tasks/task-form";
 import { updateTaskAction } from "./actions";
@@ -15,14 +15,14 @@ export default async function EditTaskPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const user = await getOrCreateUser();
+  const { user, organizationId } = await getCurrentUserOrganization();
 
   const [task, projects] = await Promise.all([
     prisma.task.findFirst({
       where: { id, project: { ownerId: user.id } },
     }),
     prisma.project.findMany({
-      where: { ownerId: user.id },
+      where: { organizationId },
       orderBy: { name: "asc" },
       select: { id: true, name: true, client: { select: { name: true } } },
     }),

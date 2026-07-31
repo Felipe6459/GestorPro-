@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency, formatStatusLabel } from "@/lib/format";
 import { PAGE_SIZE, getOffset, getTotalPages, type RawSearchParams } from "@/lib/list-params";
@@ -39,7 +39,7 @@ export default async function InvoicesPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  const user = await getOrCreateUser();
+  const { user, organizationId } = await getCurrentUserOrganization();
   const resolvedSearchParams = await searchParams;
   const listParams = parseInvoiceListParams(resolvedSearchParams);
 
@@ -47,7 +47,7 @@ export default async function InvoicesPage({
   const orderBy = buildInvoiceOrderBy(listParams);
 
   const [projectCount, [invoices, total]] = await Promise.all([
-    prisma.project.count({ where: { ownerId: user.id } }),
+    prisma.project.count({ where: { organizationId } }),
     prisma.$transaction([
       prisma.invoice.findMany({
         where,

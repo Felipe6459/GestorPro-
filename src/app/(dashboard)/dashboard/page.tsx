@@ -25,7 +25,7 @@ export default async function DashboardPage() {
   ] = await Promise.all([
     prisma.client.count({ where: { organizationId } }),
     prisma.project.count({
-      where: { ownerId: user.id, status: "IN_PROGRESS" },
+      where: { organizationId, status: "IN_PROGRESS" },
     }),
     prisma.task.count({
       where: { project: { ownerId: user.id }, status: { not: "DONE" } },
@@ -46,7 +46,7 @@ export default async function DashboardPage() {
       _sum: { amount: true },
     }),
     prisma.project.findMany({
-      where: { ownerId: user.id },
+      where: { organizationId },
       orderBy: { createdAt: "desc" },
       take: 5,
       include: { client: { select: { name: true } } },

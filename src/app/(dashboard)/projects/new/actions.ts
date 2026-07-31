@@ -41,7 +41,10 @@ export async function createProjectAction(
       startDate: values.startDate,
       endDate: values.endDate,
       clientId: values.clientId,
+      // Kept for backward compatibility; organizationId is now the source
+      // of truth for access scoping.
       ownerId: user.id,
+      organizationId,
     },
   });
 

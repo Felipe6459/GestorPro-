@@ -36,11 +36,11 @@ export function parseProjectListParams(
 }
 
 export function buildProjectWhere(
-  ownerId: string,
+  organizationId: string,
   { q, status }: Pick<ProjectListParams, "q" | "status">,
 ): Prisma.ProjectWhereInput {
   return {
-    ownerId,
+    organizationId,
     ...(status ? { status } : {}),
     ...(q
       ? {

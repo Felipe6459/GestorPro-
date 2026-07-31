@@ -15,11 +15,11 @@ export default async function EditProjectPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { user, organizationId } = await getCurrentUserOrganization();
+  const { organizationId } = await getCurrentUserOrganization();
 
   const [project, clients] = await Promise.all([
     prisma.project.findFirst({
-      where: { id, ownerId: user.id },
+      where: { id, organizationId },
     }),
     prisma.client.findMany({
       where: { organizationId },
