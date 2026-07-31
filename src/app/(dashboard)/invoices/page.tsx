@@ -39,11 +39,11 @@ export default async function InvoicesPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  const { user, organizationId } = await getCurrentUserOrganization();
+  const { organizationId } = await getCurrentUserOrganization();
   const resolvedSearchParams = await searchParams;
   const listParams = parseInvoiceListParams(resolvedSearchParams);
 
-  const where = buildInvoiceWhere(user.id, listParams);
+  const where = buildInvoiceWhere(organizationId, listParams);
   const orderBy = buildInvoiceOrderBy(listParams);
 
   const [projectCount, [invoices, total]] = await Promise.all([

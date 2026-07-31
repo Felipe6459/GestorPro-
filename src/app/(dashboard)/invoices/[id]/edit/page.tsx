@@ -15,11 +15,11 @@ export default async function EditInvoicePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { user, organizationId } = await getCurrentUserOrganization();
+  const { organizationId } = await getCurrentUserOrganization();
 
   const [invoice, projects] = await Promise.all([
     prisma.invoice.findFirst({
-      where: { id, project: { ownerId: user.id } },
+      where: { id, project: { organizationId } },
     }),
     prisma.project.findMany({
       where: { organizationId },

@@ -23,8 +23,10 @@ export async function createInvoiceAction(
   // The <select> only lists this org's projects, but the submitted value
   // is still client-controlled input — re-verify ownership server-side so a
   // tampered projectId can never attach an invoice to another org's project.
+  // Also require the project's client to be in the same org, so a stale or
+  // inconsistent clientId FK can never carry over onto the invoice.
   const project = await prisma.project.findFirst({
-    where: { id: values.projectId, organizationId },
+    where: { id: values.projectId, organizationId, client: { organizationId } },
     select: { id: true, clientId: true },
   });
 

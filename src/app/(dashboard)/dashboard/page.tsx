@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 const UNPAID_INVOICE_STATUSES = ["DRAFT", "SENT", "OVERDUE"] as const;
 
 export default async function DashboardPage() {
-  const { user, organizationId } = await getCurrentUserOrganization();
+  const { organizationId } = await getCurrentUserOrganization();
   const now = new Date();
 
   const [
@@ -39,7 +39,7 @@ export default async function DashboardPage() {
     }),
     prisma.invoice.aggregate({
       where: {
-        project: { ownerId: user.id },
+        project: { organizationId },
         status: { in: [...UNPAID_INVOICE_STATUSES] },
       },
       _count: true,
@@ -63,7 +63,7 @@ export default async function DashboardPage() {
     }),
     prisma.invoice.findMany({
       where: {
-        project: { ownerId: user.id },
+        project: { organizationId },
         status: { in: [...UNPAID_INVOICE_STATUSES] },
       },
       orderBy: { createdAt: "desc" },
