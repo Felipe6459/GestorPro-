@@ -4,6 +4,7 @@ import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { ProjectForm } from "@/components/projects/project-form";
 import { updateProjectAction } from "./actions";
+import { ProjectAttachmentsSection } from "./attachments-section";
 
 function toDateInputValue(date: Date | null): string {
   return date ? date.toISOString().slice(0, 10) : "";
@@ -61,6 +62,7 @@ export default async function EditProjectPage({
           submitLabel="Save changes"
           pendingLabel="Saving…"
         />
+        <ProjectAttachmentsSection projectId={project.id} organizationId={organizationId} />
       </div>
     </div>
   );

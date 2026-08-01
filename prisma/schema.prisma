@@ -69,6 +69,7 @@ enum ActivityEntityType {
   INVOICE
   MEMBERSHIP
   INVITATION
+  ATTACHMENT
 }
 
 enum ActivityAction {
@@ -84,6 +85,14 @@ enum ActivityAction {
   OWNERSHIP_TRANSFERRED
   MEMBER_REMOVED
   MEMBER_LEFT
+  FILE_UPLOADED
+  FILE_DELETED
+}
+
+enum AttachmentEntityType {
+  CLIENT
+  PROJECT
+  INVOICE
 }
 
 // id is intended to match Supabase auth.users.id once auth is wired up.
@@ -100,9 +109,10 @@ model User {
   assignedTasks Task[]    @relation("TaskAssignee")
   clients       Client[]  @relation("ClientOwner")
 
-  memberships     Membership[]
-  sentInvitations Invitation[] @relation("InvitationInvitedBy")
-  activities      Activity[]   @relation("ActivityActor")
+  memberships         Membership[]
+  sentInvitations     Invitation[]  @relation("InvitationInvitedBy")
+  activities          Activity[]    @relation("ActivityActor")
+  uploadedAttachments Attachment[]  @relation("AttachmentUploadedBy")
 }
 
 // Multi-tenant scaffolding (schema-only for now; not yet wired into app
@@ -119,10 +129,11 @@ model Organization {
   invitations Invitation[]
   activities  Activity[]
 
-  clients  Client[]
-  projects Project[]
-  tasks    Task[]
-  invoices Invoice[]
+  clients     Client[]
+  projects    Project[]
+  tasks       Task[]
+  invoices    Invoice[]
+  attachments Attachment[]
 }
 
 model Membership {
@@ -303,4 +314,45 @@ model Activity {
   // Entity-specific timeline (a later stage) — scoped by org first so a
   // foreign entityId can never be queried across tenants.
   @@index([organizationId, entityType, entityId, createdAt, id])
+}
+
+// File attachments for Client/Project/Invoice, stored in Supabase Storage.
+// entityId is deliberately not a foreign key, same reasoning as Activity —
+// this stays a single simple association that extends to Task later with
+// just an enum value, no new migration for a new column. Unlike Activity,
+// an Attachment is a live resource tied to its parent, not a historical
+// record: deleting the parent entity must explicitly delete both this row
+// and its Storage object as part of that same operation (added when the
+// entity delete flows are wired up) — there's no onDelete Cascade here to
+// do that automatically, since entityId has no FK to cascade from.
+model Attachment {
+  id String @id @default(uuid()) @db.Uuid
+
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Nullable, same reasoning as Activity.actorId: no action deletes a User
+  // today, but if one ever does, the file shouldn't vanish or block the
+  // delete just because this is who uploaded it.
+  uploadedById String? @db.Uuid
+  uploadedBy   User?   @relation("AttachmentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  entityType AttachmentEntityType
+  entityId   String               @db.Uuid
+
+  storageBucket String
+  // The actual Supabase Storage object key — unique because it's built
+  // server-side from a fresh attachmentId, never from user input alone.
+  storagePath String @unique
+  originalName String
+  mimeType     String
+  sizeBytes    Int
+
+  createdAt DateTime @default(now())
+
+  // General "attachments for this org" and entity-specific listings both
+  // read newest-first — id included for the same stable-tiebreak reason
+  // as Activity's indexes, even though this stage doesn't add pagination.
+  @@index([organizationId, entityType, entityId, createdAt, id])
+  @@index([organizationId, createdAt, id])
 }
