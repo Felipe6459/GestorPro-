@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUserOrganization } from "@/lib/current-user";
 import { parseProjectForm } from "@/lib/validation/project";
 import { withToast } from "@/lib/toast-url";
+import { createActivity } from "@/lib/activity/create-activity";
+import { buildProjectMetadata } from "@/lib/activity/project-metadata";
 import type { ProjectFormState } from "@/types";
 
 export async function createProjectAction(
@@ -24,7 +26,7 @@ export async function createProjectAction(
   // tampered clientId can never attach a project to another org's client.
   const client = await prisma.client.findFirst({
     where: { id: values.clientId, organizationId },
-    select: { id: true },
+    select: { id: true, name: true },
   });
 
   if (!client) {
@@ -34,18 +36,32 @@ export async function createProjectAction(
     };
   }
 
-  await prisma.project.create({
-    data: {
-      name: values.name,
-      status: values.status,
-      startDate: values.startDate,
-      endDate: values.endDate,
-      clientId: values.clientId,
-      // Kept for backward compatibility; organizationId is now the source
-      // of truth for access scoping.
-      ownerId: user.id,
+  // Project create and its Activity row are one atomic unit — if the
+  // Activity insert fails for any reason, the Project create rolls back
+  // with it rather than leaving an unlogged row behind.
+  await prisma.$transaction(async (tx) => {
+    const project = await tx.project.create({
+      data: {
+        name: values.name,
+        status: values.status,
+        startDate: values.startDate,
+        endDate: values.endDate,
+        clientId: values.clientId,
+        // Kept for backward compatibility; organizationId is now the source
+        // of truth for access scoping.
+        ownerId: user.id,
+        organizationId,
+      },
+    });
+
+    await createActivity(tx, {
       organizationId,
-    },
+      actorId: user.id,
+      entityType: "PROJECT",
+      entityId: project.id,
+      action: "CREATED",
+      metadata: buildProjectMetadata(project, client.name, user.name),
+    });
   });
 
   redirect(withToast("/projects", "Project created"));
