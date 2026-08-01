@@ -4,6 +4,7 @@ import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { ClientForm } from "@/components/clients/client-form";
 import { updateClientAction } from "./actions";
+import { ClientAttachmentsSection } from "./attachments-section";
 
 export default async function EditClientPage({
   params,
@@ -43,6 +44,7 @@ export default async function EditClientPage({
           submitLabel="Save changes"
           pendingLabel="Saving…"
         />
+        <ClientAttachmentsSection clientId={client.id} organizationId={organizationId} />
       </div>
     </div>
   );

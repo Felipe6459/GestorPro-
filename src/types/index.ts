@@ -56,3 +56,7 @@ export type InviteAcceptState = {
 export type MembershipActionState = {
   error: string | null;
 };
+
+export type AttachmentUploadState = {
+  error: string | null;
+};
