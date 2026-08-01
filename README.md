@@ -160,7 +160,7 @@ Visit [http://localhost:3000](http://localhost:3000).
 | `DIRECT_URL` | Same page, **Session** pooler (port 5432) | Prisma CLI: migrations, `db seed`, `validate` |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API | Supabase client (browser-safe) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API | Supabase client (browser-safe) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (**keep secret**) | `prisma/seed.ts` only — bypasses RLS to create demo auth users. Never used in application code, never sent to the browser. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (**keep secret**) | `prisma/seed.ts` (bypasses RLS to create demo auth users), and at runtime by File Attachments' Supabase Storage admin client (`src/lib/storage/admin-client.ts`) — server-only, never sent to the browser. |
 | `RESEND_API_KEY` | [resend.com](https://resend.com) → API Keys (**keep secret**) | Server-only — sends team invitation emails (`src/lib/email/`). Optional: if unset, invites/resends still work, they just fall back to "created, but the email could not be sent" and the Copy link button. |
 | `INVITATION_FROM_EMAIL` | Any address on a domain verified in your Resend account | The "From" address on invitation emails. |
 | `APP_BASE_URL` | Your deployed app's URL (e.g. `https://your-app.vercel.app`) | Server-only — builds the `/invite/{token}` link inside invitation emails. Optional on Vercel (falls back to the auto-provided `VERCEL_URL`, then to `http://localhost:3000` in dev). |
