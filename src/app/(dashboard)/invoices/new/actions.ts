@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUserOrganization } from "@/lib/current-user";
 import { parseInvoiceForm } from "@/lib/validation/invoice";
 import { withToast } from "@/lib/toast-url";
+import { createActivity } from "@/lib/activity/create-activity";
+import { buildInvoiceMetadata } from "@/lib/activity/invoice-metadata";
 import type { InvoiceFormState } from "@/types";
 
 export async function createInvoiceAction(
@@ -18,7 +20,7 @@ export async function createInvoiceAction(
     return { error: null, fieldErrors };
   }
 
-  const { organizationId } = await getCurrentUserOrganization();
+  const { user, organizationId } = await getCurrentUserOrganization();
 
   // The <select> only lists this org's projects, but the submitted value
   // is still client-controlled input — re-verify ownership server-side so a
@@ -27,7 +29,7 @@ export async function createInvoiceAction(
   // inconsistent clientId FK can never carry over onto the invoice.
   const project = await prisma.project.findFirst({
     where: { id: values.projectId, organizationId, client: { organizationId } },
-    select: { id: true, clientId: true },
+    select: { id: true, clientId: true, name: true },
   });
 
   if (!project) {
@@ -38,18 +40,32 @@ export async function createInvoiceAction(
   }
 
   try {
-    await prisma.invoice.create({
-      data: {
-        invoiceNumber: values.invoiceNumber,
-        amount: values.amount,
-        status: values.status,
-        dueDate: values.dueDate,
-        notes: values.notes,
-        projectId: project.id,
-        // Derived from the project, never a form field — keeps the two
-        // FKs from ever disagreeing about which client this invoice bills.
-        clientId: project.clientId,
-      },
+    // Invoice create and its Activity row are one atomic unit — if the
+    // Activity insert fails for any reason, the Invoice create rolls back
+    // with it rather than leaving an unlogged row behind.
+    await prisma.$transaction(async (tx) => {
+      const invoice = await tx.invoice.create({
+        data: {
+          invoiceNumber: values.invoiceNumber,
+          amount: values.amount,
+          status: values.status,
+          dueDate: values.dueDate,
+          notes: values.notes,
+          projectId: project.id,
+          // Derived from the project, never a form field — keeps the two
+          // FKs from ever disagreeing about which client this invoice bills.
+          clientId: project.clientId,
+        },
+      });
+
+      await createActivity(tx, {
+        organizationId,
+        actorId: user.id,
+        entityType: "INVOICE",
+        entityId: invoice.id,
+        action: "CREATED",
+        metadata: buildInvoiceMetadata(invoice, project.name, user.name),
+      });
     });
   } catch (err) {
     if (
