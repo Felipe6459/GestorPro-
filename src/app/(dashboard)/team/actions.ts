@@ -14,6 +14,13 @@ import {
 import { parseInviteForm } from "@/lib/validation/invitation";
 import { withToast } from "@/lib/toast-url";
 import { sendInvitationEmail } from "@/lib/email/invitations";
+import { createActivity } from "@/lib/activity/create-activity";
+import {
+  buildInvitationMetadata,
+  buildMembershipMetadata,
+  buildRoleChangedMetadata,
+  buildOwnershipTransferredMetadata,
+} from "@/lib/activity/team-metadata";
 import type { InvitationFormState, MembershipActionState } from "@/types";
 
 const CHANGEABLE_ROLES = [Role.MEMBER, Role.ADMIN, Role.OWNER];
@@ -54,28 +61,42 @@ export async function inviteMemberAction(
   const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
 
   try {
-    // @@unique([organizationId, email]) means at most one Invitation row
-    // can ever exist per (org, email) — re-inviting the same address
-    // (including one that was revoked or expired) updates that row rather
-    // than creating a second one.
-    await prisma.invitation.upsert({
-      where: { organizationId_email: { organizationId, email: values.email } },
-      create: {
+    // Invitation upsert and its Activity row are one atomic unit — if the
+    // Activity insert fails for any reason, the Invitation write rolls
+    // back with it. Re-inviting via this form always logs INVITATION_SENT,
+    // never INVITATION_RESENT (that's resendInvitationAction's event) —
+    // even when the @@unique([organizationId, email]) upsert lands on the
+    // "update" branch because a previous invitation to this address was
+    // revoked or expired.
+    await prisma.$transaction(async (tx) => {
+      const invitation = await tx.invitation.upsert({
+        where: { organizationId_email: { organizationId, email: values.email } },
+        create: {
+          organizationId,
+          email: values.email,
+          role: values.role,
+          token,
+          status: "PENDING",
+          expiresAt,
+          invitedById: user.id,
+        },
+        update: {
+          role: values.role,
+          token,
+          status: "PENDING",
+          expiresAt,
+          invitedById: user.id,
+        },
+      });
+
+      await createActivity(tx, {
         organizationId,
-        email: values.email,
-        role: values.role,
-        token,
-        status: "PENDING",
-        expiresAt,
-        invitedById: user.id,
-      },
-      update: {
-        role: values.role,
-        token,
-        status: "PENDING",
-        expiresAt,
-        invitedById: user.id,
-      },
+        actorId: user.id,
+        entityType: "INVITATION",
+        entityId: invitation.id,
+        action: "INVITATION_SENT",
+        metadata: buildInvitationMetadata(invitation, user.name),
+      });
     });
   } catch (err) {
     // Two concurrent invites for the same email can still race the upsert's
@@ -89,9 +110,10 @@ export async function inviteMemberAction(
 
   revalidatePath("/team");
 
-  // The Invitation row is already committed at this point — an email
-  // provider failure below only affects delivery, never rolls this back.
-  // The org's name is looked up fresh (not trusted from client input).
+  // The Invitation row and its Activity are already committed at this
+  // point — an email provider failure below only affects delivery, never
+  // rolls either of them back. The org's name is looked up fresh (not
+  // trusted from client input).
   const organization = await prisma.organization.findUniqueOrThrow({
     where: { id: organizationId },
     select: { name: true },
@@ -154,25 +176,39 @@ export async function resendInvitationAction(
   // PENDING, EXPIRED, or REVOKED all get a fresh token/expiry and land back
   // in PENDING — role and email are never touched by a resend. The old
   // token is invalidated by this same update, so only the new one below is
-  // ever emailed out.
+  // ever emailed out. The new token itself is never written into Activity
+  // metadata.
   const token = randomUUID();
   const expiresAt = new Date(Date.now() + INVITATION_TTL_MS);
 
-  await prisma.invitation.update({
-    where: { id: invitation.id },
-    data: {
-      token,
-      status: "PENDING",
-      expiresAt,
-      invitedById: user.id,
-    },
+  // Update and its Activity row are one atomic unit.
+  await prisma.$transaction(async (tx) => {
+    await tx.invitation.update({
+      where: { id: invitation.id },
+      data: {
+        token,
+        status: "PENDING",
+        expiresAt,
+        invitedById: user.id,
+      },
+    });
+
+    await createActivity(tx, {
+      organizationId,
+      actorId: user.id,
+      entityType: "INVITATION",
+      entityId: invitation.id,
+      action: "INVITATION_RESENT",
+      metadata: buildInvitationMetadata(invitation, user.name),
+    });
   });
 
   revalidatePath("/team");
 
-  // Invitation is already updated and PENDING regardless of what happens
-  // next — a delivery failure here never reverts it or regenerates the
-  // token a second time (this call is made exactly once).
+  // Invitation and its Activity are already committed regardless of what
+  // happens next — a delivery failure here never reverts either of them
+  // or regenerates the token a second time (this call is made exactly
+  // once).
   const organization = await prisma.organization.findUniqueOrThrow({
     where: { id: organizationId },
     select: { name: true },
@@ -207,7 +243,7 @@ export async function resendInvitationAction(
 }
 
 export async function cancelInvitationAction(invitationId: string): Promise<void> {
-  const { organizationId, membership } = await getCurrentMembership();
+  const { user, organizationId, membership } = await getCurrentMembership();
 
   if (!canManageInvitations(membership.role)) {
     throw new Error("You don't have permission to manage invitations.");
@@ -215,7 +251,7 @@ export async function cancelInvitationAction(invitationId: string): Promise<void
 
   const invitation = await prisma.invitation.findFirst({
     where: { id: invitationId, organizationId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, email: true, role: true },
   });
 
   if (!invitation) {
@@ -223,14 +259,27 @@ export async function cancelInvitationAction(invitationId: string): Promise<void
   }
 
   if (invitation.status === "PENDING") {
-    await prisma.invitation.update({
-      where: { id: invitation.id },
-      data: { status: "REVOKED" },
+    // Update and its Activity row are one atomic unit.
+    await prisma.$transaction(async (tx) => {
+      await tx.invitation.update({
+        where: { id: invitation.id },
+        data: { status: "REVOKED" },
+      });
+
+      await createActivity(tx, {
+        organizationId,
+        actorId: user.id,
+        entityType: "INVITATION",
+        entityId: invitation.id,
+        action: "INVITATION_CANCELED",
+        metadata: buildInvitationMetadata(invitation, user.name),
+      });
     });
   }
   // Any other status (most commonly already REVOKED, from a repeat click)
-  // is left untouched — canceling is idempotent, never an error, and the
-  // token is never cleared or reused.
+  // is left untouched — canceling is idempotent, never an error, the token
+  // is never cleared or reused, and no Activity is created for a no-op
+  // repeat cancel.
 
   revalidatePath("/team");
 }
@@ -257,7 +306,12 @@ export async function changeRoleAction(
 
   const target = await prisma.membership.findFirst({
     where: { id: membershipId, organizationId },
-    select: { id: true, userId: true, role: true },
+    select: {
+      id: true,
+      userId: true,
+      role: true,
+      user: { select: { name: true, email: true } },
+    },
   });
 
   if (!target) {
@@ -281,7 +335,9 @@ export async function changeRoleAction(
     // (not a plain findFirst-then-update) so two concurrent transfer
     // attempts from the same OWNER can't both succeed and leave two
     // OWNERs behind — whichever commits first wins, the second one's
-    // conditional demote finds zero matching rows and aborts.
+    // conditional demote finds zero matching rows and aborts. Its Activity
+    // row is part of the same transaction, so a failed insert rolls back
+    // both membership updates too.
     try {
       await prisma.$transaction(async (tx) => {
         const demoted = await tx.membership.updateMany({
@@ -299,6 +355,17 @@ export async function changeRoleAction(
         if (promoted.count !== 1) {
           throw new Error("TARGET_NOT_FOUND");
         }
+
+        // One combined event for the whole transfer — not two separate
+        // ROLE_CHANGED rows for the demoted/promoted memberships.
+        await createActivity(tx, {
+          organizationId,
+          actorId: user.id,
+          entityType: "MEMBERSHIP",
+          entityId: membershipId,
+          action: "OWNERSHIP_TRANSFERRED",
+          metadata: buildOwnershipTransferredMetadata(user.name, target.user.name, user.name),
+        });
       });
     } catch (err) {
       if (err instanceof Error && err.message === "NOT_OWNER") {
@@ -313,11 +380,29 @@ export async function changeRoleAction(
     // Simple ADMIN <-> MEMBER promote/demote. role: { not: OWNER } is
     // defense in depth — the invariant already means target can never be
     // OWNER here (the only OWNER is the viewer, already excluded above).
-    const result = await prisma.membership.updateMany({
-      where: { id: membershipId, organizationId, role: { not: Role.OWNER } },
-      data: { role: newRole },
+    // Update and its Activity row are one atomic unit.
+    const outcome = await prisma.$transaction(async (tx) => {
+      const result = await tx.membership.updateMany({
+        where: { id: membershipId, organizationId, role: { not: Role.OWNER } },
+        data: { role: newRole },
+      });
+      if (result.count === 0) {
+        return "not_found" as const;
+      }
+
+      await createActivity(tx, {
+        organizationId,
+        actorId: user.id,
+        entityType: "MEMBERSHIP",
+        entityId: membershipId,
+        action: "ROLE_CHANGED",
+        metadata: buildRoleChangedMetadata(target.user, target.role, newRole, user.name),
+      });
+
+      return "updated" as const;
     });
-    if (result.count === 0) {
+
+    if (outcome === "not_found") {
       return { error: "Member not found." };
     }
   }
@@ -341,7 +426,12 @@ export async function removeMemberAction(membershipId: string): Promise<void> {
 
   const target = await prisma.membership.findFirst({
     where: { id: membershipId, organizationId },
-    select: { id: true, userId: true, role: true },
+    select: {
+      id: true,
+      userId: true,
+      role: true,
+      user: { select: { name: true, email: true } },
+    },
   });
 
   if (!target) {
@@ -358,7 +448,24 @@ export async function removeMemberAction(membershipId: string): Promise<void> {
     throw new Error("You can't remove the organization owner.");
   }
 
-  await prisma.membership.deleteMany({ where: { id: membershipId, organizationId } });
+  // Delete and its Activity row are one atomic unit — snapshot the member's
+  // name/email now, since Activity.entityId isn't a foreign key and this
+  // row won't exist to look them up from after the delete.
+  await prisma.$transaction(async (tx) => {
+    const result = await tx.membership.deleteMany({ where: { id: membershipId, organizationId } });
+    if (result.count === 0) {
+      return;
+    }
+
+    await createActivity(tx, {
+      organizationId,
+      actorId: user.id,
+      entityType: "MEMBERSHIP",
+      entityId: membershipId,
+      action: "MEMBER_REMOVED",
+      metadata: buildMembershipMetadata(target.user, target.role, user.name),
+    });
+  });
 
   revalidatePath("/team");
 }
@@ -384,6 +491,21 @@ export async function leaveOrganizationAction(): Promise<void> {
         }
       }
       await tx.membership.delete({ where: { id: membership.id } });
+
+      // Self-referential, like INVITATION_ACCEPTED — the actor leaving IS
+      // the member, so memberName/actorName are the same value here.
+      await createActivity(tx, {
+        organizationId,
+        actorId: user.id,
+        entityType: "MEMBERSHIP",
+        entityId: membership.id,
+        action: "MEMBER_LEFT",
+        metadata: buildMembershipMetadata(
+          { name: user.name, email: user.email },
+          membership.role,
+          user.name,
+        ),
+      });
     });
   } catch (err) {
     if (err instanceof Error && err.message === "SOLE_OWNER") {

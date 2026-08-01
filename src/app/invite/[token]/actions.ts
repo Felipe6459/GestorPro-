@@ -7,6 +7,8 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getOrCreateUser, setActiveOrganization } from "@/lib/current-user";
 import { withToast } from "@/lib/toast-url";
+import { createActivity } from "@/lib/activity/create-activity";
+import { buildInvitationAcceptedMetadata } from "@/lib/activity/team-metadata";
 import type { InviteAcceptState } from "@/types";
 
 const GENERIC_UNAVAILABLE_ERROR = "This invitation is no longer available.";
@@ -107,6 +109,20 @@ export async function acceptInvitationAction(
       await tx.invitation.update({
         where: { id: fresh.id },
         data: { status: "ACCEPTED" },
+      });
+
+      // Only reached on a genuine first-time PENDING -> ACCEPTED
+      // transition (the checks above throw STALE_INVITATION otherwise),
+      // so a duplicate/concurrent accept never logs a second event here.
+      // Self-referential, like leaveOrganizationAction — the actor
+      // accepting IS the new member.
+      await createActivity(tx, {
+        organizationId: fresh.organizationId,
+        actorId: user.id,
+        entityType: "INVITATION",
+        entityId: fresh.id,
+        action: "INVITATION_ACCEPTED",
+        metadata: buildInvitationAcceptedMetadata(fresh, user.name, user.name),
       });
     });
   } catch (err) {
