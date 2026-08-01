@@ -15,7 +15,7 @@ export const ACTIVITY_ENTITY_TYPES = [
 ] as const satisfies readonly ActivityEntityType[];
 
 export const ACTIVITY_ACTION_GROUPS = {
-  data: ["CREATED", "UPDATED", "STATUS_CHANGED", "DELETED"],
+  data: ["CREATED", "UPDATED", "STATUS_CHANGED", "DELETED", "FILE_UPLOADED", "FILE_DELETED"],
   invitations: [
     "INVITATION_SENT",
     "INVITATION_RESENT",

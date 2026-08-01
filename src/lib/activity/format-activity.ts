@@ -222,6 +222,49 @@ function buildMembershipModel(
   return FALLBACK;
 }
 
+// The only parent entity types Attachment metadata is ever written for
+// (see AttachmentEntityType) — anything else in parentEntityType is
+// treated as malformed metadata, not rendered.
+const ATTACHMENT_PARENT_NOUNS: Record<string, string> = {
+  CLIENT: "client",
+  PROJECT: "project",
+  INVOICE: "invoice",
+};
+
+/**
+ * FILE_UPLOADED / FILE_DELETED — metadata is always
+ * { fileName, parentEntityType, parentEntityLabel, actorName }, never a
+ * storagePath, signed URL, mime type, or a link to the Attachment/parent
+ * (this formatter never renders one, matching every other case above).
+ */
+function buildAttachmentModel(
+  action: ActivityAction,
+  metadata: Record<string, unknown>,
+): PartialModel {
+  const fileName = str(metadata.fileName);
+  const parentEntityLabel = str(metadata.parentEntityLabel);
+  const parentNoun = ATTACHMENT_PARENT_NOUNS[str(metadata.parentEntityType) ?? ""];
+  if (!fileName || !parentEntityLabel || !parentNoun) return FALLBACK;
+
+  if (action === "FILE_UPLOADED") {
+    return {
+      actionLabel: `uploaded ${fileName} to ${parentNoun} ${parentEntityLabel}`,
+      entityLabel: fileName,
+      detailLines: [],
+    };
+  }
+
+  if (action === "FILE_DELETED") {
+    return {
+      actionLabel: `deleted ${fileName} from ${parentNoun} ${parentEntityLabel}`,
+      entityLabel: fileName,
+      detailLines: [],
+    };
+  }
+
+  return FALLBACK;
+}
+
 function buildModel(
   entityType: ActivityEntityType,
   action: ActivityAction,
@@ -230,6 +273,7 @@ function buildModel(
   if (isDataEntity(entityType)) return buildDataEntityModel(entityType, action, metadata);
   if (entityType === "INVITATION") return buildInvitationModel(action, metadata);
   if (entityType === "MEMBERSHIP") return buildMembershipModel(action, metadata);
+  if (entityType === "ATTACHMENT") return buildAttachmentModel(action, metadata);
   return FALLBACK;
 }
 
@@ -242,7 +286,7 @@ function buildModel(
 export function formatActivity(input: ActivityFormatInput): ActivityDisplayModel {
   const metadata = isRecord(input.metadata) ? input.metadata : {};
   const actorLabel = input.actor?.name || str(metadata.actorName) || "Unknown user";
-  const isDeleted = input.action === "DELETED";
+  const isDeleted = input.action === "DELETED" || input.action === "FILE_DELETED";
 
   let partial: PartialModel;
   try {
