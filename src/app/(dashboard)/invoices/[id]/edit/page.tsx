@@ -4,6 +4,7 @@ import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { InvoiceForm } from "@/components/invoices/invoice-form";
 import { updateInvoiceAction } from "./actions";
+import { InvoiceAttachmentsSection } from "./attachments-section";
 
 function toDateInputValue(date: Date | null): string {
   return date ? date.toISOString().slice(0, 10) : "";
@@ -65,6 +66,7 @@ export default async function EditInvoicePage({
           submitLabel="Save changes"
           pendingLabel="Saving…"
         />
+        <InvoiceAttachmentsSection invoiceId={invoice.id} organizationId={organizationId} />
       </div>
     </div>
   );
