@@ -62,6 +62,30 @@ enum InvitationStatus {
   EXPIRED
 }
 
+enum ActivityEntityType {
+  CLIENT
+  PROJECT
+  TASK
+  INVOICE
+  MEMBERSHIP
+  INVITATION
+}
+
+enum ActivityAction {
+  CREATED
+  UPDATED
+  STATUS_CHANGED
+  DELETED
+  INVITATION_SENT
+  INVITATION_RESENT
+  INVITATION_CANCELED
+  INVITATION_ACCEPTED
+  ROLE_CHANGED
+  OWNERSHIP_TRANSFERRED
+  MEMBER_REMOVED
+  MEMBER_LEFT
+}
+
 // id is intended to match Supabase auth.users.id once auth is wired up.
 model User {
   id        String   @id @default(uuid()) @db.Uuid
@@ -78,6 +102,7 @@ model User {
 
   memberships     Membership[]
   sentInvitations Invitation[] @relation("InvitationInvitedBy")
+  activities      Activity[]   @relation("ActivityActor")
 }
 
 // Multi-tenant scaffolding (schema-only for now; not yet wired into app
@@ -92,6 +117,7 @@ model Organization {
 
   memberships Membership[]
   invitations Invitation[]
+  activities  Activity[]
 
   clients  Client[]
   projects Project[]
@@ -242,4 +268,39 @@ model Invoice {
   @@index([dueDate])
   @@index([projectId])
   @@index([organizationId])
+}
+
+// Append-only audit log. Never updated or deleted by app code (see
+// createActivity(), added in a later stage). entityId is deliberately not a
+// foreign key: Client/Project/Task/Invoice rows can be deleted while their
+// Activity history must remain readable — metadata carries a snapshot of
+// the entity (and, since actorId can go null, of the actor) taken at write
+// time, so this row never depends on either still existing.
+model Activity {
+  id String @id @default(uuid()) @db.Uuid
+
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Nullable: no action deletes a User today, but Membership.userId -> User
+  // is already onDelete: Cascade elsewhere in this schema, so if that ever
+  // changes, the actor's own history shouldn't vanish or block the delete.
+  actorId String? @db.Uuid
+  actor   User?   @relation("ActivityActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  entityType ActivityEntityType
+  entityId   String             @db.Uuid
+  action     ActivityAction
+
+  // Snapshot + diff data only (e.g. { field, from, to } or a deleted
+  // entity's display name) — never full form payloads, tokens, or secrets.
+  metadata Json @default("{}")
+
+  createdAt DateTime @default(now())
+
+  // General organization timeline: ORDER BY createdAt DESC, id DESC.
+  @@index([organizationId, createdAt, id])
+  // Entity-specific timeline (a later stage) — scoped by org first so a
+  // foreign entityId can never be queried across tenants.
+  @@index([organizationId, entityType, entityId, createdAt, id])
 }
