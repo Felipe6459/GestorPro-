@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { parseProjectForm } from "@/lib/validation/project";
 import { withToast } from "@/lib/toast-url";
 import type { ProjectFormState } from "@/types";
@@ -17,13 +17,13 @@ export async function createProjectAction(
     return { error: null, fieldErrors };
   }
 
-  const user = await getOrCreateUser();
+  const { user, organizationId } = await getCurrentUserOrganization();
 
-  // The <select> only lists this user's clients, but the form value is
+  // The <select> only lists this org's clients, but the form value is
   // still client-controlled input — re-verify ownership server-side so a
-  // tampered clientId can never attach a project to another user's client.
+  // tampered clientId can never attach a project to another org's client.
   const client = await prisma.client.findFirst({
-    where: { id: values.clientId, userId: user.id },
+    where: { id: values.clientId, organizationId },
     select: { id: true },
   });
 
@@ -41,7 +41,10 @@ export async function createProjectAction(
       startDate: values.startDate,
       endDate: values.endDate,
       clientId: values.clientId,
+      // Kept for backward compatibility; organizationId is now the source
+      // of truth for access scoping.
       ownerId: user.id,
+      organizationId,
     },
   });
 

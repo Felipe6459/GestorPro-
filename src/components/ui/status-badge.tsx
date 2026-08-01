@@ -11,10 +11,11 @@ const TONE_CLASSES: Record<StatusTone, string> = {
   muted: "bg-gray-200 text-gray-500",
 };
 
-// Shared across ClientStatus, ProjectStatus, TaskStatus, TaskPriority, and
-// InvoiceStatus so the same word always renders in the same color everywhere
-// (e.g. IN_PROGRESS and CANCELLED mean the same thing on both Project and
-// Task/Invoice, so they share one entry).
+// Shared across ClientStatus, ProjectStatus, TaskStatus, TaskPriority,
+// InvoiceStatus, Membership Role, and InvitationStatus so the same word
+// always renders in the same color everywhere (e.g. IN_PROGRESS and
+// CANCELLED mean the same thing on both Project and Task/Invoice, so they
+// share one entry).
 const STATUS_TONES: Record<string, StatusTone> = {
   LEAD: "neutral",
   ACTIVE: "success",
@@ -40,6 +41,15 @@ const STATUS_TONES: Record<string, StatusTone> = {
   MEDIUM: "info",
   HIGH: "warning",
   URGENT: "danger",
+
+  OWNER: "success",
+  ADMIN: "info",
+  MEMBER: "neutral",
+
+  PENDING: "warning",
+  ACCEPTED: "success",
+  REVOKED: "danger",
+  EXPIRED: "muted",
 };
 
 export function StatusBadge({ status }: { status: string }) {

@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { parseClientForm } from "@/lib/validation/client";
 import { withToast } from "@/lib/toast-url";
 import type { ClientFormState } from "@/types";
@@ -19,11 +19,11 @@ export async function updateClientAction(
     return { error: null, fieldErrors };
   }
 
-  const user = await getOrCreateUser();
+  const { organizationId } = await getCurrentUserOrganization();
 
   try {
     const result = await prisma.client.updateMany({
-      where: { id: clientId, userId: user.id },
+      where: { id: clientId, organizationId },
       data: values,
     });
 

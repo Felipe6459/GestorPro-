@@ -36,11 +36,11 @@ export function parseInvoiceListParams(
 }
 
 export function buildInvoiceWhere(
-  ownerId: string,
+  organizationId: string,
   { q, status }: Pick<InvoiceListParams, "q" | "status">,
 ): Prisma.InvoiceWhereInput {
   return {
-    project: { ownerId },
+    project: { organizationId },
     ...(status ? { status } : {}),
     ...(q
       ? {

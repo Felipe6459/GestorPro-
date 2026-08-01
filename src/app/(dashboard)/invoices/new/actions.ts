@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { parseInvoiceForm } from "@/lib/validation/invoice";
 import { withToast } from "@/lib/toast-url";
 import type { InvoiceFormState } from "@/types";
@@ -18,13 +18,15 @@ export async function createInvoiceAction(
     return { error: null, fieldErrors };
   }
 
-  const user = await getOrCreateUser();
+  const { organizationId } = await getCurrentUserOrganization();
 
-  // The <select> only lists this user's projects, but the submitted value
+  // The <select> only lists this org's projects, but the submitted value
   // is still client-controlled input — re-verify ownership server-side so a
-  // tampered projectId can never attach an invoice to another user's project.
+  // tampered projectId can never attach an invoice to another org's project.
+  // Also require the project's client to be in the same org, so a stale or
+  // inconsistent clientId FK can never carry over onto the invoice.
   const project = await prisma.project.findFirst({
-    where: { id: values.projectId, ownerId: user.id },
+    where: { id: values.projectId, organizationId, client: { organizationId } },
     select: { id: true, clientId: true },
   });
 

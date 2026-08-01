@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/format";
 import { MetricCard } from "@/components/dashboard/metric-card";
@@ -10,7 +10,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 const UNPAID_INVOICE_STATUSES = ["DRAFT", "SENT", "OVERDUE"] as const;
 
 export default async function DashboardPage() {
-  const user = await getOrCreateUser();
+  const { organizationId } = await getCurrentUserOrganization();
   const now = new Date();
 
   const [
@@ -23,37 +23,37 @@ export default async function DashboardPage() {
     upcomingTasks,
     recentUnpaidInvoices,
   ] = await Promise.all([
-    prisma.client.count({ where: { userId: user.id } }),
+    prisma.client.count({ where: { organizationId } }),
     prisma.project.count({
-      where: { ownerId: user.id, status: "IN_PROGRESS" },
+      where: { organizationId, status: "IN_PROGRESS" },
     }),
     prisma.task.count({
-      where: { project: { ownerId: user.id }, status: { not: "DONE" } },
+      where: { project: { organizationId }, status: { not: "DONE" } },
     }),
     prisma.task.count({
       where: {
-        project: { ownerId: user.id },
+        project: { organizationId },
         status: { not: "DONE" },
         dueDate: { lt: now },
       },
     }),
     prisma.invoice.aggregate({
       where: {
-        project: { ownerId: user.id },
+        project: { organizationId },
         status: { in: [...UNPAID_INVOICE_STATUSES] },
       },
       _count: true,
       _sum: { amount: true },
     }),
     prisma.project.findMany({
-      where: { ownerId: user.id },
+      where: { organizationId },
       orderBy: { createdAt: "desc" },
       take: 5,
       include: { client: { select: { name: true } } },
     }),
     prisma.task.findMany({
       where: {
-        project: { ownerId: user.id },
+        project: { organizationId },
         status: { not: "DONE" },
         dueDate: { not: null },
       },
@@ -63,7 +63,7 @@ export default async function DashboardPage() {
     }),
     prisma.invoice.findMany({
       where: {
-        project: { ownerId: user.id },
+        project: { organizationId },
         status: { in: [...UNPAID_INVOICE_STATUSES] },
       },
       orderBy: { createdAt: "desc" },

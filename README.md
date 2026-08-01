@@ -161,6 +161,9 @@ Visit [http://localhost:3000](http://localhost:3000).
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase → Project Settings → API | Supabase client (browser-safe) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API | Supabase client (browser-safe) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (**keep secret**) | `prisma/seed.ts` only — bypasses RLS to create demo auth users. Never used in application code, never sent to the browser. |
+| `RESEND_API_KEY` | [resend.com](https://resend.com) → API Keys (**keep secret**) | Server-only — sends team invitation emails (`src/lib/email/`). Optional: if unset, invites/resends still work, they just fall back to "created, but the email could not be sent" and the Copy link button. |
+| `INVITATION_FROM_EMAIL` | Any address on a domain verified in your Resend account | The "From" address on invitation emails. |
+| `APP_BASE_URL` | Your deployed app's URL (e.g. `https://your-app.vercel.app`) | Server-only — builds the `/invite/{token}` link inside invitation emails. Optional on Vercel (falls back to the auto-provided `VERCEL_URL`, then to `http://localhost:3000` in dev). |
 
 No real values are shown here — copy `.env.example` to `.env` and fill in your own Supabase project's credentials.
 
@@ -196,7 +199,7 @@ During active development, use `npx prisma migrate dev` instead of `migrate depl
 
 1. Push the repo to GitHub.
 2. Import it in Vercel.
-3. Add the five environment variables above in Vercel's Project Settings → Environment Variables (all of them — including `SUPABASE_SERVICE_ROLE_KEY` only if you intend to run the seed script against production, which most people won't).
+3. Add the environment variables above in Vercel's Project Settings → Environment Variables (`SUPABASE_SERVICE_ROLE_KEY` only if you intend to run the seed script against production, which most people won't; `RESEND_API_KEY`/`INVITATION_FROM_EMAIL`/`APP_BASE_URL` only if you want invitation emails actually delivered instead of falling back to Copy link).
 4. Vercel runs `next build` automatically. Make sure migrations have already been applied to the target database (`npx prisma migrate deploy`, run locally against the production `DIRECT_URL` or via a CI step) — the build does not run migrations for you.
 5. Deploy.
 

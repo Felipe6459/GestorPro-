@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { withToast } from "@/lib/toast-url";
+import { sanitizeRedirectPath } from "@/lib/safe-redirect";
 import type { AuthActionState } from "@/types";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -15,6 +16,7 @@ export async function signup(
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
+  const redirectTo = sanitizeRedirectPath(String(formData.get("redirectTo") ?? ""));
 
   if (!email || !password || !confirmPassword) {
     return { error: "All fields are required." };
@@ -42,7 +44,7 @@ export async function signup(
   }
 
   if (data.session) {
-    redirect(withToast("/dashboard", "Account created"));
+    redirect(withToast(redirectTo, "Account created"));
   }
 
   return {

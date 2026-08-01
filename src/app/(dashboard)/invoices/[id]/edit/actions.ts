@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { parseInvoiceForm } from "@/lib/validation/invoice";
 import { withToast } from "@/lib/toast-url";
 import type { InvoiceFormState } from "@/types";
@@ -19,12 +19,14 @@ export async function updateInvoiceAction(
     return { error: null, fieldErrors };
   }
 
-  const user = await getOrCreateUser();
+  const { organizationId } = await getCurrentUserOrganization();
 
-  // Changing the project is allowed, but only to one owned by this user —
-  // re-verify server-side regardless of what the <select> offered.
+  // Changing the project is allowed, but only to one owned by this org —
+  // re-verify server-side regardless of what the <select> offered. Also
+  // require the project's client to be in the same org, so a stale or
+  // inconsistent clientId FK can never carry over onto the invoice.
   const project = await prisma.project.findFirst({
-    where: { id: values.projectId, ownerId: user.id },
+    where: { id: values.projectId, organizationId, client: { organizationId } },
     select: { id: true, clientId: true },
   });
 
@@ -36,10 +38,10 @@ export async function updateInvoiceAction(
   }
 
   try {
-    // Ownership-scoped through the invoice's *current* project — never by
-    // id alone.
+    // Scoped through the invoice's *current* project's organization — never
+    // by id alone.
     const result = await prisma.invoice.updateMany({
-      where: { id: invoiceId, project: { ownerId: user.id } },
+      where: { id: invoiceId, project: { organizationId } },
       data: {
         invoiceNumber: values.invoiceNumber,
         amount: values.amount,

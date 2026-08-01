@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { parseClientForm } from "@/lib/validation/client";
 import { withToast } from "@/lib/toast-url";
 import type { ClientFormState } from "@/types";
@@ -18,11 +18,11 @@ export async function createClientAction(
     return { error: null, fieldErrors };
   }
 
-  const user = await getOrCreateUser();
+  const { user, organizationId } = await getCurrentUserOrganization();
 
   try {
     await prisma.client.create({
-      data: { ...values, userId: user.id },
+      data: { ...values, userId: user.id, organizationId },
     });
   } catch (err) {
     if (

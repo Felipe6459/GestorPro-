@@ -1,14 +1,14 @@
 import Link from "next/link";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { TaskForm } from "@/components/tasks/task-form";
 import { EmptyState } from "@/components/ui/empty-state";
 import { createTaskAction } from "./actions";
 
 export default async function NewTaskPage() {
-  const user = await getOrCreateUser();
+  const { organizationId } = await getCurrentUserOrganization();
   const projects = await prisma.project.findMany({
-    where: { ownerId: user.id },
+    where: { organizationId },
     orderBy: { name: "asc" },
     select: { id: true, name: true, client: { select: { name: true } } },
   });

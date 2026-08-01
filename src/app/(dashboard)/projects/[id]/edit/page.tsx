@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { ProjectForm } from "@/components/projects/project-form";
 import { updateProjectAction } from "./actions";
@@ -15,14 +15,14 @@ export default async function EditProjectPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const user = await getOrCreateUser();
+  const { organizationId } = await getCurrentUserOrganization();
 
   const [project, clients] = await Promise.all([
     prisma.project.findFirst({
-      where: { id, ownerId: user.id },
+      where: { id, organizationId },
     }),
     prisma.client.findMany({
-      where: { userId: user.id },
+      where: { organizationId },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),

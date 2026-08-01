@@ -46,11 +46,11 @@ export function parseTaskListParams(
 }
 
 export function buildTaskWhere(
-  ownerId: string,
+  organizationId: string,
   { q, status, priority }: Pick<TaskListParams, "q" | "status" | "priority">,
 ): Prisma.TaskWhereInput {
   return {
-    project: { ownerId },
+    project: { organizationId },
     ...(status ? { status } : {}),
     ...(priority ? { priority } : {}),
     ...(q

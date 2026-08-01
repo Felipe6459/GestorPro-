@@ -2,13 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { getOrCreateUser } from "@/lib/current-user";
+import { getCurrentUserOrganization } from "@/lib/current-user";
 
 export async function deleteClientAction(clientId: string) {
-  const user = await getOrCreateUser();
+  const { organizationId } = await getCurrentUserOrganization();
 
   await prisma.client.deleteMany({
-    where: { id: clientId, userId: user.id },
+    where: { id: clientId, organizationId },
   });
 
   revalidatePath("/clients");

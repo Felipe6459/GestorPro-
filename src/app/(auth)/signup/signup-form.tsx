@@ -10,11 +10,12 @@ import type { AuthActionState } from "@/types";
 
 const initialState: AuthActionState = { error: null };
 
-export function SignupForm() {
+export function SignupForm({ redirectTo }: { redirectTo?: string }) {
   const [state, formAction, pending] = useActionState(signup, initialState);
 
   return (
     <form action={formAction} className="space-y-4">
+      {redirectTo && <input type="hidden" name="redirectTo" value={redirectTo} />}
       <div>
         <FormLabel htmlFor="email" required>
           Email
@@ -73,7 +74,7 @@ export function SignupForm() {
       <p className="text-center text-sm text-gray-600">
         Already have an account?{" "}
         <Link
-          href="/login"
+          href={redirectTo ? `/login?redirectTo=${encodeURIComponent(redirectTo)}` : "/login"}
           className="rounded font-medium text-black hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
         >
           Sign in

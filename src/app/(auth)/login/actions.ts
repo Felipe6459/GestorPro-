@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { withToast } from "@/lib/toast-url";
+import { sanitizeRedirectPath } from "@/lib/safe-redirect";
 import type { AuthActionState } from "@/types";
 
 export async function login(
@@ -11,6 +12,7 @@ export async function login(
 ): Promise<AuthActionState> {
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
+  const redirectTo = sanitizeRedirectPath(String(formData.get("redirectTo") ?? ""));
 
   if (!email || !password) {
     return { error: "Email and password are required." };
@@ -26,5 +28,5 @@ export async function login(
     return { error: error.message };
   }
 
-  redirect(withToast("/dashboard", "Signed in successfully"));
+  redirect(withToast(redirectTo, "Signed in successfully"));
 }
