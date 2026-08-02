@@ -1,6 +1,6 @@
 import { formatStatusLabel } from "@/lib/format";
 
-type StatusTone = "neutral" | "info" | "warning" | "success" | "danger" | "muted";
+export type StatusTone = "neutral" | "info" | "warning" | "success" | "danger" | "muted";
 
 const TONE_CLASSES: Record<StatusTone, string> = {
   neutral: "bg-gray-100 text-gray-700",
@@ -16,7 +16,7 @@ const TONE_CLASSES: Record<StatusTone, string> = {
 // always renders in the same color everywhere (e.g. IN_PROGRESS and
 // CANCELLED mean the same thing on both Project and Task/Invoice, so they
 // share one entry).
-const STATUS_TONES: Record<string, StatusTone> = {
+export const STATUS_TONES: Record<string, StatusTone> = {
   LEAD: "neutral",
   ACTIVE: "success",
   INACTIVE: "muted",
