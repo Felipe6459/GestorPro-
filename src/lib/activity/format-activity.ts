@@ -265,6 +265,67 @@ function buildAttachmentModel(
   return FALLBACK;
 }
 
+/**
+ * PORTAL_USER covers both the ClientInvitation lifecycle (SENT/RESENT/
+ * CANCELED/ACCEPTED) and PortalUser removal — metadata is always
+ * { email | portalUserName, clientName, actorName }, never a token, URL,
+ * or the PortalUser/ClientInvitation id itself.
+ */
+function buildPortalUserModel(
+  action: ActivityAction,
+  metadata: Record<string, unknown>,
+): PartialModel {
+  const clientName = str(metadata.clientName);
+  if (!clientName) return FALLBACK;
+
+  switch (action) {
+    case "PORTAL_INVITATION_SENT": {
+      const email = str(metadata.email);
+      if (!email) return FALLBACK;
+      return {
+        actionLabel: `invited ${email} to client portal for ${clientName}`,
+        entityLabel: email,
+        detailLines: [],
+      };
+    }
+    case "PORTAL_INVITATION_RESENT": {
+      const email = str(metadata.email);
+      if (!email) return FALLBACK;
+      return {
+        actionLabel: `resent a client portal invitation to ${email} for ${clientName}`,
+        entityLabel: email,
+        detailLines: [],
+      };
+    }
+    case "PORTAL_INVITATION_CANCELED": {
+      const email = str(metadata.email);
+      if (!email) return FALLBACK;
+      return {
+        actionLabel: `canceled the client portal invitation for ${email} at ${clientName}`,
+        entityLabel: email,
+        detailLines: [],
+      };
+    }
+    case "PORTAL_INVITATION_ACCEPTED":
+      return {
+        actionLabel: `accepted client portal access for ${clientName}`,
+        entityLabel: clientName,
+        detailLines: [],
+      };
+    case "PORTAL_USER_REMOVED": {
+      const portalUserName = str(metadata.portalUserName);
+      if (!portalUserName) return FALLBACK;
+      return {
+        actionLabel: `removed ${portalUserName}'s client portal access for ${clientName}`,
+        entityLabel: portalUserName,
+        detailLines: [],
+      };
+    }
+    default:
+      return FALLBACK;
+  }
+}
+
 function buildModel(
   entityType: ActivityEntityType,
   action: ActivityAction,
@@ -274,6 +335,7 @@ function buildModel(
   if (entityType === "INVITATION") return buildInvitationModel(action, metadata);
   if (entityType === "MEMBERSHIP") return buildMembershipModel(action, metadata);
   if (entityType === "ATTACHMENT") return buildAttachmentModel(action, metadata);
+  if (entityType === "PORTAL_USER") return buildPortalUserModel(action, metadata);
   return FALLBACK;
 }
 

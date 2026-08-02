@@ -53,6 +53,21 @@ export type InviteAcceptState = {
   error: string | null;
 };
 
+export type PortalInvitationFormState = {
+  error: string | null;
+  fieldErrors?: Partial<Record<"email", string>>;
+  message?: string | null;
+  /** Set on success so the UI can render a copyable invite link. */
+  token?: string;
+  /**
+   * True when the ClientInvitation was created/updated successfully but the
+   * email itself could not be delivered — `message` still describes what
+   * happened, this just tells the UI to render it as a warning instead of
+   * a success (Copy link remains the fallback either way).
+   */
+  emailFailed?: boolean;
+};
+
 export type MembershipActionState = {
   error: string | null;
 };

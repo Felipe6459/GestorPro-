@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getCurrentUserOrganization } from "@/lib/current-user";
+import { getCurrentMembership } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { ClientForm } from "@/components/clients/client-form";
 import { updateClientAction } from "./actions";
 import { ClientAttachmentsSection } from "./attachments-section";
+import { ClientPortalAccessSection } from "./portal-access-section";
 
 export default async function EditClientPage({
   params,
@@ -12,7 +13,7 @@ export default async function EditClientPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { organizationId } = await getCurrentUserOrganization();
+  const { organizationId, membership } = await getCurrentMembership();
 
   const client = await prisma.client.findFirst({
     where: { id, organizationId },
@@ -45,6 +46,7 @@ export default async function EditClientPage({
           pendingLabel="Saving…"
         />
         <ClientAttachmentsSection clientId={client.id} organizationId={organizationId} />
+        <ClientPortalAccessSection clientId={client.id} role={membership.role} />
       </div>
     </div>
   );
