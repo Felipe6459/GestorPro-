@@ -4,6 +4,7 @@ import { getCurrentPortalUser } from "@/lib/current-portal-user";
 import { verifyPortalAttachmentAccess } from "@/lib/client-portal/attachments";
 import { createAttachmentSignedUrl } from "@/lib/storage/attachments-storage";
 import { SIGNED_URL_TTL_SECONDS } from "@/lib/storage/attachments-config";
+import { checkRateLimit, PORTAL_ATTACHMENT_DOWNLOAD_LIMIT } from "@/lib/rate-limit";
 
 /**
  * Separate from /api/attachments/[id]/download (staff) on purpose — that
@@ -24,7 +25,12 @@ export async function GET(
   // staff-only identity, or a removed/nonexistent PortalUser — none of
   // those ever reach the lookup below, and clientId/organizationId here
   // are never accepted from a query param or cookie.
-  const { clientId, organizationId } = await getCurrentPortalUser();
+  const { portalUser, clientId, organizationId } = await getCurrentPortalUser();
+
+  const limitCheck = checkRateLimit(PORTAL_ATTACHMENT_DOWNLOAD_LIMIT, portalUser.id);
+  if (limitCheck.limited) {
+    return new NextResponse(limitCheck.message, { status: 429 });
+  }
 
   // Found by id alone — the id is not itself a trust boundary, which is
   // exactly why verifyPortalAttachmentAccess() re-derives ownership from

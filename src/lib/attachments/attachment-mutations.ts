@@ -10,6 +10,7 @@ import {
 } from "@/lib/storage/attachment-files";
 import { uploadAttachmentObject, removeAttachmentObject } from "@/lib/storage/attachments-storage";
 import { ATTACHMENTS_BUCKET, MAX_ATTACHMENTS_PER_ENTITY } from "@/lib/storage/attachments-config";
+import { checkRateLimit, ATTACHMENT_UPLOAD_LIMIT } from "@/lib/rate-limit";
 import type { AttachmentEntityType } from "@/generated/prisma/enums";
 import type { AttachmentUploadState } from "@/types";
 
@@ -47,6 +48,11 @@ export async function uploadAttachmentForEntity({
   parentEntityLabel: string;
   formData: FormData;
 }): Promise<AttachmentUploadState> {
+  const limitCheck = checkRateLimit(ATTACHMENT_UPLOAD_LIMIT, actorId);
+  if (limitCheck.limited) {
+    return { error: limitCheck.message };
+  }
+
   const existingCount = await prisma.attachment.count({
     where: { organizationId, entityType, entityId },
   });

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { withToast } from "@/lib/toast-url";
 import { sanitizePortalRedirectPath } from "@/lib/safe-redirect";
+import { checkRateLimit, getRequestIp, PORTAL_LOGIN_LIMIT } from "@/lib/rate-limit";
 import type { AuthActionState } from "@/types";
 
 const NO_ACCESS_ERROR = "This account does not have Client Portal access.";
@@ -13,6 +14,12 @@ export async function portalLogin(
   _prevState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
+  const ip = await getRequestIp();
+  const limitCheck = checkRateLimit(PORTAL_LOGIN_LIMIT, ip);
+  if (limitCheck.limited) {
+    return { error: limitCheck.message };
+  }
+
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const redirectTo = sanitizePortalRedirectPath(String(formData.get("redirectTo") ?? ""));

@@ -12,6 +12,7 @@ import {
   buildPortalUserRemovedMetadata,
 } from "@/lib/activity/portal-metadata";
 import { sendClientPortalInvitationEmail } from "@/lib/email/client-portal-invitations";
+import { checkRateLimit, INVITE_PORTAL_USER_LIMIT, RESEND_PORTAL_INVITE_LIMIT } from "@/lib/rate-limit";
 import type { PortalInvitationFormState } from "@/types";
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -43,6 +44,11 @@ export async function inviteClientPortalUserAction(
   // OWNER/ADMIN, but a request can be crafted directly, so re-check here.
   if (!canManagePortalAccess(membership.role)) {
     return { error: "You don't have permission to manage client portal access." };
+  }
+
+  const limitCheck = checkRateLimit(INVITE_PORTAL_USER_LIMIT, user.id);
+  if (limitCheck.limited) {
+    return { error: limitCheck.message };
   }
 
   // Scoped by id + organizationId together — a foreign org's client id
@@ -148,6 +154,14 @@ export async function resendClientInvitationAction(
 
   if (!canManagePortalAccess(membership.role)) {
     return { error: "You don't have permission to manage client portal access." };
+  }
+
+  // Keyed by the invitation's own id, not the actor or IP — caps how many
+  // times any one invitation's email can be re-sent, checked before the
+  // lookup below so a rate-limited caller never touches the database.
+  const limitCheck = checkRateLimit(RESEND_PORTAL_INVITE_LIMIT, invitationId);
+  if (limitCheck.limited) {
+    return { error: limitCheck.message };
   }
 
   // Scoped by id + client.organizationId together — a foreign org's

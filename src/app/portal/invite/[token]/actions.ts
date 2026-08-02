@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { withToast } from "@/lib/toast-url";
 import { createActivity } from "@/lib/activity/create-activity";
 import { buildPortalInvitationAcceptedMetadata } from "@/lib/activity/portal-metadata";
+import { checkRateLimit, getRequestIp, ACCEPT_PORTAL_INVITE_LIMIT } from "@/lib/rate-limit";
 import type { InviteAcceptState } from "@/types";
 
 const GENERIC_UNAVAILABLE_ERROR = "This invitation is no longer available.";
@@ -52,6 +53,12 @@ async function redirectIfAlreadyAccepted(authUserId: string, clientId: string): 
 }
 
 export async function acceptClientInvitationAction(token: string): Promise<InviteAcceptState> {
+  const ip = await getRequestIp();
+  const limitCheck = checkRateLimit(ACCEPT_PORTAL_INVITE_LIMIT, ip);
+  if (limitCheck.limited) {
+    return { error: limitCheck.message };
+  }
+
   // The Supabase auth user is read directly — never via getOrCreateUser(),
   // which would create a staff User row. Accepting a Client Portal
   // invitation must never create (or touch) a User, Organization, or
