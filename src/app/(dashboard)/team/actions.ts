@@ -21,6 +21,7 @@ import {
   buildRoleChangedMetadata,
   buildOwnershipTransferredMetadata,
 } from "@/lib/activity/team-metadata";
+import { checkRateLimit, INVITE_MEMBER_LIMIT, RESEND_MEMBER_INVITE_LIMIT } from "@/lib/rate-limit";
 import type { InvitationFormState, MembershipActionState } from "@/types";
 
 const CHANGEABLE_ROLES = [Role.MEMBER, Role.ADMIN, Role.OWNER];
@@ -43,6 +44,11 @@ export async function inviteMemberAction(
   // OWNER/ADMIN, but a request can be crafted directly, so re-check here.
   if (membership.role !== Role.OWNER && membership.role !== Role.ADMIN) {
     return { error: "You don't have permission to invite members." };
+  }
+
+  const limitCheck = checkRateLimit(INVITE_MEMBER_LIMIT, user.id);
+  if (limitCheck.limited) {
+    return { error: limitCheck.message };
   }
 
   // If the email already belongs to a platform user who is already a member
@@ -156,6 +162,14 @@ export async function resendInvitationAction(
 
   if (!canManageInvitations(membership.role)) {
     return { error: "You don't have permission to manage invitations." };
+  }
+
+  // Keyed by the invitation's own id, not the actor or IP — caps how many
+  // times any one invitation's email can be re-sent, checked before the
+  // lookup below so a rate-limited caller never touches the database.
+  const limitCheck = checkRateLimit(RESEND_MEMBER_INVITE_LIMIT, invitationId);
+  if (limitCheck.limited) {
+    return { error: limitCheck.message };
   }
 
   // Scoped by id + organizationId together — a foreign org's invitation id

@@ -9,6 +9,7 @@ import { getOrCreateUser, setActiveOrganization } from "@/lib/current-user";
 import { withToast } from "@/lib/toast-url";
 import { createActivity } from "@/lib/activity/create-activity";
 import { buildInvitationAcceptedMetadata } from "@/lib/activity/team-metadata";
+import { checkRateLimit, getRequestIp, ACCEPT_MEMBER_INVITE_LIMIT } from "@/lib/rate-limit";
 import type { InviteAcceptState } from "@/types";
 
 const GENERIC_UNAVAILABLE_ERROR = "This invitation is no longer available.";
@@ -39,6 +40,12 @@ async function redirectIfAlreadyMember(
 export async function acceptInvitationAction(
   token: string,
 ): Promise<InviteAcceptState> {
+  const ip = await getRequestIp();
+  const limitCheck = checkRateLimit(ACCEPT_MEMBER_INVITE_LIMIT, ip);
+  if (limitCheck.limited) {
+    return { error: limitCheck.message };
+  }
+
   // Ensures a Prisma User row exists for the authenticated Supabase user,
   // without requiring (or provisioning) an active organization — accepting
   // an invite must work independently of whatever org this user already

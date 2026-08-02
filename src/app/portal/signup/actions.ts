@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { withToast } from "@/lib/toast-url";
 import { sanitizePortalRedirectPath } from "@/lib/safe-redirect";
+import { checkRateLimit, getRequestIp, PORTAL_SIGNUP_LIMIT } from "@/lib/rate-limit";
 import type { AuthActionState } from "@/types";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -25,6 +26,12 @@ export async function portalSignup(
   _prevState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
+  const ip = await getRequestIp();
+  const limitCheck = checkRateLimit(PORTAL_SIGNUP_LIMIT, ip);
+  if (limitCheck.limited) {
+    return { error: limitCheck.message };
+  }
+
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirmPassword") ?? "");

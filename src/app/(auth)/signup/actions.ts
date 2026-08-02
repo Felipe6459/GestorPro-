@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { withToast } from "@/lib/toast-url";
 import { sanitizeRedirectPath } from "@/lib/safe-redirect";
+import { checkRateLimit, getRequestIp, SIGNUP_LIMIT } from "@/lib/rate-limit";
 import type { AuthActionState } from "@/types";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -13,6 +14,12 @@ export async function signup(
   _prevState: AuthActionState,
   formData: FormData,
 ): Promise<AuthActionState> {
+  const ip = await getRequestIp();
+  const limitCheck = checkRateLimit(SIGNUP_LIMIT, ip);
+  if (limitCheck.limited) {
+    return { error: limitCheck.message };
+  }
+
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
