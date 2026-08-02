@@ -55,6 +55,11 @@ export async function createInvoiceAction(
           // Derived from the project, never a form field — keeps the two
           // FKs from ever disagreeing about which client this invoice bills.
           clientId: project.clientId,
+          // Server-set, never from formData — the form does allow creating
+          // an invoice directly in PAID status (no restriction to DRAFT),
+          // so that case must record a real paidAt from the start, same as
+          // any later DRAFT/SENT -> PAID transition would.
+          paidAt: values.status === "PAID" ? new Date() : null,
         },
       });
 

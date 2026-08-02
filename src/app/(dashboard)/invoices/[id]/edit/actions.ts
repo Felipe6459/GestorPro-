@@ -59,6 +59,22 @@ export async function updateInvoiceAction(
         return "not_found" as const;
       }
 
+      // paidAt lifecycle, server-derived only — never read from formData:
+      //   not-PAID -> PAID   : stamp a fresh paidAt (a real payment moment,
+      //                        including a repeat PAID after being reverted)
+      //   PAID -> not-PAID   : clear it — it no longer represents a paid state
+      //   PAID -> PAID       : omit the field entirely, so the existing value
+      //                        (and a pure no-op resubmit) is left untouched
+      //   not-PAID -> not-PAID: omit the field entirely — nothing to change
+      const wasPaid = existing.status === "PAID";
+      const willBePaid = values.status === "PAID";
+      const paidAtUpdate: { paidAt?: Date | null } = {};
+      if (!wasPaid && willBePaid) {
+        paidAtUpdate.paidAt = new Date();
+      } else if (wasPaid && !willBePaid) {
+        paidAtUpdate.paidAt = null;
+      }
+
       const result = await tx.invoice.updateMany({
         where: { id: invoiceId, project: { organizationId } },
         data: {
@@ -69,6 +85,7 @@ export async function updateInvoiceAction(
           notes: values.notes,
           projectId: project.id,
           clientId: project.clientId,
+          ...paidAtUpdate,
         },
       });
 
