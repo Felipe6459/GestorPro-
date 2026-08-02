@@ -1,17 +1,100 @@
+import Link from "next/link";
 import { getCurrentPortalUser } from "@/lib/current-portal-user";
+import { getPortalOverview } from "@/lib/client-portal/queries";
+import { MetricCard } from "@/components/dashboard/metric-card";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { formatCurrency } from "@/lib/format";
 
-// Proof-of-auth-foundation placeholder, not the final portal experience —
-// Projects/Invoices pages come in a later stage. Deliberately uses only the
-// identity data the layout already resolved via getCurrentPortalUser(), no
-// separate Prisma queries of its own.
-export default async function PortalHomePage() {
-  const { client } = await getCurrentPortalUser();
+const itemLinkClass =
+  "rounded text-sm font-medium text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2";
+const viewAllClass =
+  "rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2";
+
+export default async function PortalOverviewPage() {
+  const { client, clientId } = await getCurrentPortalUser();
+  const overview = await getPortalOverview(clientId);
 
   return (
-    <div>
-      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Client Portal</h1>
-      <p className="mt-1 text-sm text-gray-600">{client.name}</p>
-      <p className="mt-6 text-sm text-gray-500">Projects and invoices will appear here.</p>
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+          {client.name}
+        </h1>
+        <p className="mt-1 text-sm text-gray-600">
+          An overview of your projects and invoices.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <MetricCard
+          label="Active projects"
+          value={overview.activeProjectsCount}
+          href="/portal/projects"
+        />
+        <MetricCard
+          label="Open invoices"
+          value={overview.openInvoicesCount}
+          href="/portal/invoices"
+        />
+        <MetricCard
+          label="Outstanding amount"
+          value={formatCurrency(overview.outstandingAmount)}
+          href="/portal/invoices?status=open"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <section className="rounded-lg border border-gray-200 bg-white p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-900">Recent projects</h2>
+            <Link href="/portal/projects" className={viewAllClass}>
+              View all
+            </Link>
+          </div>
+          {overview.recentProjects.length === 0 ? (
+            <p className="text-sm text-gray-500">No projects yet.</p>
+          ) : (
+            <ul className="space-y-3">
+              {overview.recentProjects.map((project) => (
+                <li key={project.id} className="flex items-center justify-between gap-3">
+                  <Link href={`/portal/projects/${project.id}`} className={itemLinkClass}>
+                    {project.name}
+                  </Link>
+                  <StatusBadge status={project.status} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="rounded-lg border border-gray-200 bg-white p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-gray-900">Recent invoices</h2>
+            <Link href="/portal/invoices" className={viewAllClass}>
+              View all
+            </Link>
+          </div>
+          {overview.recentInvoices.length === 0 ? (
+            <p className="text-sm text-gray-500">No invoices yet.</p>
+          ) : (
+            <ul className="space-y-3">
+              {overview.recentInvoices.map((invoice) => (
+                <li key={invoice.id} className="flex items-center justify-between gap-3">
+                  <Link href={`/portal/invoices/${invoice.id}`} className={itemLinkClass}>
+                    {invoice.invoiceNumber}
+                  </Link>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-gray-600">
+                      {formatCurrency(invoice.amount, invoice.currency)}
+                    </span>
+                    <StatusBadge status={invoice.status} />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

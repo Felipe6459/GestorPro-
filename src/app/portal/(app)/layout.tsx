@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { getOptionalPortalUser } from "@/lib/current-portal-user";
+import { PortalNav } from "@/components/client-portal/portal-nav";
 import { portalSignOut } from "./actions";
 
 // This layout only wraps /portal itself (this route sits in the (app)
@@ -45,7 +46,7 @@ export default async function PortalAppLayout({
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div>
             <p className="text-xs font-medium tracking-wide text-gray-500 uppercase">
               Client Portal
@@ -67,8 +68,11 @@ export default async function PortalAppLayout({
             </form>
           </div>
         </div>
+        <div className="mx-auto max-w-5xl">
+          <PortalNav />
+        </div>
       </header>
-      <main className="mx-auto max-w-3xl px-4 py-8 sm:px-6">{children}</main>
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">{children}</main>
     </div>
   );
 }
