@@ -70,6 +70,7 @@ enum ActivityEntityType {
   MEMBERSHIP
   INVITATION
   ATTACHMENT
+  PORTAL_USER
 }
 
 enum ActivityAction {
@@ -87,6 +88,11 @@ enum ActivityAction {
   MEMBER_LEFT
   FILE_UPLOADED
   FILE_DELETED
+  PORTAL_INVITATION_SENT
+  PORTAL_INVITATION_RESENT
+  PORTAL_INVITATION_CANCELED
+  PORTAL_INVITATION_ACCEPTED
+  PORTAL_USER_REMOVED
 }
 
 enum AttachmentEntityType {
@@ -109,10 +115,11 @@ model User {
   assignedTasks Task[]    @relation("TaskAssignee")
   clients       Client[]  @relation("ClientOwner")
 
-  memberships         Membership[]
-  sentInvitations     Invitation[]  @relation("InvitationInvitedBy")
-  activities          Activity[]    @relation("ActivityActor")
-  uploadedAttachments Attachment[]  @relation("AttachmentUploadedBy")
+  memberships           Membership[]
+  sentInvitations       Invitation[]       @relation("InvitationInvitedBy")
+  sentClientInvitations ClientInvitation[] @relation("ClientInvitationInvitedBy")
+  activities            Activity[]         @relation("ActivityActor")
+  uploadedAttachments   Attachment[]       @relation("AttachmentUploadedBy")
 }
 
 // Multi-tenant scaffolding (schema-only for now; not yet wired into app
@@ -192,6 +199,11 @@ model Client {
 
   projects Project[]
   invoices Invoice[]
+
+  // Client Portal — a separate identity space from staff User/Membership
+  // (see PortalUser/ClientInvitation below), scoped to exactly this Client.
+  portalUsers       PortalUser[]
+  clientInvitations ClientInvitation[]
 
   @@unique([userId, email])
   @@index([status])
@@ -355,4 +367,68 @@ model Attachment {
   // as Activity's indexes, even though this stage doesn't add pagination.
   @@index([organizationId, entityType, entityId, createdAt, id])
   @@index([organizationId, createdAt, id])
+}
+
+// A Client Portal login — deliberately a separate identity from the staff
+// User model, not a Role/flag bolted onto it. A PortalUser never has a
+// Membership and is never resolved by getCurrentUserOrganization(); it
+// belongs to exactly one Client, never an Organization directly (the
+// organization is always reached by joining through that Client). This
+// keeps the two trust boundaries (internal staff vs. external client)
+// structurally incapable of being confused by a query written for the
+// other one.
+//
+// id has no @default: it must equal the Supabase auth.users.id of the
+// person who accepted a ClientInvitation, mirroring how User.id already
+// works — the row is created by application code once, not by the
+// database.
+//
+// email is intentionally not @unique: a person may be invited as a portal
+// contact for more than one Client (e.g. the same accountant handling two
+// separate client companies), and each such PortalUser is its own row with
+// its own id — global email uniqueness would prevent that legitimate case.
+// A single PortalUser row, however, always belongs to exactly one Client,
+// since clientId is a plain required scalar field, not a join table.
+model PortalUser {
+  id String @id @db.Uuid
+
+  clientId String @db.Uuid
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  email String
+  name  String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([email])
+}
+
+// Invitation for a Client Portal contact, deliberately separate from the
+// existing staff Invitation model rather than a nullable clientId bolted
+// onto it — that model is tied to Role (OWNER/ADMIN/MEMBER, meaningless
+// here) and its accept flow creates a Membership, not a PortalUser.
+// Keeping them apart means neither model's code has to branch on which
+// kind of invitation it's handling.
+model ClientInvitation {
+  id String @id @default(uuid()) @db.Uuid
+
+  clientId String @db.Uuid
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  email     String
+  token     String           @unique
+  status    InvitationStatus @default(PENDING)
+  expiresAt DateTime
+
+  invitedById String? @db.Uuid
+  invitedBy   User?   @relation("ClientInvitationInvitedBy", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clientId, email])
+  @@index([clientId])
+  @@index([email])
 }

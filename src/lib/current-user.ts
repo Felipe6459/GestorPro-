@@ -26,6 +26,13 @@ function activeOrgCookieOptions() {
  * prefetching sidebar links) to race to create the same row concurrently.
  * If this call loses that race, the row now exists (created by the winner),
  * so we just read it back instead of surfacing the P2002.
+ *
+ * Guards against a Client Portal-only identity (a PortalUser with no staff
+ * Membership) ever getting a User/Organization auto-provisioned. This must
+ * live here, not only in (dashboard)/layout.tsx's guard, because Next.js
+ * background prefetch requests for Sidebar links re-render Server
+ * Components independently of whichever page the user is actually looking
+ * at — a single guard higher up in the tree doesn't see those.
  */
 export async function getOrCreateUser() {
   const supabase = await createClient();
@@ -35,6 +42,19 @@ export async function getOrCreateUser() {
 
   if (!authUser) {
     redirect("/login");
+  }
+
+  const existing = await prisma.user.findUnique({ where: { id: authUser.id } });
+  if (existing) {
+    return existing;
+  }
+
+  const portalUser = await prisma.portalUser.findUnique({
+    where: { id: authUser.id },
+    select: { id: true },
+  });
+  if (portalUser) {
+    redirect("/portal");
   }
 
   try {

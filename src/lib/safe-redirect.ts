@@ -20,3 +20,20 @@ export function sanitizeRedirectPath(
   if (/[\r\n]/.test(input)) return fallback;
   return input;
 }
+
+const PORTAL_FALLBACK_PATH = "/portal";
+
+/**
+ * Same open-redirect protections as sanitizeRedirectPath, plus an
+ * additional constraint specific to the Client Portal login: the result
+ * must stay within /portal. Without this, a crafted redirectTo of
+ * "/dashboard" would pass sanitizeRedirectPath's own checks (it's a
+ * perfectly normal same-origin path) and send a portal login toward the
+ * staff dashboard — a portal identity has no business ever landing there.
+ */
+export function sanitizePortalRedirectPath(input: string | null | undefined): string {
+  const candidate = sanitizeRedirectPath(input, PORTAL_FALLBACK_PATH);
+  return candidate === "/portal" || candidate.startsWith("/portal/")
+    ? candidate
+    : PORTAL_FALLBACK_PATH;
+}

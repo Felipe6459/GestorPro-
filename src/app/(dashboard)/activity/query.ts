@@ -12,6 +12,7 @@ export const ACTIVITY_ENTITY_TYPES = [
   "INVOICE",
   "MEMBERSHIP",
   "INVITATION",
+  "PORTAL_USER",
 ] as const satisfies readonly ActivityEntityType[];
 
 export const ACTIVITY_ACTION_GROUPS = {
@@ -21,8 +22,18 @@ export const ACTIVITY_ACTION_GROUPS = {
     "INVITATION_RESENT",
     "INVITATION_CANCELED",
     "INVITATION_ACCEPTED",
+    "PORTAL_INVITATION_SENT",
+    "PORTAL_INVITATION_RESENT",
+    "PORTAL_INVITATION_CANCELED",
+    "PORTAL_INVITATION_ACCEPTED",
   ],
-  team: ["ROLE_CHANGED", "OWNERSHIP_TRANSFERRED", "MEMBER_REMOVED", "MEMBER_LEFT"],
+  team: [
+    "ROLE_CHANGED",
+    "OWNERSHIP_TRANSFERRED",
+    "MEMBER_REMOVED",
+    "MEMBER_LEFT",
+    "PORTAL_USER_REMOVED",
+  ],
 } as const satisfies Record<string, readonly ActivityAction[]>;
 
 export const ACTIVITY_ACTION_GROUP_KEYS = Object.keys(
