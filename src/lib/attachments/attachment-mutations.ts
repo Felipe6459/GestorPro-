@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
 import { createActivity } from "@/lib/activity/create-activity";
 import { buildAttachmentActivityMetadata } from "@/lib/activity/attachment-metadata";
 import {
@@ -189,4 +190,106 @@ export async function deleteAttachmentForEntity({
   // a Storage object we failed to remove would still be gone from the UI
   // either way, so there is nothing left to keep consistent here.
   await removeAttachmentObject({ path: attachment.storagePath });
+}
+
+export type AttachmentParentCleanupTarget = {
+  entityType: AttachmentEntityType;
+  entityId: string;
+  parentEntityLabel: string;
+};
+
+/**
+ * Deletes every Attachment row for one or more parent targets — e.g. a
+ * Client plus every Project that will be cascade-deleted alongside it,
+ * since Postgres removes those Projects silently at the SQL level with no
+ * further application code running for them. Must be called from inside
+ * the caller's own transaction, alongside the parent mutation itself, so a
+ * failure anywhere rolls everything back together.
+ *
+ * Deletes row-by-row (not one blanket deleteMany) and only writes
+ * FILE_DELETED when that specific delete actually affected a row: if a
+ * concurrent operation (e.g. someone deleting this one attachment through
+ * the individual delete flow) already removed it, this silently skips it
+ * rather than logging a second FILE_DELETED for the same file.
+ *
+ * Never touches Storage — only returns the storagePaths of everything it
+ * removed, for the caller to best-effort clean up after its transaction
+ * commits (see cleanupAttachmentStorageObjects).
+ */
+export async function deleteAttachmentsForParent(
+  tx: Prisma.TransactionClient,
+  {
+    organizationId,
+    actorId,
+    actorName,
+    targets,
+  }: {
+    organizationId: string;
+    actorId: string;
+    actorName: string;
+    targets: AttachmentParentCleanupTarget[];
+  },
+): Promise<{ storagePaths: string[] }> {
+  const storagePaths: string[] = [];
+
+  for (const target of targets) {
+    const attachments = await tx.attachment.findMany({
+      where: { organizationId, entityType: target.entityType, entityId: target.entityId },
+    });
+
+    for (const attachment of attachments) {
+      const result = await tx.attachment.deleteMany({
+        where: {
+          id: attachment.id,
+          organizationId,
+          entityType: target.entityType,
+          entityId: target.entityId,
+        },
+      });
+      if (result.count !== 1) {
+        // Already removed by a concurrent operation — nothing to log, and
+        // its Storage object is that operation's responsibility, not ours.
+        continue;
+      }
+
+      await createActivity(tx, {
+        organizationId,
+        actorId,
+        entityType: "ATTACHMENT",
+        entityId: attachment.id,
+        action: "FILE_DELETED",
+        metadata: buildAttachmentActivityMetadata(
+          attachment.originalName,
+          target.entityType,
+          target.parentEntityLabel,
+          actorName,
+        ),
+      });
+
+      storagePaths.push(attachment.storagePath);
+    }
+  }
+
+  return { storagePaths };
+}
+
+/**
+ * Best-effort Storage cleanup for a batch of paths — call only after the
+ * caller's transaction has committed. A failure removing one object never
+ * stops the rest, and never throws (a leftover Storage object is an
+ * invisible orphan; the DB rows are already gone either way). Logs only a
+ * failure count, never the paths, bucket, signed URLs, or any secret.
+ */
+export async function cleanupAttachmentStorageObjects(storagePaths: string[]): Promise<void> {
+  if (storagePaths.length === 0) return;
+
+  let failed = 0;
+  for (const path of storagePaths) {
+    const result = await removeAttachmentObject({ path });
+    if (!result.ok) failed += 1;
+  }
+
+  if (failed > 0) {
+    console.warn(`Attachment Storage cleanup: failed to remove ${failed} of ${storagePaths.length} object(s).`);
+  }
 }
