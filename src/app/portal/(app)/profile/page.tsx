@@ -1,4 +1,6 @@
 import { getCurrentPortalUser } from "@/lib/current-portal-user";
+import { getPortalClientAttachments } from "@/lib/client-portal/attachments";
+import { PortalAttachmentsList } from "@/components/client-portal/portal-attachments-list";
 
 function Field({ label, value }: { label: string; value: string | null }) {
   if (!value) return null;
@@ -15,7 +17,8 @@ function Field({ label, value }: { label: string; value: string | null }) {
 // page. Uses only the identity data getCurrentPortalUser() already
 // resolved, no separate Prisma query.
 export default async function PortalProfilePage() {
-  const { portalUser, client } = await getCurrentPortalUser();
+  const { portalUser, client, clientId, organizationId } = await getCurrentPortalUser();
+  const attachments = await getPortalClientAttachments(clientId, organizationId);
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
@@ -40,6 +43,14 @@ export default async function PortalProfilePage() {
           <Field label="Email" value={client.email} />
           <Field label="Phone" value={client.phone} />
         </dl>
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="text-sm font-semibold text-gray-900">Shared files</h2>
+        <PortalAttachmentsList
+          attachments={attachments}
+          emptyDescription="Files your team shares with you will appear here."
+        />
       </section>
     </div>
   );

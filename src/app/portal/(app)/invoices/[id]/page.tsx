@@ -2,8 +2,10 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getCurrentPortalUser } from "@/lib/current-portal-user";
 import { getPortalInvoice } from "@/lib/client-portal/queries";
+import { getPortalInvoiceAttachments } from "@/lib/client-portal/attachments";
 import { formatCurrency } from "@/lib/format";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { PortalAttachmentsList } from "@/components/client-portal/portal-attachments-list";
 
 export default async function PortalInvoiceDetailPage({
   params,
@@ -21,6 +23,12 @@ export default async function PortalInvoiceDetailPage({
   if (!invoice) {
     notFound();
   }
+
+  // The Invoice lookup above is already scoped by id + clientId +
+  // project.clientId — this only re-applies the
+  // entityType/entityId/organizationId boundary on the Attachment table,
+  // it does not re-verify Invoice ownership.
+  const attachments = await getPortalInvoiceAttachments(invoice);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -83,6 +91,14 @@ export default async function PortalInvoiceDetailPage({
             </div>
           )}
         </dl>
+
+        <div className="mt-8 border-t border-gray-200 pt-6">
+          <h2 className="text-sm font-semibold text-gray-900">Attachments</h2>
+          <PortalAttachmentsList
+            attachments={attachments}
+            emptyDescription="Files shared for this invoice will appear here."
+          />
+        </div>
       </div>
     </div>
   );

@@ -2,7 +2,9 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getCurrentPortalUser } from "@/lib/current-portal-user";
 import { getPortalProject } from "@/lib/client-portal/queries";
+import { getPortalProjectAttachments } from "@/lib/client-portal/attachments";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { PortalAttachmentsList } from "@/components/client-portal/portal-attachments-list";
 
 export default async function PortalProjectDetailPage({
   params,
@@ -20,6 +22,11 @@ export default async function PortalProjectDetailPage({
   if (!project) {
     notFound();
   }
+
+  // The Project lookup above is already scoped by id + clientId — this
+  // only re-applies the entityType/entityId/organizationId boundary on
+  // the Attachment table, it does not re-verify Project ownership.
+  const attachments = await getPortalProjectAttachments(project);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -66,6 +73,14 @@ export default async function PortalProjectDetailPage({
             </dd>
           </div>
         </dl>
+
+        <div className="mt-8 border-t border-gray-200 pt-6">
+          <h2 className="text-sm font-semibold text-gray-900">Attachments</h2>
+          <PortalAttachmentsList
+            attachments={attachments}
+            emptyDescription="Files shared for this project will appear here."
+          />
+        </div>
       </div>
     </div>
   );

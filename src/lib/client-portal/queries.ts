@@ -35,6 +35,13 @@ export type PortalProjectDetail = PortalProjectSummary & {
    * Project.budget or any staff-internal field. */
   description: string | null;
   clientName: string;
+  /**
+   * Project.organizationId — kept on this internal, already-scoped detail
+   * model purely so the caller can pass it straight into the attachment
+   * query (see client-portal/attachments.ts) without a second Prisma round
+   * trip. Never render this field in any portal page's JSX.
+   */
+  organizationId: string | null;
 };
 
 export type PortalInvoiceSummary = {
@@ -51,6 +58,14 @@ export type PortalInvoiceSummary = {
 export type PortalInvoiceDetail = PortalInvoiceSummary & {
   paidAt: Date | null;
   clientName: string;
+  /**
+   * Invoice.project.organizationId (deliberately the project's, not the
+   * invoice's own organizationId — see client-portal/attachments.ts) kept
+   * on this internal, already-scoped detail model so the caller can pass
+   * it straight into the attachment query. Never render this field in any
+   * portal page's JSX.
+   */
+  projectOrganizationId: string | null;
 };
 
 export type PortalOverview = {
@@ -160,7 +175,12 @@ export async function getPortalProject(
 ): Promise<PortalProjectDetail | null> {
   const project = await prisma.project.findFirst({
     where: { id: projectId, clientId },
-    select: { ...PROJECT_SUMMARY_SELECT, description: true, client: { select: { name: true } } },
+    select: {
+      ...PROJECT_SUMMARY_SELECT,
+      description: true,
+      organizationId: true,
+      client: { select: { name: true } },
+    },
   });
 
   if (!project) return null;
@@ -173,6 +193,7 @@ export async function getPortalProject(
     endDate: project.endDate,
     description: project.description,
     clientName: project.client.name,
+    organizationId: project.organizationId,
   };
 }
 
@@ -217,6 +238,7 @@ export async function getPortalInvoice(
       ...INVOICE_SUMMARY_SELECT,
       paidAt: true,
       client: { select: { name: true } },
+      project: { select: { name: true, organizationId: true } },
     },
   });
 
@@ -226,5 +248,6 @@ export async function getPortalInvoice(
     ...toInvoiceSummary(invoice),
     paidAt: invoice.paidAt,
     clientName: invoice.client.name,
+    projectOrganizationId: invoice.project.organizationId,
   };
 }
