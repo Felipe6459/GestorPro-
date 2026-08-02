@@ -4,10 +4,13 @@ export function MetricCard({
   label,
   value,
   href,
+  hint,
 }: {
   label: string;
   value: string | number;
   href: string;
+  /** Small caption under the value — e.g. the period a figure is scoped to. */
+  hint?: string;
 }) {
   return (
     <Link
@@ -20,6 +23,7 @@ export function MetricCard({
       <p className="mt-2 text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl">
         {value}
       </p>
+      {hint && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
     </Link>
   );
 }

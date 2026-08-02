@@ -4,6 +4,25 @@ export const DASHBOARD_PERIODS = ["7d", "30d", "90d", "year"] as const satisfies
 
 export const DEFAULT_DASHBOARD_PERIOD: DashboardPeriod = "30d";
 
+export const DASHBOARD_PERIOD_OPTIONS: readonly { value: DashboardPeriod; label: string }[] = [
+  { value: "7d", label: "7 days" },
+  { value: "30d", label: "30 days" },
+  { value: "90d", label: "90 days" },
+  { value: "year", label: "Year to date" },
+];
+
+const DASHBOARD_PERIOD_HINTS: Record<DashboardPeriod, string> = {
+  "7d": "Last 7 days",
+  "30d": "Last 30 days",
+  "90d": "Last 90 days",
+  year: "Year to date",
+};
+
+/** Short human label for period-scoped values (the Paid revenue KPI, the revenue chart caption). */
+export function formatDashboardPeriodLabel(period: DashboardPeriod): string {
+  return DASHBOARD_PERIOD_HINTS[period];
+}
+
 /**
  * Any value that isn't exactly one of the four known periods silently
  * falls back to the default — never an error, matching the existing

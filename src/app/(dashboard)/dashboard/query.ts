@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { formatActivity, type ActivityDisplayModel } from "@/lib/activity/format-activity";
 import { InvoiceStatus, TaskStatus, ProjectStatus } from "@/generated/prisma/enums";
 import type { DashboardPeriod } from "@/lib/dashboard/period";
-import { getDashboardPeriodRange } from "@/lib/dashboard/period";
+import { getDashboardPeriodRange, type DashboardBucketUnit } from "@/lib/dashboard/period";
 import { bucketRevenue, type RevenueResult } from "@/lib/dashboard/revenue";
 
 // PAID and CANCELLED are excluded; everything else (DRAFT, SENT, OVERDUE)
@@ -14,6 +14,7 @@ const UNPAID_INVOICE_STATUSES = ["DRAFT", "SENT", "OVERDUE"] as const;
 
 const RECENT_ACTIVITY_TAKE = 8;
 const LIST_TAKE = 5;
+const OVERDUE_ITEMS_TAKE = 8;
 
 export type StatusBreakdownItem<S extends string> = { status: S; count: number };
 
@@ -43,9 +44,26 @@ export type RecentInvoice = {
   createdAt: Date;
 };
 
+/**
+ * A discriminated union rather than one flattened shape — Task and Invoice
+ * are genuinely different things sharing only "has a due date that's
+ * passed", and the UI needs to tell them apart, not paper over it.
+ */
+export type OverdueItem =
+  | { kind: "task"; id: string; title: string; dueDate: Date; projectName: string }
+  | {
+      kind: "invoice";
+      id: string;
+      invoiceNumber: string;
+      dueDate: Date;
+      clientName: string;
+      amount: number;
+      currency: string;
+    };
+
 export type DashboardAnalytics = {
   period: DashboardPeriod;
-  periodRange: { start: Date; end: Date };
+  periodRange: { start: Date; end: Date; bucketUnit: DashboardBucketUnit };
   kpis: {
     totalClients: number;
     activeProjects: number;
@@ -63,6 +81,8 @@ export type DashboardAnalytics = {
   recentActivity: { id: string; display: ActivityDisplayModel }[];
   upcomingTasks: UpcomingOrOverdueTask[];
   overdueTasks: UpcomingOrOverdueTask[];
+  /** overdueTasks + overdue Invoices, merged and sorted by dueDate ascending, capped at 8. */
+  overdueItems: OverdueItem[];
   recentInvoices: RecentInvoice[];
 };
 
@@ -108,6 +128,7 @@ export async function getDashboardAnalytics({
     activityRows,
     upcomingTasksRows,
     overdueTasksRows,
+    overdueInvoicesRows,
     recentInvoicesRows,
   ] = await Promise.all([
     prisma.client.count({ where: { organizationId } }),
@@ -163,6 +184,16 @@ export async function getDashboardAnalytics({
       take: LIST_TAKE,
       include: { project: { select: { name: true } } },
     }),
+    // Real OVERDUE status, not a re-derived "dueDate < now" check — an
+    // invoice only counts here once someone has actually marked it OVERDUE.
+    // dueDate is nullable in the schema; excluded here since a due-date-
+    // sorted list has nothing meaningful to do with a null one.
+    prisma.invoice.findMany({
+      where: { project: { organizationId }, status: "OVERDUE", dueDate: { not: null } },
+      orderBy: { dueDate: "asc" },
+      take: LIST_TAKE,
+      include: { project: { select: { client: { select: { name: true } } } } },
+    }),
     prisma.invoice.findMany({
       where: { project: { organizationId } },
       orderBy: { createdAt: "desc" },
@@ -179,9 +210,34 @@ export async function getDashboardAnalytics({
     periodRange,
   );
 
+  const overdueItems: OverdueItem[] = [
+    ...overdueTasksRows.map(
+      (task): OverdueItem => ({
+        kind: "task",
+        id: task.id,
+        title: task.title,
+        dueDate: task.dueDate as Date,
+        projectName: task.project.name,
+      }),
+    ),
+    ...overdueInvoicesRows.map(
+      (invoice): OverdueItem => ({
+        kind: "invoice",
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        dueDate: invoice.dueDate as Date,
+        clientName: invoice.project.client.name,
+        amount: Number(invoice.amount),
+        currency: invoice.currency,
+      }),
+    ),
+  ]
+    .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime())
+    .slice(0, OVERDUE_ITEMS_TAKE);
+
   return {
     period,
-    periodRange: { start: periodRange.start, end: periodRange.end },
+    periodRange: { start: periodRange.start, end: periodRange.end, bucketUnit: periodRange.bucketUnit },
     kpis: {
       totalClients,
       activeProjects,
@@ -218,6 +274,7 @@ export async function getDashboardAnalytics({
       dueDate: task.dueDate as Date,
       projectName: task.project.name,
     })),
+    overdueItems,
     recentInvoices: recentInvoicesRows.map((invoice) => ({
       id: invoice.id,
       invoiceNumber: invoice.invoiceNumber,
