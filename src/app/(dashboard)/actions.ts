@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { setActiveOrganization } from "@/lib/current-user";
+import { prisma } from "@/lib/prisma";
+import { getCurrentUserOrganization, setActiveOrganization } from "@/lib/current-user";
 import { withToast } from "@/lib/toast-url";
 
 export async function signOut() {
@@ -29,4 +30,38 @@ export async function switchOrganizationAction(organizationId: string): Promise<
   revalidatePath("/", "layout");
 
   redirect(withToast("/dashboard", "Switched organization"));
+}
+
+/**
+ * Marks one Notification read for the current staff user. Scoped by
+ * {id, recipientId, organizationId} together — never by id alone — so a
+ * crafted id belonging to someone else, or to another organization, simply
+ * matches zero rows instead of erroring; that's indistinguishable from a
+ * nonexistent id, which is the same "generic no-op" every other cross-
+ * tenant mutation in this app already falls back to. `readAt: null` in the
+ * WHERE makes a duplicate click idempotent — a no-op, not a second write.
+ */
+export async function markNotificationReadAction(notificationId: string): Promise<void> {
+  const { user, organizationId } = await getCurrentUserOrganization();
+
+  await prisma.notification.updateMany({
+    where: { id: notificationId, recipientId: user.id, organizationId, readAt: null },
+    data: { readAt: new Date() },
+  });
+
+  // The bell/badge render in the layout itself, not a specific page — same
+  // reasoning as switchOrganizationAction's own revalidation above.
+  revalidatePath("/", "layout");
+}
+
+/** Bulk equivalent of markNotificationReadAction — same scoping, same idempotency. */
+export async function markAllNotificationsReadAction(): Promise<void> {
+  const { user, organizationId } = await getCurrentUserOrganization();
+
+  await prisma.notification.updateMany({
+    where: { recipientId: user.id, organizationId, readAt: null },
+    data: { readAt: new Date() },
+  });
+
+  revalidatePath("/", "layout");
 }

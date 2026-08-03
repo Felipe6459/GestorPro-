@@ -1,9 +1,14 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
-import { getOrganizationSwitcherItems } from "@/lib/current-user";
+import { getCurrentUserOrganization, getOrganizationSwitcherItems } from "@/lib/current-user";
+import { getRecentNotifications, getUnreadNotificationCount } from "@/lib/notifications/queries";
+import { formatNotification } from "@/lib/notifications/format-notification";
+import type { NotificationBellItem } from "@/components/notifications/notification-bell";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+
+const RECENT_NOTIFICATIONS_LIMIT = 10;
 
 export default async function DashboardLayout({
   children,
@@ -45,13 +50,42 @@ export default async function DashboardLayout({
     // User and personal Organization exactly as it already does below.
   }
 
-  const organizations = await getOrganizationSwitcherItems();
+  // organizationId/recipientId (user.id) here are the only ones the
+  // notification queries below ever use — both server-resolved, never from
+  // client input.
+  const { user: currentUser, organizationId } = await getCurrentUserOrganization();
+
+  const [organizations, unreadNotificationCount, recentNotificationRows] = await Promise.all([
+    getOrganizationSwitcherItems(),
+    getUnreadNotificationCount({ organizationId, recipientId: currentUser.id }),
+    getRecentNotifications({
+      organizationId,
+      recipientId: currentUser.id,
+      limit: RECENT_NOTIFICATIONS_LIMIT,
+    }),
+  ]);
+
+  const recentNotifications: NotificationBellItem[] = recentNotificationRows.map((row) => ({
+    id: row.id,
+    ...formatNotification({
+      type: row.type,
+      metadata: row.metadata,
+      entityId: row.entityId,
+      createdAt: row.createdAt,
+      readAt: row.readAt,
+    }),
+  }));
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50 md:flex-row">
       <Sidebar />
       <div className="flex flex-1 flex-col">
-        <Header email={user.email ?? ""} organizations={organizations} />
+        <Header
+          email={user.email ?? ""}
+          organizations={organizations}
+          unreadNotificationCount={unreadNotificationCount}
+          recentNotifications={recentNotifications}
+        />
         <main className="flex-1 p-6">{children}</main>
       </div>
     </div>
