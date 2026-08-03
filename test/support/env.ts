@@ -10,8 +10,6 @@ import { resolve } from "path";
 const envTestPath = resolve(process.cwd(), ".env.test");
 loadDotenv({ path: existsSync(envTestPath) ? envTestPath : resolve(process.cwd(), ".env") });
 
-export const TEST_APP_URL = process.env.TEST_APP_URL ?? "http://localhost:3000";
-
 // Every fixture's email must live on this domain — never a real inbox, and
 // never the mailinator-style addresses used for manual QA in prior stages.
 export const TEST_EMAIL_DOMAIN = process.env.TEST_EMAIL_DOMAIN ?? "test.local";

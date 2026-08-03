@@ -1,20 +1,15 @@
 name: CI Integration & E2E
 
-# Stage 4: the Prisma integration suite (test/integration/**) runs for real,
-# against an in-process PGlite Postgres (see test/support/local-postgres.ts)
-# — no Docker/Supabase CLI needed, since this sandbox had neither Docker nor
-# a writable Homebrew available (see the Stage 4 report for the full story).
-#
-# Stage 5: Playwright E2E runs the real, compiled app (`next build` +
-# `next start`), never the dev server or a Vercel Preview URL (see Stage 1's
-# design). Real Supabase Auth still isn't available here, so identity is
-# injected via the TEST_MODE bypass (src/lib/test-mode.ts) — gated so it
-# can never activate outside Playwright's own webServer.env, verified by
-# scripts/security-checks/check-no-test-mode.mjs (part of ci-fast.yml's
-# security:check step, not repeated here).
+# Runs test/integration/** (real Prisma against an in-process PGlite
+# Postgres) and test/e2e/** (real Chromium against a real `next start`
+# build). See docs/testing.md for the full architecture, the TEST_MODE
+# identity/Storage bypass this relies on, and why it can't affect a real
+# deployment (also verified by ci-fast.yml's security:check step).
 
 on:
   pull_request:
+  push:
+    branches: [main]
 
 concurrency:
   group: ci-integration-${{ github.ref }}
@@ -24,9 +19,13 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # TODO: once ci-fast and this workflow need to gate each other, either
-    # move both into one workflow file with a real `needs:` between jobs,
-    # or trigger this one via `workflow_run` on ci-fast's success.
+    # Deliberately independent from ci-fast.yml (no `needs:`) — both run in
+    # parallel so a PR gets both signals sooner, at the cost of sometimes
+    # running this heavier job for a PR ci-fast.yml was always going to
+    # fail anyway. Revisit if that cost becomes a real problem: `needs:`
+    # requires both jobs in one workflow file; `workflow_run` avoids that
+    # but only runs the version of *this* file committed on the default
+    # branch — its own footgun for a PR that just edited it, like this one.
     env:
       # Placeholder values for `next build` only — it needs *a* value for
       # the NEXT_PUBLIC_ vars to inline at build time; nothing in this job
@@ -44,33 +43,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Starts its own PGlite instance, creates the anon/authenticated
-      # role stand-ins, and runs a real `prisma migrate deploy` — all
-      # inside Vitest's globalSetup (test/integration/global-setup.ts).
-      # No separate "start the database" step needed.
+      # Starts and migrates its own PGlite instance via Vitest's globalSetup
+      # — no separate "start the database" step needed.
       - name: Integration tests (Vitest + real Prisma, PGlite-backed)
         run: npm run test:integration
 
-      # Playwright's own globalSetup/globalTeardown (test/e2e/global-setup.ts,
-      # global-teardown.ts) start and stop a SEPARATE PGlite instance plus
-      # the test/e2e/db-server.ts fixture helper for the E2E run specifically
-      # — entirely independent of the integration suite's database above.
+      # Playwright's globalSetup starts a SEPARATE PGlite instance + fixture
+      # server for the E2E run below, independent of the suite above.
       - name: Build the app (production build, required by webServer)
         run: npm run build
 
       - name: Install Playwright browsers (Chromium only)
         run: npx playwright install --with-deps chromium
 
-      # webServer in playwright.config.ts spawns `next start` itself (with
-      # its own TEST_MODE/PGLITE_TEST_DB env) and tears it down after the
-      # run — no separate "start the app" step needed.
+      # playwright.config.ts's webServer spawns and tears down `next start`
+      # itself — no separate "start the app" step needed.
       - name: Playwright E2E (real `next start` build, TEST_MODE identity)
         run: npm run test:e2e
 
-      # Defensive safety net alongside Playwright's own globalTeardown (which
-      # already stops the E2E PGlite instance and its db-server subprocess
-      # in every normal pass/fail case) — guards against an abrupt runner
-      # kill leaving either process behind for the next job on this runner.
+      # Defensive safety net alongside Playwright's own globalTeardown, which
+      # already stops both in every normal pass/fail case — guards against
+      # an abrupt runner kill. 3100 must match playwright.config.ts's PORT.
       - name: Ensure no lingering E2E processes (always runs)
         if: always()
         run: |

@@ -1,5 +1,4 @@
-import { execSync } from "node:child_process";
-import { readLines, report } from "./lib.mjs";
+import { grep, readLines, report } from "./lib.mjs";
 
 // A plain grep for "cookieOptions:" can't tell whether it belongs to the
 // SAME createServerClient(...) call it's near, so this walks a few lines
@@ -7,13 +6,10 @@ import { readLines, report } from "./lib.mjs";
 const PROXIMITY_LINES = 10;
 
 function findCallSites() {
-  let output;
-  try {
-    output = execSync('grep -rn "createServerClient(" src/', { encoding: "utf8" });
-  } catch (err) {
-    if (err.status === 1) return [];
-    throw err;
-  }
+  // The trailing "(" must be escaped — lib.mjs's grep() always runs with
+  // -E (extended regex), under which an unescaped "(" starts a capture
+  // group instead of matching a literal parenthesis.
+  const output = grep("createServerClient\\(", "src/");
   return output
     .trim()
     .split("\n")

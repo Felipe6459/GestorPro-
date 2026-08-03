@@ -214,6 +214,16 @@ No further configuration is needed — there's no separate backend to deploy; Se
 - **Per-tenant uniqueness, not global.** `Client.email` and `Invoice.invoiceNumber` are unique per owning user/client (composite unique constraints), not globally — so two different freelancers' businesses never collide with each other over something as common as an email address or invoice numbering scheme.
 - **CLI vs. runtime connections are separated.** Prisma CLI operations (migrate, seed) use a direct, non-pooled connection (`DIRECT_URL`); the deployed app uses the pooled connection (`DATABASE_URL`) — configured once in `prisma.config.ts`, so there's no risk of migrations accidentally running through a connection pooler that doesn't support them well.
 
+## Testing
+
+Three layers — unit (pure logic), integration (real Prisma against a real
+PGlite-backed Postgres), and E2E (real Chromium against a real production
+build) — plus a set of static security checks. See
+[`docs/testing.md`](docs/testing.md) for the full architecture, how to run
+each layer locally and in CI, what's deliberately not covered at the E2E
+layer and why, and the TEST_MODE identity/Storage bypass E2E relies on
+(and how it's verified to never affect a real deployment).
+
 ## Scripts
 
 | Command | Description |
@@ -226,6 +236,11 @@ No further configuration is needed — there's no separate backend to deploy; Se
 | `npx prisma migrate dev` | Create/apply a migration in development |
 | `npx prisma migrate deploy` | Apply pending migrations (production-safe, non-interactive) |
 | `npx prisma studio` | Browse the database |
+| `npm test` | Unit + integration tests |
+| `npm run test:unit` | Unit tests (Vitest) |
+| `npm run test:integration` | Integration tests against a real PGlite-backed Postgres |
+| `npm run test:e2e` | Playwright E2E — run `npm run build` first (see [`docs/testing.md`](docs/testing.md)) |
+| `npm run security:check` | Static security checks (`scripts/security-checks/`) |
 
 ## Roadmap
 

@@ -36,14 +36,18 @@ jobs:
       - name: prisma validate
         run: npx prisma validate
 
+      # Must run before TypeScript: next-env.d.ts imports
+      # .next/types/routes.d.ts (typed Route Handler params, e.g.
+      # RouteContext<...>), which next build generates. tsc --noEmit fails
+      # with "Cannot find name 'RouteContext'" on a fresh checkout otherwise.
+      - name: Build
+        run: npm run build
+
       - name: TypeScript
         run: npx tsc --noEmit
 
       - name: Lint
         run: npm run lint
-
-      - name: Build
-        run: npm run build
 
       - name: Static security checks
         run: npm run security:check

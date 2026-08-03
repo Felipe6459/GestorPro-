@@ -85,4 +85,36 @@ if (existsSync(routeFile)) {
   ok = report(`${routeFile} exists`, false, "Expected the E2E test-storage serving route to exist.") && ok;
 }
 
+// 6. Nothing under src/ imports test/ code — the boundary the whole
+// TEST_MODE design depends on (production code branches on an env var;
+// it never reaches into test/ for behavior). A stray import here would
+// mean actual test helpers (fixtures, PGlite, db-server) ship in the app
+// bundle, not just an inert flag. Matches any relative-path depth
+// ("../test/", "../../../test/", ...), not just one or two levels up.
+const testImports = grep('from "([^"]*/)?test/', "src/");
+ok = report("no file under src/ imports from test/", testImports === "", testImports) && ok;
+
+// 7. src/lib/storage/test-storage.ts (the Storage analog of TEST_MODE's
+// identity bypass) is imported only by the two call sites that actually
+// gate it on TEST_MODE — checked separately from #3's "imports the shared
+// gate" list, since a file could theoretically import test-storage
+// directly without ever importing test-mode.ts at all.
+const storageImporters = grep('from "\\./test-storage"|from "@/lib/storage/test-storage"', "src/")
+  .trim()
+  .split("\n")
+  .filter(Boolean)
+  .map((line) => line.split(":")[0]);
+const expectedStorageImporters = [
+  "src/lib/storage/attachments-storage.ts",
+  "src/app/api/e2e-test-storage/[...path]/route.ts",
+];
+const uniqueStorageImporters = [...new Set(storageImporters)];
+const unexpectedStorageImporters = uniqueStorageImporters.filter((f) => !expectedStorageImporters.includes(f));
+const missingStorageImporters = expectedStorageImporters.filter((f) => !uniqueStorageImporters.includes(f));
+ok = report(
+  `test-storage is imported only by its expected consumers (${expectedStorageImporters.join(", ")})`,
+  unexpectedStorageImporters.length === 0 && missingStorageImporters.length === 0,
+  [...unexpectedStorageImporters.map((f) => `unexpected: ${f}`), ...missingStorageImporters.map((f) => `missing: ${f}`)].join("\n"),
+) && ok;
+
 process.exit(ok ? 0 : 1);

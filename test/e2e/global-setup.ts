@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { startTestDatabase, TEST_DATABASE_URL } from "../support/local-postgres";
+import { E2E_DB_SERVER_PORT } from "../support/e2e-ports";
 
 // Written here, read by global-teardown.ts — a plain file rather than an
 // env var, since Playwright doesn't guarantee globalSetup/globalTeardown
@@ -12,7 +13,7 @@ async function waitForDbServer(): Promise<void> {
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch("http://127.0.0.1:3101/seed", { method: "OPTIONS" }).catch(() => null);
+      const res = await fetch(`http://127.0.0.1:${E2E_DB_SERVER_PORT}/seed`, { method: "OPTIONS" }).catch(() => null);
       // Any response (even 404 for OPTIONS) means the server is up.
       if (res) return;
     } catch {
@@ -20,7 +21,7 @@ async function waitForDbServer(): Promise<void> {
     }
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
-  throw new Error("test/e2e/db-server.ts never became reachable on port 3101");
+  throw new Error(`test/e2e/db-server.ts never became reachable on port ${E2E_DB_SERVER_PORT}`);
 }
 
 // Runs once before Playwright starts its webServer (see playwright.config.ts):

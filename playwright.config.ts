@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import { TEST_DATABASE_URL } from "./test/support/local-postgres";
+import { E2E_APP_PORT } from "./test/support/e2e-ports";
 
 // Applies to this config-loading process itself (so test files that
 // import @/lib/prisma directly — e.g. to seed/clean up fixtures — connect
@@ -8,7 +9,7 @@ import { TEST_DATABASE_URL } from "./test/support/local-postgres";
 process.env.DATABASE_URL = TEST_DATABASE_URL;
 process.env.PGLITE_TEST_DB = "1";
 
-const PORT = 3100; // distinct from the local dev server's 3000
+const PORT = E2E_APP_PORT;
 
 export default defineConfig({
   testDir: "./test/e2e",

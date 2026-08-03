@@ -9,8 +9,9 @@
 import { createServer } from "node:http";
 import { prisma } from "@/lib/prisma";
 import { seedTestData, cleanupTestData } from "../fixtures/seed";
+import { E2E_DB_SERVER_PORT } from "../support/e2e-ports";
 
-const PORT = 3101;
+const PORT = E2E_DB_SERVER_PORT;
 
 function readBody(req: import("node:http").IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {

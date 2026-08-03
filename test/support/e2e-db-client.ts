@@ -1,10 +1,11 @@
 import type { TestFixtures } from "../fixtures/seed";
+import { E2E_DB_SERVER_PORT } from "./e2e-ports";
 
 // Talks to test/e2e/db-server.ts (a tsx subprocess started in globalSetup)
 // over plain HTTP — this file itself never imports @/lib/prisma or the
 // generated Prisma client, so it loads fine under Playwright Test's own
 // transform (see the Stage 5 report for why that matters).
-const DB_SERVER_URL = "http://127.0.0.1:3101";
+const DB_SERVER_URL = `http://127.0.0.1:${E2E_DB_SERVER_PORT}`;
 
 export async function seedFixtures(): Promise<TestFixtures> {
   const res = await fetch(`${DB_SERVER_URL}/seed`, { method: "POST" });
