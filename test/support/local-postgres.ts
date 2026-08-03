@@ -53,7 +53,17 @@ async function waitForSocketReady(): Promise<void> {
 
 export async function startTestDatabase(): Promise<void> {
   pglite = new PGlite();
-  socketServer = new PGLiteSocketServer({ db: pglite, host: TEST_DB_HOST, port: TEST_DB_PORT });
+  // maxConnections defaults to 1 in @electric-sql/pglite-socket, which caps
+  // *TCP connections*, not concurrent queries (those are already serialized
+  // per-handler by its internal query queue regardless of connection count).
+  // The E2E suite has two separate OS processes each holding their own
+  // connection — the long-lived test/e2e/db-server.ts subprocess and the
+  // `next start` webServer — so the default of 1 rejects whichever
+  // connects second ("Too many connections"), which Prisma then surfaces
+  // as a P1017 ConnectionClosed error. A small headroom avoids that without
+  // giving up single-writer safety (queries still queue, not run in true
+  // parallel).
+  socketServer = new PGLiteSocketServer({ db: pglite, host: TEST_DB_HOST, port: TEST_DB_PORT, maxConnections: 5 });
   await socketServer.start();
   // PGLiteSocketServer's start() can resolve slightly before the
   // underlying net.Server is actually accepting connections — wait for a

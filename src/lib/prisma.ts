@@ -22,6 +22,17 @@ const adapter = new PrismaPg({
 
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
+// Cached unconditionally, not just outside production — this file is one
+// module among several separately-bundled server graphs (Server Actions
+// compile apart from Route Handlers/page renders), and each graph that
+// first imports this module gets its own fresh evaluation. Without a
+// process-wide cache, that means multiple independent PrismaClient
+// instances (each opening its own connection) even within a single
+// `next start` process, not just across dev's hot-reloads. Harmless
+// against a real multi-connection Postgres, but PGlite's socket server
+// serializes all query execution through one handler-affinity-aware
+// queue (see test/support/local-postgres.ts) — a second connection
+// opening its own transaction while another is mid-flight can stall that
+// queue outright, which is how this was actually found (an intermittent
+// E2E hang during Stage 5, never a report from real usage).
+globalForPrisma.prisma = prisma;

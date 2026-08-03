@@ -1,12 +1,17 @@
 name: CI Integration & E2E
 
-# Stage 4 update: the Prisma integration suite (test/integration/**) now
-# runs for real, against an in-process PGlite Postgres (see test/support/
-# local-postgres.ts) — no Docker/Supabase CLI needed, since this sandbox
-# had neither Docker nor a writable Homebrew available (see the Stage 4
-# report for the full story). Playwright E2E is still a TODO for Stage 5,
-# since it needs a running app server, which this stage deliberately does
-# not stand up (test/integration never touches a browser or HTTP server).
+# Stage 4: the Prisma integration suite (test/integration/**) runs for real,
+# against an in-process PGlite Postgres (see test/support/local-postgres.ts)
+# — no Docker/Supabase CLI needed, since this sandbox had neither Docker nor
+# a writable Homebrew available (see the Stage 4 report for the full story).
+#
+# Stage 5: Playwright E2E runs the real, compiled app (`next build` +
+# `next start`), never the dev server or a Vercel Preview URL (see Stage 1's
+# design). Real Supabase Auth still isn't available here, so identity is
+# injected via the TEST_MODE bypass (src/lib/test-mode.ts) — gated so it
+# can never activate outside Playwright's own webServer.env, verified by
+# scripts/security-checks/check-no-test-mode.mjs (part of ci-fast.yml's
+# security:check step, not repeated here).
 
 on:
   pull_request:
@@ -18,10 +23,16 @@ concurrency:
 jobs:
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     # TODO: once ci-fast and this workflow need to gate each other, either
     # move both into one workflow file with a real `needs:` between jobs,
     # or trigger this one via `workflow_run` on ci-fast's success.
+    env:
+      # Placeholder values for `next build` only — it needs *a* value for
+      # the NEXT_PUBLIC_ vars to inline at build time; nothing in this job
+      # ever talks to a real Supabase project (see the TEST_MODE note above).
+      NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key"
     steps:
       - uses: actions/checkout@v4
 
@@ -40,25 +51,37 @@ jobs:
       - name: Integration tests (Vitest + real Prisma, PGlite-backed)
         run: npm run test:integration
 
-      # TODO (Stage 5): build + start the app, then run Playwright E2E
-      # against a local `next start` — never the Vercel Preview URL (see
-      # Stage 1's design). Needs its own Supabase Auth strategy (this
-      # stage's auth-mock harness only works for direct Vitest calls, not
-      # a real browser session).
-      #   - run: npm run build
-      #   - run: npm run start &
-      #   - run: npm run test:e2e
+      # Playwright's own globalSetup/globalTeardown (test/e2e/global-setup.ts,
+      # global-teardown.ts) start and stop a SEPARATE PGlite instance plus
+      # the test/e2e/db-server.ts fixture helper for the E2E run specifically
+      # — entirely independent of the integration suite's database above.
+      - name: Build the app (production build, required by webServer)
+        run: npm run build
 
-      # TODO (Stage 5+): real Supabase PostgREST/Auth verification against
-      # an actual Supabase project (local `supabase start` under Docker, or
-      # a dedicated cloud test project) — see test/integration/security/
-      # grants.test.ts's own documented TODO for exactly what's missing.
+      - name: Install Playwright browsers (Chromium only)
+        run: npx playwright install --with-deps chromium
+
+      # webServer in playwright.config.ts spawns `next start` itself (with
+      # its own TEST_MODE/PGLITE_TEST_DB env) and tears it down after the
+      # run — no separate "start the app" step needed.
+      - name: Playwright E2E (real `next start` build, TEST_MODE identity)
+        run: npm run test:e2e
+
+      # Defensive safety net alongside Playwright's own globalTeardown (which
+      # already stops the E2E PGlite instance and its db-server subprocess
+      # in every normal pass/fail case) — guards against an abrupt runner
+      # kill leaving either process behind for the next job on this runner.
+      - name: Ensure no lingering E2E processes (always runs)
+        if: always()
+        run: |
+          pkill -f "next start -p 3100" || true
+          pkill -f "tsx test/e2e/db-server.ts" || true
 
       - name: Upload Playwright/Vitest artifacts (on failure only)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: integration-failure-artifacts
+          name: integration-e2e-failure-artifacts
           path: |
             test-results/
             playwright-report/

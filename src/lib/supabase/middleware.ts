@@ -1,9 +1,25 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseCookieOptions } from "./cookie-options";
+import { TEST_MODE } from "@/lib/test-mode";
 
 export async function updateSession(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  const response = NextResponse.next({ request });
+
+  // TEST_MODE has no real Supabase Auth session to refresh — the test
+  // identity cookie (see src/lib/test-mode.ts) isn't a Supabase session
+  // and needs no token-refresh call. Without this, every request would
+  // make a real network call to NEXT_PUBLIC_SUPABASE_URL, which has no
+  // real Auth service listening in this sandbox (see the Stage 4 report).
+  if (TEST_MODE) {
+    return response;
+  }
+
+  return updateRealSupabaseSession(request, response);
+}
+
+async function updateRealSupabaseSession(request: NextRequest, initialResponse: NextResponse) {
+  let response = initialResponse;
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
