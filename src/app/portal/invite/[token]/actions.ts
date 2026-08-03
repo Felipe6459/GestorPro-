@@ -174,6 +174,7 @@ export async function acceptClientInvitationAction(token: string): Promise<Invit
           invitation.client.name,
           portalUser.name,
         ),
+        notificationContext: { invitedById: invitation.invitedById },
       });
     });
   } catch (err) {

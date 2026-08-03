@@ -130,6 +130,7 @@ export async function acceptInvitationAction(
         entityId: fresh.id,
         action: "INVITATION_ACCEPTED",
         metadata: buildInvitationAcceptedMetadata(fresh, user.name, user.name),
+        notificationContext: { invitedById: fresh.invitedById },
       });
     });
   } catch (err) {

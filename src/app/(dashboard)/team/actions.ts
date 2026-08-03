@@ -379,6 +379,7 @@ export async function changeRoleAction(
           entityId: membershipId,
           action: "OWNERSHIP_TRANSFERRED",
           metadata: buildOwnershipTransferredMetadata(user.name, target.user.name, user.name),
+          notificationContext: { newOwnerId: target.userId, previousOwnerId: user.id },
         });
       });
     } catch (err) {
@@ -411,6 +412,7 @@ export async function changeRoleAction(
         entityId: membershipId,
         action: "ROLE_CHANGED",
         metadata: buildRoleChangedMetadata(target.user, target.role, newRole, user.name),
+        notificationContext: { affectedUserId: target.userId },
       });
 
       return "updated" as const;
@@ -478,6 +480,7 @@ export async function removeMemberAction(membershipId: string): Promise<void> {
       entityId: membershipId,
       action: "MEMBER_REMOVED",
       metadata: buildMembershipMetadata(target.user, target.role, user.name),
+      notificationContext: { affectedUserId: target.userId },
     });
   });
 
