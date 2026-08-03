@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
-import type { Notification } from "@/generated/prisma/client";
+import type { Notification, Prisma } from "@/generated/prisma/client";
+import { encodeActivityCursor } from "@/lib/activity/cursor";
+import { NOTIFICATIONS_PAGE_SIZE } from "@/lib/notifications/list-params";
 
 /**
  * Served by the [recipientId, readAt, createdAt, id] index — readAt IS NULL
@@ -37,4 +39,33 @@ export async function getRecentNotifications(params: {
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: params.limit,
   });
+}
+
+// --- Full /notifications inbox: keyset pagination ----------------------
+// parseNotificationListParams/buildNotificationWhere live in
+// list-params.ts, which stays prisma-runtime-free (only the `Prisma` type
+// namespace) so they're unit-testable the same way activity/query.ts is —
+// this file is only the actual DB round-trip.
+
+export type NotificationsPage = {
+  rows: Notification[];
+  hasMore: boolean;
+  nextCursor: string | null;
+};
+
+/** where must already be scoped by buildNotificationWhere (organizationId + recipientId). */
+export async function getNotificationsPage(where: Prisma.NotificationWhereInput): Promise<NotificationsPage> {
+  const rows = await prisma.notification.findMany({
+    where,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: NOTIFICATIONS_PAGE_SIZE + 1,
+  });
+
+  const hasMore = rows.length > NOTIFICATIONS_PAGE_SIZE;
+  const pageRows = hasMore ? rows.slice(0, NOTIFICATIONS_PAGE_SIZE) : rows;
+  const lastRow = pageRows[pageRows.length - 1];
+  const nextCursor =
+    hasMore && lastRow ? encodeActivityCursor({ createdAt: lastRow.createdAt.toISOString(), id: lastRow.id }) : null;
+
+  return { rows: pageRows, hasMore, nextCursor };
 }

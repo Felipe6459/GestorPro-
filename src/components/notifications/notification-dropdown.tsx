@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import Link from "next/link";
 import { markAllNotificationsReadAction, markNotificationReadAction } from "@/app/(dashboard)/actions";
 import { NotificationItem } from "./notification-item";
 import type { NotificationBellItem } from "./notification-bell";
@@ -57,6 +58,15 @@ export function NotificationDropdown({
           ))}
         </ul>
       )}
+      <div className="border-t border-gray-100 px-4 py-2 text-center">
+        <Link
+          href="/notifications"
+          onClick={onNavigate}
+          className="rounded text-xs font-medium text-gray-600 transition-colors hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+        >
+          View all notifications
+        </Link>
+      </div>
     </div>
   );
 }
