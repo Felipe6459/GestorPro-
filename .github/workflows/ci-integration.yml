@@ -1,8 +1,12 @@
 name: CI Integration & E2E
 
-# Skeleton only (Stage 2) — no local Supabase/Docker startup wired up yet.
-# See Stage 1's design doc for the full plan; each TODO below names the
-# stage that fills it in.
+# Stage 4 update: the Prisma integration suite (test/integration/**) now
+# runs for real, against an in-process PGlite Postgres (see test/support/
+# local-postgres.ts) — no Docker/Supabase CLI needed, since this sandbox
+# had neither Docker nor a writable Homebrew available (see the Stage 4
+# report for the full story). Playwright E2E is still a TODO for Stage 5,
+# since it needs a running app server, which this stage deliberately does
+# not stand up (test/integration never touches a browser or HTTP server).
 
 on:
   pull_request:
@@ -29,34 +33,33 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # TODO (Stage 3/4): start the local Supabase stack
-      #   - uses: supabase/setup-cli@v1
-      #   - run: supabase start
-      #   - run: npx prisma migrate deploy
-      #   - run: node --loader tsx test/fixtures/seed.ts (or a small runner)
+      # Starts its own PGlite instance, creates the anon/authenticated
+      # role stand-ins, and runs a real `prisma migrate deploy` — all
+      # inside Vitest's globalSetup (test/integration/global-setup.ts).
+      # No separate "start the database" step needed.
+      - name: Integration tests (Vitest + real Prisma, PGlite-backed)
+        run: npm run test:integration
 
-      # TODO (Stage 3/4): build + start the app against the local stack's
-      # env vars — a local `next start`, never the Vercel Preview URL (see
-      # Stage 1's design)
+      # TODO (Stage 5): build + start the app, then run Playwright E2E
+      # against a local `next start` — never the Vercel Preview URL (see
+      # Stage 1's design). Needs its own Supabase Auth strategy (this
+      # stage's auth-mock harness only works for direct Vitest calls, not
+      # a real browser session).
       #   - run: npm run build
       #   - run: npm run start &
-
-      # TODO (Stage 4): integration tests (Vitest + Prisma + HTTP)
-      #   - run: npm run test:integration
-
-      # TODO (Stage 4): PostgREST anon/authenticated denial + grants checks
-      #   (queries against the local stack's REST endpoint and
-      #   information_schema/pg_default_acl — see Stage 1 §3/§4)
-
-      # TODO (Stage 5): Playwright E2E
       #   - run: npm run test:e2e
 
-      - name: Placeholder
-        run: echo "ci-integration is a skeleton — see the TODOs above for what later stages add."
+      # TODO (Stage 5+): real Supabase PostgREST/Auth verification against
+      # an actual Supabase project (local `supabase start` under Docker, or
+      # a dedicated cloud test project) — see test/integration/security/
+      # grants.test.ts's own documented TODO for exactly what's missing.
 
-      # TODO: cleanup must run even on failure, e.g.:
-      #   - if: always()
-      #     run: node -e "..." (calling test/fixtures/cleanup.ts's cleanupTestRun)
-      #
-      # TODO: upload Playwright trace/screenshots/report as artifacts, only
-      # on failure, with a short retention (see Stage 1 §7).
+      - name: Upload Playwright/Vitest artifacts (on failure only)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-failure-artifacts
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
