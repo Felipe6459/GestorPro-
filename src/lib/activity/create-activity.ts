@@ -18,6 +18,18 @@ export type CreateActivityInput = {
   notificationContext?: NotificationContext;
 };
 
+export type CreateActivityResult = CreatedActivity & {
+  /**
+   * Ids of any Notification rows this Activity fanned out to (empty for
+   * every non-notifiable Activity). Only meant for one thing: after the
+   * caller's prisma.$transaction(...) resolves, pass these to
+   * deliverNotificationEmails(notificationIds) — never call it from inside
+   * the transaction itself. See src/lib/notifications/email/deliver-
+   * notification-email.ts.
+   */
+  notificationIds: string[];
+};
+
 /**
  * Writes one Activity row, then dispatches any Notification rows it should
  * fan out to. Takes a Prisma.TransactionClient — never the top-level
@@ -33,7 +45,7 @@ export type CreateActivityInput = {
 export async function createActivity(
   tx: Prisma.TransactionClient,
   input: CreateActivityInput,
-): Promise<CreatedActivity> {
+): Promise<CreateActivityResult> {
   const activity = await tx.activity.create({
     data: {
       organizationId: input.organizationId,
@@ -45,7 +57,10 @@ export async function createActivity(
     },
   });
 
-  await dispatchNotificationsForActivity(tx, { activity, context: input.notificationContext });
+  const notificationIds = await dispatchNotificationsForActivity(tx, {
+    activity,
+    context: input.notificationContext,
+  });
 
-  return activity;
+  return { ...activity, notificationIds };
 }

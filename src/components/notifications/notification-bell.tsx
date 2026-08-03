@@ -24,10 +24,20 @@ export function NotificationBell({
   const detailsRef = useRef<HTMLDetailsElement>(null);
 
   function close() {
-    const details = detailsRef.current;
-    if (!details) return;
-    details.removeAttribute("open");
-    details.querySelector("summary")?.focus();
+    // Deferred a tick: this is also passed as the onClick for links inside
+    // the dropdown (NotificationItem, "View all notifications"). Next.js's
+    // Link has its own onClick that triggers the client-side navigation —
+    // hiding this <details>'s content (which removeAttribute("open") does,
+    // synchronously, in the same DOM tree the clicked <a> lives in) in the
+    // very same tick risks running before that navigation has started,
+    // rather than after. Letting the click's own handlers finish first,
+    // then closing, avoids that race entirely.
+    setTimeout(() => {
+      const details = detailsRef.current;
+      if (!details) return;
+      details.removeAttribute("open");
+      details.querySelector("summary")?.focus();
+    }, 0);
   }
 
   const badgeLabel = initialUnreadCount > 99 ? "99+" : String(initialUnreadCount);

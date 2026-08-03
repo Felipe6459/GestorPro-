@@ -6,7 +6,7 @@ export type NotificationDisplayModel = {
   detail: string | null;
   timestamp: Date;
   isUnread: boolean;
-  /** Allowlisted by type, never built from raw metadata — see buildLink. */
+  /** Allowlisted by type, never built from raw metadata — see resolveNotificationLinkPath. */
   link: string | null;
 };
 
@@ -129,8 +129,14 @@ function buildModel(type: NotificationType, metadata: Record<string, unknown>): 
  * PORTAL_INVITATION_ACCEPTED gets no link: its Notification.metadata only
  * ever carries clientName (a display string), never a clientId, so there is
  * no reliable id to build /clients/[id]/edit from.
+ *
+ * Exported so the email formatter (src/lib/notifications/email/format-
+ * notification-email.ts) builds its CTA from this exact same allowlist
+ * instead of a second NotificationType switch — one link-path decision,
+ * two channels rendering it differently (a relative in-app href here, an
+ * absolute APP_BASE_URL-prefixed URL there).
  */
-function buildLink(type: NotificationType, entityId: string | null): string | null {
+export function resolveNotificationLinkPath(type: NotificationType, entityId: string | null): string | null {
   switch (type) {
     case "ROLE_CHANGED":
     case "OWNERSHIP_TRANSFERRED":
@@ -166,6 +172,6 @@ export function formatNotification(input: NotificationFormatInput): Notification
     detail: partial?.detail ?? null,
     timestamp: input.createdAt,
     isUnread: input.readAt === null,
-    link: partial ? buildLink(input.type, input.entityId) : null,
+    link: partial ? resolveNotificationLinkPath(input.type, input.entityId) : null,
   };
 }

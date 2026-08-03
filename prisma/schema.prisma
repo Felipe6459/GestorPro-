@@ -119,6 +119,25 @@ enum NotificationType {
   INVOICE_STATUS_CHANGED
 }
 
+// Only channel implemented so far (Stage 6) — SMS/webhook/etc. are future
+// values on this same enum, never a reason to add another table.
+enum NotificationChannel {
+  EMAIL
+}
+
+// PENDING is never actually persisted by Stage 6's synchronous, request-
+// bound delivery helper (a row goes straight from "about to attempt" to
+// SENT/FAILED/SKIPPED within the same call) — kept in the enum anyway
+// because a future queue-backed sender needs exactly this state for "row
+// exists, not yet attempted," and adding it later would be a second
+// migration for a value that obviously belongs here from day one.
+enum NotificationDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
 // id is intended to match Supabase auth.users.id once auth is wired up.
 model User {
   id        String   @id @default(uuid()) @db.Uuid
@@ -432,6 +451,56 @@ model Notification {
   // Serves the activityId SetNull lookup and any future join from an
   // Activity row to the notifications it produced.
   @@index([activityId])
+
+  deliveries NotificationDelivery[]
+}
+
+// Per-channel delivery attempt tracking for a Notification — Stage 6 adds
+// only EMAIL, but the shape is channel-generic from day one. Deliberately
+// its own table rather than columns on Notification itself: Notification
+// is the in-app read model (append-only except `readAt`), or delivery
+// state is a completely separate, per-channel, mutable-on-retry concern —
+// mixing them would mean every future channel adds more columns to the
+// one table every read-model query already scans.
+//
+// Never stores: the raw provider response, the API key, the rendered
+// email body, a token, a signed URL, a stack trace, or the recipient's
+// email address (that's already on User — this table only ever points at
+// notificationId, never duplicates PII). `failureCode` is a short,
+// stable, non-identifying label (e.g. "not_configured", "provider_error",
+// "network_error") — never a message string that could embed any of the
+// above.
+model NotificationDelivery {
+  id String @id @default(uuid()) @db.Uuid
+
+  notificationId String       @db.Uuid
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  channel NotificationChannel
+  status  NotificationDeliveryStatus @default(PENDING)
+
+  attemptedAt DateTime?
+  deliveredAt DateTime?
+  failureCode String?
+  // Stage 6's delivery helper only ever attempts once per call (no
+  // in-process retry loop — see deliver-notification-email.ts) — this
+  // still counts every attempt across calls, since nothing here prevents
+  // a future retry job from calling the same helper again for a FAILED row.
+  attemptCount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The one row per (Notification, channel) invariant — this is what makes
+  // "already SENT → no-op" and "no duplicate email for the same
+  // Notification" a database guarantee, not just application discipline.
+  @@unique([notificationId, channel])
+  // A future retry job's query shape: "every FAILED/PENDING row, oldest
+  // first" — this is that lookup's index, unused by Stage 6 itself (which
+  // never queries by status), added now because it's free on a new table
+  // and exactly what makes the "future queue path" in the design doc a
+  // reality instead of a promise.
+  @@index([status, createdAt])
 }
 
 // File attachments for Client/Project/Invoice, stored in Supabase Storage.

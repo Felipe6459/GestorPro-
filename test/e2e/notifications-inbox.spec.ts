@@ -59,7 +59,13 @@ test("the bell's 'View all notifications' link opens the real /notifications pag
   await page.getByRole("link", { name: "View all notifications" }).click();
 
   await expect(page).toHaveURL(/\/notifications$/);
-  await expect(page.getByRole("heading", { name: "Notifications" })).toBeVisible();
+  // A client-side Link navigation to a route this run has never rendered
+  // before goes through loading.tsx's Suspense fallback first (plain
+  // Skeleton divs, no accessible name) while the page's own data fetch
+  // resolves — under this sandbox's shared CPU that can occasionally take
+  // longer than the default 5s assertion timeout, so this one waits longer
+  // rather than treating normal Suspense latency as a failure.
+  await expect(page.getByRole("heading", { name: "Notifications" })).toBeVisible({ timeout: 15_000 });
 });
 
 test("a portal-only identity has no access to /notifications", async ({ context, baseURL, page }) => {

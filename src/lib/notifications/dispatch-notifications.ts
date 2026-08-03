@@ -9,16 +9,25 @@ import { resolveNotificationRule, type CreatedActivity, type NotificationContext
  *
  * No-op for any Activity whose (entityType, action) isn't one of the
  * approved MVP NotificationTypes (see notification-rules.ts).
+ *
+ * Returns the created Notification ids — never used for anything inside
+ * the transaction itself, only so the caller (createActivity, then
+ * whichever Server Action invoked it) can trigger best-effort email
+ * delivery once the transaction has actually committed. Email is never
+ * sent from in here: this function only ever runs inside an open
+ * transaction, and a provider call has no place blocking (or being rolled
+ * back by) a business mutation — see src/lib/notifications/email/deliver-
+ * notification-email.ts's own header comment.
  */
 export async function dispatchNotificationsForActivity(
   tx: Prisma.TransactionClient,
   input: { activity: CreatedActivity; context?: NotificationContext },
-): Promise<void> {
+): Promise<string[]> {
   const { activity, context } = input;
 
   const rule = resolveNotificationRule(activity.entityType, activity.action);
   if (!rule) {
-    return;
+    return [];
   }
 
   const candidates = await rule.resolveRecipients(tx, activity, context);
@@ -31,7 +40,7 @@ export async function dispatchNotificationsForActivity(
   // about their own action" for every rule generically.
   const recipientIds = [...new Set(candidates)].filter((id) => id !== activity.actorId);
   if (recipientIds.length === 0) {
-    return;
+    return [];
   }
 
   // A deleted/absent recipient (e.g. the inviter's User row no longer
@@ -45,12 +54,12 @@ export async function dispatchNotificationsForActivity(
   const existingIds = new Set(existingUsers.map((u) => u.id));
   const finalRecipientIds = recipientIds.filter((id) => existingIds.has(id));
   if (finalRecipientIds.length === 0) {
-    return;
+    return [];
   }
 
   const metadata = rule.buildMetadata(activity);
 
-  await tx.notification.createMany({
+  const created = await tx.notification.createManyAndReturn({
     data: finalRecipientIds.map((recipientId) => ({
       organizationId: activity.organizationId,
       recipientId,
@@ -60,5 +69,8 @@ export async function dispatchNotificationsForActivity(
       entityId: activity.entityId,
       metadata,
     })),
+    select: { id: true },
   });
+
+  return created.map((n) => n.id);
 }

@@ -287,3 +287,62 @@ test("switching organizations changes the visible notification set", async ({ co
     await dbQuery("user", "delete", { where: { id: dualOrgUser.id } });
   }
 });
+
+// Stage 6 — email delivery. NotificationDelivery status is never rendered
+// anywhere in the UI (no page/component reads it), so there's nothing to
+// click through beyond what's already covered above; this one test only
+// confirms the new post-commit wiring fires from a real UI action without
+// disturbing the in-app notification UI that Stage 4/5's own tests already
+// exercise. RESEND_API_KEY/INVITATION_FROM_EMAIL are unset in this E2E
+// environment (confirmed absent from .env.local), so this can never send a
+// real email — the real sendEmailViaResend path resolves to SKIPPED before
+// any network call.
+test("a real role change also creates a SKIPPED NotificationDelivery row, and the in-app bell/dropdown are unaffected", async ({
+  context,
+  baseURL,
+  page,
+}) => {
+  await injectTestSession(context, { id: fixtures.owner.id, email: fixtures.owner.email }, baseURL!);
+  await page.goto("/team");
+  const memberRow = page.getByRole("row", { name: new RegExp(fixtures.member.email) });
+  await Promise.all([
+    page.waitForResponse((r) => r.request().method() === "POST"),
+    memberRow.getByLabel("Role").selectOption("ADMIN"),
+  ]);
+
+  try {
+    const activity = await dbQuery<{ id: string }>("activity", "findFirstOrThrow", {
+      where: { organizationId: fixtures.orgA.id, action: "ROLE_CHANGED" },
+    });
+    const notification = await dbQuery<{ id: string }>("notification", "findFirstOrThrow", {
+      where: { activityId: activity.id },
+    });
+    const delivery = await dbQuery<{ status: string; failureCode: string | null } | null>(
+      "notificationDelivery",
+      "findUnique",
+      { where: { notificationId_channel: { notificationId: notification.id, channel: "EMAIL" } } },
+    );
+    expect(delivery?.status).toBe("SKIPPED");
+    expect(delivery?.failureCode).toBe("not_configured");
+
+    // The in-app UI is entirely unaffected — the recipient still sees a
+    // normal, correctly-worded unread notification.
+    await context.clearCookies();
+    await injectTestSession(context, { id: fixtures.member.id, email: fixtures.member.email }, baseURL!);
+    await setActiveOrg(context, baseURL!, fixtures.orgA.id);
+    await page.goto("/dashboard");
+    const bell = page.locator(BELL);
+    await expect(bell).toHaveAttribute("aria-label", /1 unread/);
+    await bell.click();
+    await expect(dropdownFor(page).getByText(`${fixtures.owner.name} changed your role`)).toBeVisible();
+  } finally {
+    await dbQuery("notification", "deleteMany", { where: { organizationId: fixtures.orgA.id } });
+    await dbQuery("activity", "deleteMany", {
+      where: { organizationId: fixtures.orgA.id, action: "ROLE_CHANGED" },
+    });
+    await dbQuery("membership", "updateMany", {
+      where: { userId: fixtures.member.id, organizationId: fixtures.orgA.id },
+      data: { role: "MEMBER" },
+    });
+  }
+});

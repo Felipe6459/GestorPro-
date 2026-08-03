@@ -550,18 +550,22 @@ puts all its flexibility into, on purpose.
   derivation the dashboard already does) and writes `Notification` rows
   with `activityId: null` — this is *exactly* why `activityId` is nullable
   in §3, not an afterthought.
-- **Email notifications**: this app already has an email-sending
-  abstraction (`src/lib/email/invitations.ts`, using Resend, with a
-  documented "falls back to Copy Link if delivery fails" pattern). A
-  future "email me my notifications" preference reuses that same
-  abstraction; the `Notification` row's already-rendered `title`/`body`
-  (§3) are exactly what an email template needs — no separate rendering
-  path to build.
-- **Push notifications**: needs a new `PushSubscription` model (device
-  token per user) entirely outside the `Notification` table itself — the
-  existing `Notification` row is still the single source of truth for
-  *what* to tell someone; push is just one more delivery channel reading
-  from it, the same relationship email will have.
+- **Email notifications**: **implemented (Stage 6)** — see §7a below for
+  the full design. One correction to this section's original claim: the
+  `Notification` row was never actually given a pre-rendered `title`/
+  `body` (§3's final schema keeps `metadata: Json` allowlisted-fields-
+  only, exactly like `Activity`) — so email needed its own formatter
+  (`src/lib/notifications/email/format-notification-email.ts`) rather
+  than reusing the in-app one verbatim. The underlying idea (reuse the
+  existing Resend abstraction, no new provider) held.
+- **Push notifications**: still future-only, unchanged by Stage 6 — needs
+  a new `PushSubscription` model (device token per user) entirely outside
+  the `Notification` table itself. `NotificationDelivery` (§7a) is
+  already channel-generic (`NotificationChannel` is an enum precisely so
+  `PUSH` is a new enum value later, not a new table) — the existing
+  `Notification` row is still the single source of truth for *what* to
+  tell someone; push is just one more delivery channel reading from it,
+  the same relationship email now has.
 - **Digest emails**: a scheduled job groups unread `Notification` rows by
   `recipientUserId` created since the last digest and renders them into
   one email — needs no new field on `Notification` beyond what's already
@@ -573,6 +577,150 @@ None of the above requires touching `recipientUserId`/
 `recipientPortalUserId`, the notify-vs-never classification mechanism, or
 the read-model queries in §5 — they all extend §2's rule table and §4's
 fan-out, which is precisely the seam this design draws the line at.
+
+---
+
+## 7a. Email delivery (Stage 6)
+
+### Architecture: never inside the transaction
+
+The one rule this whole section exists to enforce: an email provider is
+an external dependency with its own availability, and a `Notification`
+row (and the business mutation it documents) must never depend on it.
+
+```
+business mutation
+  → Activity
+  → Notification              (all inside prisma.$transaction)
+  → commit
+  → deliverNotificationEmails(notificationIds)   (after commit, best-effort)
+```
+
+`dispatchNotificationsForActivity` (§4.1) returns the ids of whatever
+`Notification` rows it just created; `createActivity` bubbles those back
+up as `CreateActivityResult.notificationIds`. The 6 Server Actions that
+actually produce notifications (one per approved `NotificationType` —
+see §2's table) capture that return value from their
+`prisma.$transaction(...)` call and pass it to
+`deliverNotificationEmails` **after** the transaction has resolved —
+never from inside it, and never via a bare unawaited Promise (see
+"Serverless limitations" below for why that specific shortcut is banned).
+
+### Delivery model: `NotificationDelivery`
+
+An additive table, not new columns on `Notification` — delivery state is
+a separate, per-channel, mutable-on-retry concern from the append-only
+(except `readAt`) in-app read model:
+
+```prisma
+enum NotificationChannel {
+  EMAIL
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+model NotificationDelivery {
+  id             String   @id @default(uuid()) @db.Uuid
+  notificationId String   @db.Uuid
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  channel        NotificationChannel
+  status         NotificationDeliveryStatus @default(PENDING)
+  attemptedAt    DateTime?
+  deliveredAt    DateTime?
+  failureCode    String?
+  attemptCount   Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([notificationId, channel])
+  @@index([status, createdAt])
+}
+```
+
+Never stores the raw provider response, the API key, the rendered email
+body, a token, a signed URL, a stack trace, or the recipient's email
+address (that's on `User` — this table only ever references
+`notificationId`). `failureCode` is one of a small, fixed set of
+non-identifying labels (`not_allowlisted`, `no_recipient_email`,
+`not_configured`, `provider_error`, `network_error`) — never a message
+string. `PENDING` is never actually persisted by Stage 6's synchronous
+helper (a row goes straight from "about to attempt" to
+`SENT`/`FAILED`/`SKIPPED` within one call) — kept in the enum because a
+future queue-backed sender needs exactly this state and it costs nothing
+to add now. Existing `Notification` rows need no backfill — the
+migration is purely additive (`CREATE TYPE`/`CREATE TABLE`/indexes/FK),
+and a `Notification` with no delivery row simply means email was never
+attempted for it (e.g. every row created before Stage 6 shipped).
+
+### Email allowlist
+
+Narrower than the in-app allowlist (§2) — evaluated in
+`shouldDeliverNotificationEmail` (`src/lib/notifications/email/deliver-
+notification-email.ts`), a pure function with no I/O:
+
+| Type | Email? | Why |
+|---|---|---|
+| `ROLE_CHANGED` | yes | directly affects what the recipient can do |
+| `OWNERSHIP_TRANSFERRED` | yes | high-stakes, rare, worth an email |
+| `MEMBER_REMOVED` | yes | the recipient may no longer be checking the app at all |
+| `INVITATION_ACCEPTED` | **no** | the inviter is already active in the app; an in-app badge is enough, an email is low value |
+| `PORTAL_INVITATION_ACCEPTED` | yes | useful for the staff inviter, same reasoning as above |
+| `INVOICE_STATUS_CHANGED` | yes, noted | recipients are every OWNER/ADMIN in the org (§4.2's one-to-many rule) — this can mean several emails per status change. Deliberately follows the existing `Notification` rows rather than inventing a narrower email-only rule; a digest or per-user opt-out is a real follow-up, not MVP |
+
+`shouldDeliverNotificationEmail` also decides recipient-email presence,
+provider configuration, and "already resolved" (an existing `SENT`/
+`SKIPPED` row, or a `FAILED` row past its retry ceiling) — every branch a
+pure, unit-tested function, so `deliverNotificationEmails` itself is a
+thin orchestrator: fetch data, call the predicate, act on the result.
+
+### Idempotency and retry semantics
+
+`@@unique([notificationId, channel])` is the actual guarantee, not just
+application discipline — a duplicate call for the same
+`notificationIds` is always safe. MVP retry ceiling: **at most one
+further attempt** after a `FAILED` row (`attemptCount >= 1` stops
+further attempts). No exponential backoff, no scheduled retry — this is
+a synchronous, request-bound helper, not a queue consumer. A `SENT` or
+`SKIPPED` row is never revisited.
+
+### Serverless limitations — no guaranteed delivery
+
+Calling `deliverNotificationEmails` after commit, inside the same Server
+Action invocation, only works for as long as that invocation's process
+is alive. There is no queue, no cron, and no background worker in this
+project (confirmed absent — see §7's "Reminders" bullet, which already
+depended on that same fact). Concretely, this means:
+
+- If the platform kills the request before `deliverNotificationEmails`
+  finishes (a timeout, a cold-start eviction), the email for that
+  specific `Notification` may never be attempted at all, and no
+  `NotificationDelivery` row is written to say so.
+- There is no automatic retry beyond the one extra attempt described
+  above, and that retry only happens if `deliverNotificationEmails` is
+  called *again* for the same id — nothing calls it again on its own.
+- This is a deliberate, honest trade-off for the MVP, not a hidden bug:
+  `NotificationDelivery` exists precisely so a future retry job (a
+  Vercel Cron hitting a Route Handler that queries
+  `WHERE status IN (PENDING, FAILED) ORDER BY createdAt` — the exact
+  shape `@@index([status, createdAt])` already serves) can pick up
+  anything this synchronous path missed, without a schema change.
+- Never fire-and-forget: `deliverNotificationEmails` is always `await`ed
+  by its caller. An un-awaited Promise started from a Server Action has
+  no guarantee of running to completion once the response is sent in a
+  serverless runtime — awaiting it is what makes "at least one honest
+  attempt per request" true at all.
+
+### CTA links
+
+Built server-side only, from `APP_BASE_URL` (never a request header) plus
+either the same allowlisted link path the in-app formatter resolves
+(`resolveNotificationLinkPath`, shared by both formatters — see §6) or,
+if there is none, `/notifications`. Never built from metadata.
 
 ---
 
