@@ -48,5 +48,15 @@ jobs:
       - name: Static security checks
         run: npm run security:check
 
-      - name: Unit tests
-        run: npm run test:unit
+      - name: Unit tests with coverage
+        run: npm run test:unit:coverage
+
+      # lcov is only useful for debugging a failing coverage threshold —
+      # keep it, but only on failure, and only briefly.
+      - name: Upload coverage report (on failure only)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-coverage-report
+          path: coverage/
+          retention-days: 7
