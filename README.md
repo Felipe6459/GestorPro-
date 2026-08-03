@@ -213,6 +213,10 @@ No further configuration is needed — there's no separate backend to deploy; Se
 - **The service-role key never reaches the app.** It's used exclusively by `prisma/seed.ts` (a local/CI-only script) to provision demo accounts through the Supabase Admin API. Application code only ever uses the anon key + session cookies.
 - **Per-tenant uniqueness, not global.** `Client.email` and `Invoice.invoiceNumber` are unique per owning user/client (composite unique constraints), not globally — so two different freelancers' businesses never collide with each other over something as common as an email address or invoice numbering scheme.
 - **CLI vs. runtime connections are separated.** Prisma CLI operations (migrate, seed) use a direct, non-pooled connection (`DIRECT_URL`); the deployed app uses the pooled connection (`DATABASE_URL`) — configured once in `prisma.config.ts`, so there's no risk of migrations accidentally running through a connection pooler that doesn't support them well.
+- **No public Supabase Data API access.** A migration (`prisma/migrations/20260802120937_lockdown_public_schema_grants`) revokes `anon`/`authenticated` privileges on every table in the `public` schema — the app talks to Postgres exclusively through Prisma, not PostgREST, so there's no table-level REST endpoint a client-side request could hit directly.
+- **Hardened session cookies.** Supabase session cookies are written with one shared `cookieOptions` config (`getSupabaseCookieOptions()` in `src/lib/supabase/cookie-options.ts`), applied at every `createServerClient(...)` call site — `npm run security:check` flags any call site missing it.
+- **HTTP security headers on every response.** `next.config.ts` sets a Content-Security-Policy, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, and a restrictive `Permissions-Policy`, applied to every route including API routes.
+- **Application-level rate limiting.** Sensitive actions (e.g. accepting an invitation, downloading an attachment) are rate-limited in-process (`src/lib/rate-limit`), independent of any platform-level limiting.
 
 ## Testing
 
@@ -223,6 +227,15 @@ build) — plus a set of static security checks. See
 each layer locally and in CI, what's deliberately not covered at the E2E
 layer and why, and the TEST_MODE identity/Storage bypass E2E relies on
 (and how it's verified to never affect a real deployment).
+
+## CI
+
+GitHub Actions (`.github/workflows/`) run on every pull request:
+
+- **`ci-fast.yml`** — `prisma validate`, type-check, lint, build, static security checks, unit tests.
+- **`ci-integration.yml`** — integration tests, then a production build and the Playwright E2E suite.
+
+Both are intended to be green before merging a pull request.
 
 ## Scripts
 
@@ -250,7 +263,6 @@ Ideas for future iterations. None of these are implemented yet:
 - **Team/shared workspaces.** Today every `Client`/`Project` is owned by exactly one `User`; there's no concept of a team sharing the same clients.
 - **File attachments** on clients, projects, or invoices (e.g. contracts, deliverables) — no file storage is wired up yet.
 - **Invoice PDF export / email delivery** — invoices currently exist only as database records with a status field; there's no PDF generation or send-by-email flow.
-- **Automated tests** — the project currently has no test suite (unit, integration, or e2e).
 
 ## License
 
