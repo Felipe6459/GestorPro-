@@ -1,7 +1,22 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { headers } from "next/headers";
+import { TEST_MODE } from "@/lib/test-mode";
+import { testStorageUpload, testStorageRemove } from "./test-storage";
 import { getStorageAdminClient } from "./admin-client";
 import { ATTACHMENTS_BUCKET, SIGNED_URL_TTL_SECONDS } from "./attachments-config";
+
+/**
+ * Only reached when TEST_MODE is on (see src/lib/test-mode.ts) — converts
+ * the Blob/ArrayBuffer/Uint8Array this module already accepts into the
+ * Buffer the in-memory test store keeps. Blob.arrayBuffer() covers File
+ * too (the real upload path's actual argument), since File extends Blob.
+ */
+async function toBuffer(body: Blob | ArrayBuffer | Uint8Array): Promise<Buffer> {
+  if (body instanceof Uint8Array) return Buffer.from(body);
+  if (body instanceof ArrayBuffer) return Buffer.from(body);
+  return Buffer.from(await body.arrayBuffer());
+}
 
 export type StorageFailureReason =
   | "not_configured"
@@ -48,6 +63,11 @@ export async function uploadAttachmentObject(
   },
   client?: SupabaseClient,
 ): Promise<StorageOperationResult> {
+  if (TEST_MODE) {
+    testStorageUpload(bucket, path, await toBuffer(body), contentType);
+    return { ok: true };
+  }
+
   const resolved = resolveClient(client);
   if (!resolved) return { ok: false, reason: "not_configured" };
 
@@ -71,6 +91,11 @@ export async function removeAttachmentObject(
   { bucket = ATTACHMENTS_BUCKET, path }: { bucket?: string; path: string },
   client?: SupabaseClient,
 ): Promise<StorageOperationResult> {
+  if (TEST_MODE) {
+    testStorageRemove(bucket, path);
+    return { ok: true };
+  }
+
   const resolved = resolveClient(client);
   if (!resolved) return { ok: false, reason: "not_configured" };
 
@@ -94,6 +119,18 @@ export async function createAttachmentSignedUrl(
   }: { bucket?: string; path: string; expiresInSeconds?: number },
   client?: SupabaseClient,
 ): Promise<SignedUrlResult> {
+  if (TEST_MODE) {
+    // No real Storage to sign a URL against — points at the TEST_MODE-only
+    // serving route instead (src/app/api/e2e-test-storage/[...path]/route.ts,
+    // itself gated on this same TEST_MODE flag). headers() reads the
+    // incoming request's own host, since this always runs inside a Route
+    // Handler (both attachment download routes) — never a hardcoded origin.
+    const h = await headers();
+    const host = h.get("host") ?? "127.0.0.1";
+    const proto = h.get("x-forwarded-proto") ?? "http";
+    return { ok: true, url: `${proto}://${host}/api/e2e-test-storage/${bucket}/${path}` };
+  }
+
   const resolved = resolveClient(client);
   if (!resolved) return { ok: false, reason: "not_configured" };
 
