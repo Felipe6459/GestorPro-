@@ -89,22 +89,24 @@ describe("shouldDeliverNotificationEmail — already-resolved deliveries", () =>
     expect(result).toEqual({ deliver: false, reason: "already_resolved" });
   });
 
-  it("FAILED with attemptCount at the MVP ceiling (1) is not retried", () => {
+  it("FAILED with attemptCount at the Stage 8 ceiling (3) is not retried", () => {
     const result = shouldDeliverNotificationEmail({
       ...BASE,
       notification: { type: "ROLE_CHANGED" },
-      existingDelivery: { status: "FAILED", attemptCount: 1 },
+      existingDelivery: { status: "FAILED", attemptCount: 3 },
     });
     expect(result).toEqual({ deliver: false, reason: "retry_limit_reached" });
   });
 
-  it("FAILED with attemptCount below the ceiling (0) still gets its one retry", () => {
-    const result = shouldDeliverNotificationEmail({
-      ...BASE,
-      notification: { type: "ROLE_CHANGED" },
-      existingDelivery: { status: "FAILED", attemptCount: 0 },
-    });
-    expect(result).toEqual({ deliver: true });
+  it("FAILED with attemptCount below the ceiling (0, 1, or 2) still gets retried", () => {
+    for (const attemptCount of [0, 1, 2]) {
+      const result = shouldDeliverNotificationEmail({
+        ...BASE,
+        notification: { type: "ROLE_CHANGED" },
+        existingDelivery: { status: "FAILED", attemptCount },
+      });
+      expect(result).toEqual({ deliver: true });
+    }
   });
 
   it("PENDING (never actually persisted by this synchronous helper, but handled) still gets attempted", () => {

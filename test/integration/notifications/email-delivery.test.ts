@@ -195,20 +195,29 @@ describe("deliverNotificationEmails — integration", () => {
     await prisma.notification.delete({ where: { id: n.id } });
   });
 
-  it("retry semantics: one retry is attempted after a FAILED row, then the ceiling stops further attempts", async () => {
+  it("retry semantics: deliverNotificationEmails itself has no backoff awareness, only a hard ceiling (Stage 8's MAX_ATTEMPTS=3) — repeated calls retry up to it, then stop", async () => {
     const n = await createNotification({ organizationId: fixtures.orgA.id, recipientId: fixtures.member.id });
     const spy = vi.fn(failSend);
 
     await deliverNotificationEmails([n.id], { sendEmail: spy }); // attemptCount -> 1, FAILED
-    const afterFirst = await prisma.notificationDelivery.findUniqueOrThrow({
+    await deliverNotificationEmails([n.id], { sendEmail: spy }); // attemptCount -> 2, FAILED
+    await deliverNotificationEmails([n.id], { sendEmail: spy }); // attemptCount -> 3, FAILED (ceiling)
+    const afterThird = await prisma.notificationDelivery.findUniqueOrThrow({
       where: { notificationId_channel: { notificationId: n.id, channel: "EMAIL" } },
     });
-    expect(afterFirst.status).toBe("FAILED");
-    expect(afterFirst.attemptCount).toBe(1);
+    expect(afterThird.status).toBe("FAILED");
+    expect(afterThird.attemptCount).toBe(3);
+    expect(spy).toHaveBeenCalledTimes(3);
 
-    const secondSummary = await deliverNotificationEmails([n.id], { sendEmail: spy });
-    expect(spy).toHaveBeenCalledTimes(1); // no second attempt — MVP ceiling
-    expect(secondSummary).toEqual({ attempted: 0, sent: 0, failed: 0, skipped: 0 });
+    // A 4th call is a pure no-op — the ceiling is reached.
+    const fourthSummary = await deliverNotificationEmails([n.id], { sendEmail: spy });
+    expect(spy).toHaveBeenCalledTimes(3);
+    expect(fourthSummary).toEqual({ attempted: 0, sent: 0, failed: 0, skipped: 0 });
+
+    // Backoff timing (waiting between attempts) is the retry job's own
+    // concern (src/lib/notifications/jobs/retry-notification-deliveries.ts),
+    // exercised in test/integration/notifications/retry-job.test.ts — this
+    // request-bound path only enforces the total-attempts ceiling.
 
     await prisma.notification.delete({ where: { id: n.id } });
   });

@@ -30,8 +30,43 @@ const EMAIL_ALLOWLIST: ReadonlySet<NotificationType> = new Set([
   "INVOICE_STATUS_CHANGED",
 ]);
 
-/** MVP: at most one retry attempt total — see deliverNotificationEmails's own header. */
-const MAX_ATTEMPTS = 1;
+/**
+ * Total attempts ever made, across both the request-bound first attempt
+ * (deliverNotificationEmails, below) and the background retry job
+ * (src/lib/notifications/jobs/retry-notification-deliveries.ts) — shared
+ * so both agree on the same ceiling. Raised from Stage 6's MVP value of 1
+ * to a real 3-attempt policy now that Stage 8 adds a job capable of
+ * actually retrying later; the request-bound path itself still only ever
+ * makes one attempt per call.
+ */
+export const MAX_ATTEMPTS = 3;
+
+/**
+ * Backoff, keyed by the attemptCount a FAILED row now has (i.e. the
+ * attempt that just failed) — attempt 1 (the request-bound first try)
+ * fails immediately with no wait; the job's first retry (attemptCount 1 ->
+ * 2) waits at least 15 minutes from that failure; its second and final
+ * retry (2 -> 3) waits at least 1 hour. No entry for attemptCount 3: that
+ * attempt reaching MAX_ATTEMPTS is terminal, computeNextAttemptAt returns
+ * null and the row stays FAILED with no further retry.
+ */
+const RETRY_BACKOFF_MS: Record<number, number> = {
+  1: 15 * 60 * 1000,
+  2: 60 * 60 * 1000,
+};
+
+/**
+ * `newAttemptCount` is the attemptCount value a FAILED row now has, right
+ * after recording this failure. Returns null when there's no scheduled
+ * retry (either the ceiling was just reached, or — defensively — an
+ * attemptCount this table shouldn't produce).
+ */
+export function computeNextAttemptAt(now: Date, newAttemptCount: number): Date | null {
+  if (newAttemptCount >= MAX_ATTEMPTS) return null;
+  const backoffMs = RETRY_BACKOFF_MS[newAttemptCount];
+  if (backoffMs === undefined) return null;
+  return new Date(now.getTime() + backoffMs);
+}
 
 export type ShouldDeliverResult =
   | { deliver: true }
@@ -111,20 +146,45 @@ export type DeliverySummary = {
   skipped: number;
 };
 
-async function upsertSkipped(notificationId: string, failureCode: string): Promise<void> {
+/**
+ * Exported so the retry job (src/lib/notifications/jobs/retry-
+ * notification-deliveries.ts) records SKIPPED/FAILED/SENT outcomes
+ * through this exact same write path, rather than a second copy of it —
+ * one place decides what a delivery row looks like after any given
+ * outcome, regardless of which caller produced it.
+ */
+export async function upsertSkipped(notificationId: string, failureCode: string): Promise<void> {
   await prisma.notificationDelivery.upsert({
     where: { notificationId_channel: { notificationId, channel: "EMAIL" } },
     create: { notificationId, channel: "EMAIL", status: "SKIPPED", failureCode, attemptCount: 0 },
-    update: { status: "SKIPPED", failureCode, attemptedAt: null, deliveredAt: null },
+    update: {
+      status: "SKIPPED",
+      failureCode,
+      attemptedAt: null,
+      deliveredAt: null,
+      nextAttemptAt: null,
+      lockedAt: null,
+    },
   });
 }
 
-async function upsertAttempt(
+/**
+ * `currentAttemptCount` is the row's attemptCount *before* this attempt —
+ * the caller always already knows it (either 0, for a brand new row, or
+ * whatever it just read/claimed) — so nextAttemptAt can be computed from
+ * a known resulting count rather than relying on the database to report
+ * back the result of an `increment`.
+ */
+export async function upsertAttempt(
   notificationId: string,
+  currentAttemptCount: number,
   result: { status: "SENT" | "FAILED"; failureCode: string | null },
+  now: Date = new Date(),
 ): Promise<void> {
-  const now = new Date();
+  const newAttemptCount = currentAttemptCount + 1;
   const deliveredAt = result.status === "SENT" ? now : null;
+  const nextAttemptAt = result.status === "FAILED" ? computeNextAttemptAt(now, newAttemptCount) : null;
+
   await prisma.notificationDelivery.upsert({
     where: { notificationId_channel: { notificationId, channel: "EMAIL" } },
     create: {
@@ -134,14 +194,17 @@ async function upsertAttempt(
       attemptedAt: now,
       deliveredAt,
       failureCode: result.failureCode,
-      attemptCount: 1,
+      attemptCount: newAttemptCount,
+      nextAttemptAt,
     },
     update: {
       status: result.status,
       attemptedAt: now,
       deliveredAt,
       failureCode: result.failureCode,
-      attemptCount: { increment: 1 },
+      attemptCount: newAttemptCount,
+      nextAttemptAt,
+      lockedAt: null,
     },
   });
 }
@@ -250,11 +313,12 @@ export async function deliverNotificationEmails(
       result = { ok: false, reason: "network_error" };
     }
 
+    const currentAttemptCount = existing?.attemptCount ?? 0;
     if (result.ok) {
-      await upsertAttempt(notification.id, { status: "SENT", failureCode: null });
+      await upsertAttempt(notification.id, currentAttemptCount, { status: "SENT", failureCode: null });
       summary.sent += 1;
     } else {
-      await upsertAttempt(notification.id, { status: "FAILED", failureCode: result.reason });
+      await upsertAttempt(notification.id, currentAttemptCount, { status: "FAILED", failureCode: result.reason });
       summary.failed += 1;
     }
   }

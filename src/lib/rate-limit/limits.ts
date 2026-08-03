@@ -91,3 +91,13 @@ export const PORTAL_ATTACHMENT_DOWNLOAD_LIMIT: RateLimitConfig = {
   limit: 120,
   windowMs: HOUR_MS,
 };
+
+// Cron routes (/api/cron/*) — defense in depth, not the primary barrier
+// (CRON_SECRET is). Bucketed per route name (the "identifier" passed to
+// checkRateLimit is the route's own fixed name, e.g. "notification-
+// delivery"), not per caller — Vercel's own invocations are at most daily
+// on this project's plan (see docs/notifications-architecture.md's cron
+// section), so a generous per-hour ceiling never blocks a legitimate
+// scheduled run, or a few manual re-triggers while debugging, but still
+// catches a brute-force secret-guessing script hammering the endpoint.
+export const CRON_JOB_LIMIT: RateLimitConfig = { scope: "cron", limit: 20, windowMs: HOUR_MS };

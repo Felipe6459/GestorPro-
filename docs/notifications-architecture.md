@@ -619,6 +619,7 @@ enum NotificationChannel {
 
 enum NotificationDeliveryStatus {
   PENDING
+  PROCESSING // Stage 8 — a job's in-progress claim on this row
   SENT
   FAILED
   SKIPPED
@@ -634,6 +635,8 @@ model NotificationDelivery {
   deliveredAt    DateTime?
   failureCode    String?
   attemptCount   Int      @default(0)
+  nextAttemptAt  DateTime? // Stage 8 — earliest time a FAILED row becomes retry-eligible again
+  lockedAt       DateTime? // Stage 8 — claim timestamp; also the staleness clock for PROCESSING recovery
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -650,12 +653,15 @@ non-identifying labels (`not_allowlisted`, `no_recipient_email`,
 `not_configured`, `provider_error`, `network_error`) — never a message
 string. `PENDING` is never actually persisted by Stage 6's synchronous
 helper (a row goes straight from "about to attempt" to
-`SENT`/`FAILED`/`SKIPPED` within one call) — kept in the enum because a
-future queue-backed sender needs exactly this state and it costs nothing
-to add now. Existing `Notification` rows need no backfill — the
-migration is purely additive (`CREATE TYPE`/`CREATE TABLE`/indexes/FK),
-and a `Notification` with no delivery row simply means email was never
+`SENT`/`FAILED`/`SKIPPED` within one call) — kept in the enum because
+Stage 8's background job needs exactly this state to claim from.
+Existing `Notification` rows need no backfill — the original migration
+was purely additive (`CREATE TYPE`/`CREATE TABLE`/indexes/FK), and a
+`Notification` with no delivery row simply means email was never
 attempted for it (e.g. every row created before Stage 6 shipped).
+`PROCESSING`/`nextAttemptAt`/`lockedAt` were added in their own
+Stage 8 migration (`ALTER TYPE ... ADD VALUE`, `ADD COLUMN` nullable) —
+see §7c for what they're for.
 
 ### Email allowlist
 
@@ -682,38 +688,46 @@ thin orchestrator: fetch data, call the predicate, act on the result.
 
 `@@unique([notificationId, channel])` is the actual guarantee, not just
 application discipline — a duplicate call for the same
-`notificationIds` is always safe. MVP retry ceiling: **at most one
-further attempt** after a `FAILED` row (`attemptCount >= 1` stops
-further attempts). No exponential backoff, no scheduled retry — this is
-a synchronous, request-bound helper, not a queue consumer. A `SENT` or
+`notificationIds` is always safe. Total-attempt ceiling: `MAX_ATTEMPTS`
+(3, as of Stage 8 — raised from Stage 6's original MVP value of 1 now
+that a real retry job exists to spend those extra attempts on). This
+request-bound helper itself has no backoff awareness and makes at most
+one attempt per call — it just enforces the hard ceiling
+(`attemptCount >= MAX_ATTEMPTS` stops further attempts). Backoff timing
+between attempts is the retry job's own concern (§7c). A `SENT` or
 `SKIPPED` row is never revisited.
 
-### Serverless limitations — no guaranteed delivery
+### Serverless limitations — no guaranteed delivery (as of Stage 6)
 
 Calling `deliverNotificationEmails` after commit, inside the same Server
 Action invocation, only works for as long as that invocation's process
-is alive. There is no queue, no cron, and no background worker in this
-project (confirmed absent — see §7's "Reminders" bullet, which already
-depended on that same fact). Concretely, this means:
+is alive. At Stage 6 there was no queue, no cron, and no background
+worker in this project. Concretely, this meant:
 
 - If the platform kills the request before `deliverNotificationEmails`
   finishes (a timeout, a cold-start eviction), the email for that
   specific `Notification` may never be attempted at all, and no
   `NotificationDelivery` row is written to say so.
-- There is no automatic retry beyond the one extra attempt described
-  above, and that retry only happens if `deliverNotificationEmails` is
-  called *again* for the same id — nothing calls it again on its own.
-- This is a deliberate, honest trade-off for the MVP, not a hidden bug:
-  `NotificationDelivery` exists precisely so a future retry job (a
+- There was no automatic retry beyond the one extra attempt described
+  above, and that retry only happened if `deliverNotificationEmails` was
+  called *again* for the same id — nothing called it again on its own.
+- This was a deliberate, honest trade-off for the MVP, not a hidden bug:
+  `NotificationDelivery` existed precisely so a future retry job (a
   Vercel Cron hitting a Route Handler that queries
   `WHERE status IN (PENDING, FAILED) ORDER BY createdAt` — the exact
-  shape `@@index([status, createdAt])` already serves) can pick up
+  shape `@@index([status, createdAt])` already serves) could pick up
   anything this synchronous path missed, without a schema change.
 - Never fire-and-forget: `deliverNotificationEmails` is always `await`ed
   by its caller. An un-awaited Promise started from a Server Action has
   no guarantee of running to completion once the response is sent in a
   serverless runtime — awaiting it is what makes "at least one honest
   attempt per request" true at all.
+
+**Stage 8 built exactly that retry job** — see §7c below. The request-
+bound path above (and its one-call, no-backoff ceiling check) is
+otherwise completely unchanged; the job is a separate, additive
+consumer of the same `NotificationDelivery` rows, not a replacement for
+this section.
 
 ### CTA links
 
@@ -835,6 +849,202 @@ turns out to be. No new preference table, no redesign.
 
 ---
 
+## 7c. Background jobs (Stage 8)
+
+This project has no scheduler of its own — it runs on Vercel, so
+**Vercel Cron** is the only scheduling primitive available. Stage 8 adds
+two cron-triggered Route Handlers plus a read-only digest-foundation
+module; nothing in this section replaces the request-bound delivery
+path in §7a, which is unchanged.
+
+### Cron routes and schedule
+
+Declared in `vercel.json`:
+
+| Route | Schedule | Job |
+|---|---|---|
+| `/api/cron/notification-delivery` | `0 5 * * *` (daily) | `retryNotificationDeliveries` |
+| `/api/cron/notification-cleanup` | `30 5 * * *` (daily) | `cleanupNotifications` |
+
+**This project runs on Vercel's Hobby plan**, which limits Cron to once
+per day per job — confirmed with the project owner rather than assumed,
+since guessing wrong here would mean silently documenting a schedule the
+platform can't actually run. The "ideal" cadence for delivery retry
+(every 15–30 minutes, so a transient provider outage recovers within the
+hour) needs a Pro plan; if this project ever upgrades, only
+`vercel.json`'s schedule string needs to change — the job itself is
+already correct at any calling frequency, since every run is idempotent
+and re-derives its own candidate set from the database rather than
+tracking "when did I last run."
+
+### `CRON_SECRET` authorization
+
+Both routes are gated by `requireCronAuth` (`src/lib/cron/auth.ts`), the
+single shared check every `/api/cron/*` route must call:
+
+- Requires `Authorization: Bearer <CRON_SECRET>` exactly — Vercel Cron
+  sends this header automatically on every scheduled invocation once
+  `CRON_SECRET` is set in the project's environment variables.
+- Fails closed: if `CRON_SECRET` itself is unset, every request is
+  rejected — there is no "open" fallback. The same generic 401 covers
+  every failure reason (missing header, wrong secret, unset env), so a
+  caller can never distinguish a misconfigured deployment from a wrong
+  guess.
+- Never reads a query string, only the header.
+- **No `TEST_MODE` bypass**, unlike the identity/Storage test-mode swaps
+  used elsewhere in this app (see §0.3-style precedent) — weakening auth
+  itself would be a second, weaker code path. Integration tests instead
+  set a real (test-only) `CRON_SECRET` value in their own process and
+  authenticate through this exact same check.
+- Enforced by `scripts/security-checks/check-cron-security.mjs`: no
+  `NEXT_PUBLIC_CRON_SECRET`, every cron route calls the shared helper, no
+  query-string reads, no `TEST_MODE` reference in the helper, and the job
+  modules/email template/auth helper are never imported from a Client
+  Component.
+- A coarse `CRON_JOB_LIMIT` rate limit (20/hour, bucketed by the route's
+  own fixed name) sits behind `CRON_SECRET` as defense in depth only —
+  generous enough that a legitimate daily (or manually re-triggered) run
+  is never what trips it.
+
+### Delivery retry: policy, concurrency, and claiming
+
+`retryNotificationDeliveries` (`src/lib/notifications/jobs/retry-
+notification-deliveries.ts`) is the background counterpart to §7a's
+request-bound `deliverNotificationEmails`. Scope, deliberately: it only
+retries `NotificationDelivery` rows that **already exist** (`PENDING`,
+`FAILED`-under-ceiling, or a stale leftover `PROCESSING`) — it does not
+scan for `Notification` rows with *no* delivery row at all. Every
+notification-producing call site already calls
+`deliverNotificationEmails` synchronously post-commit (§7a); a missing
+row means that original call never even started (the request died
+before reaching it) — a different, rarer failure mode than "the attempt
+was made and failed," and out of scope for this job.
+
+**Retry/backoff policy** — `MAX_ATTEMPTS = 3` total attempts across both
+the request-bound first try and this job's retries:
+
+| Attempt | Trigger | Wait before this attempt |
+|---|---|---|
+| 1 | Request-bound, post-commit | none (immediate) |
+| 2 | Job's first retry | ≥ 15 minutes since attempt 1 |
+| 3 | Job's second and final retry | ≥ 1 hour since attempt 2 |
+
+`nextAttemptAt` (additive, nullable) stores when a `FAILED` row becomes
+eligible again; `computeNextAttemptAt` (`deliver-notification-email.ts`)
+returns `null` once `MAX_ATTEMPTS` is reached, which is what stops the
+row being claimed ever again — it stays `FAILED` permanently, no
+infinite retry.
+
+**Concurrency / claiming** — the job must be safe if two runs (e.g. a
+manual re-trigger overlapping a scheduled one) execute at the same time.
+It never does a plain "read PENDING rows, then update them" — that
+window is exactly where a double-send would happen. Instead:
+
+1. A conditional `updateMany` claims candidates: `WHERE id IN (...) AND
+   status IN ('PENDING', 'FAILED')` (or, for stale recovery, `WHERE
+   status = 'PROCESSING' AND lockedAt < staleThreshold`), setting
+   `status = 'PROCESSING', lockedAt = now`.
+2. Postgres evaluates each row's `WHERE` clause at the exact moment that
+   row's `UPDATE` executes — so if two concurrent calls race for the
+   same row, only the first to actually commit still sees the expected
+   starting status; the second's `WHERE` no longer matches once the
+   first has already flipped it, and its update simply skips that row.
+   No raw `SELECT ... FOR UPDATE` is needed for this — Prisma's ordinary
+   `updateMany` already gets this guarantee from Postgres's own row-level
+   `UPDATE` semantics.
+3. An immediate re-query, `WHERE status = 'PROCESSING' AND lockedAt =
+   now` (an **exact** match, not a range), is how a given invocation
+   learns exactly which rows *it* actually won the claim race for —
+   `now` is unique per real invocation (each cron trigger calls
+   `new Date()` fresh), which is what makes this exact-match check
+   meaningful.
+4. **Stale lock recovery**: a `PROCESSING` row whose `lockedAt` is older
+   than `STALE_LOCK_MS` (10 minutes) is presumed to belong to a worker
+   that crashed or timed out mid-attempt, and becomes reclaimable by a
+   later run via the same conditional-`updateMany` mechanism.
+5. `SENT` is never re-sent, `SKIPPED` is never reconsidered — both are
+   terminal. `@@unique([notificationId, channel])` still holds.
+
+**Per-claimed-delivery behavior**: for each row this invocation actually
+won, the job reloads the `Notification` + recipient + preference fresh
+(never trusting anything read before the claim) and re-runs
+`shouldDeliverNotificationEmail`. If the recipient's preference is now
+disabled, or the recipient/User was deleted (cascading away the row
+entirely — nothing left to process), the outcome is `SKIPPED`/no-op, not
+an error. If the email provider still isn't configured, the row is
+marked `SKIPPED` rather than retried forever. A thrown error while
+processing one claimed row is caught and skipped (it stays `PROCESSING`
+and is recovered as stale on a later run) — one row's failure never
+blocks the rest of the batch.
+
+### Cleanup: retention and batching
+
+`cleanupNotifications` (`src/lib/notifications/jobs/cleanup-
+notifications.ts`) implements exactly the retention policy already
+described in §8's "Retention" section below — read `Notification` rows
+older than 90 days (`NOTIFICATION_RETENTION_MS`), by `readAt`. Unread
+rows are never touched by age alone; `NotificationPreference` and
+`Activity` are never read or written by this job at all.
+`NotificationDelivery` cascades automatically via its own FK when a
+`Notification` is deleted.
+
+Batched, not a full-table delete: each run selects a fixed-size, ordered
+(`createdAt`, `id`) page (`batchSize`, 500 in the deployed route) and
+deletes only those rows. A large backlog clears gradually across several
+daily runs instead of one long-running scan/lock; a run with nothing
+eligible is a clean no-op, not an error — this is what makes the job
+idempotent regardless of calling frequency.
+
+### Digest foundation — read-only, not a sender (Stage 8 scope)
+
+`src/lib/notifications/jobs/digest-candidates.ts` adds only
+query/formatting helpers a *future* digest sender would call:
+`getNotificationDigestCandidates` (scoped by recipient **and**
+organization together, filtered to a caller-supplied `[from, to)` range,
+respecting `emailEnabled` — a digest is an email-channel concept) and
+`buildNotificationDigestModel` (pure: dedupes by `Notification.id`,
+groups by type in the same canonical order the settings UI uses, reuses
+`formatNotification` rather than a third rendering path).
+
+**Stage 8 does not send a digest email, schedule one, or add any cadence
+concept to the schema.** Open product decisions, left deliberately
+unresolved rather than guessed at:
+
+- **Cadence**: daily vs. weekly vs. user-configurable.
+- **Timezone**: whose midnight defines "today" — this app has no
+  per-user timezone field yet, so this needs a decision (and possibly a
+  new column) before a real scheduled digest can exist.
+- **Preferred delivery hour**: fixed vs. user-chosen.
+- **Scope**: unread-only, or every notification created since the last
+  digest (read or not) — these produce different "what's in today's
+  digest" semantics.
+- **Per-organization vs. combined**: one digest per org a recipient
+  belongs to, or one combined digest across all of them.
+- **Interaction with immediate email**: does a notification already
+  emailed immediately (§7a) still also appear in the next digest, or
+  does the digest only cover what wasn't already sent? No `digestedAt`
+  -style column exists yet — a real implementation would add one, in its
+  own additive migration, once these decisions are made.
+
+None of the above needs a schema change to *resolve* later — `from`/`to`
+being caller-supplied already accommodates any cadence/timezone choice
+a future stage settles on.
+
+### Job summaries and logging
+
+Every job returns a `JobSummary`: `{ scanned, claimed, sent, failed,
+skipped, deleted }` — aggregate counts only. The cron Route Handlers
+return this same object as their JSON response. Neither the job nor the
+route ever includes an email address, a notification/delivery id, a
+recipient name, raw metadata, a provider response, or a stack trace —
+enforced by `check-cron-security.mjs`'s Client-Component-import checks
+plus direct assertions in the integration test suite
+(`test/integration/notifications/retry-job.test.ts`,
+`test/integration/cron/routes.test.ts`) that serialize the response and
+check it contains no `@`, no notification id, and no raw failure text.
+
+---
+
 ## 8. Performance
 
 ### Expected query patterns
@@ -868,12 +1078,12 @@ accumulates and needs sweeping": the in-memory rate-limit store
 opportunistically. `Notification` rows are durable (Postgres, not
 in-memory) so the same *mechanism* doesn't apply, but the same
 *principle* does — don't let an ever-growing table go unmanaged.
-Concretely: a scheduled job (the same infrastructure §7's due-date-alert
-job needs — one scheduler serving both from day one it exists) deletes
-`Notification` rows where `readAt IS NOT NULL AND readAt < now() -
-interval '90 days'`. Read notifications are the safe thing to prune —
-they're a "have you seen this" record, not a permanent audit log (that's
-what `Activity`, which is genuinely append-only forever, already is).
+**Built in Stage 8** (see §7c): a daily Vercel Cron job
+(`cleanupNotifications`) deletes `Notification` rows where `readAt IS
+NOT NULL AND readAt < now() - interval '90 days'`, in fixed-size batches.
+Read notifications are the safe thing to prune — they're a "have you
+seen this" record, not a permanent audit log (that's what `Activity`,
+which is genuinely append-only forever, already is).
 
 ### Retention
 

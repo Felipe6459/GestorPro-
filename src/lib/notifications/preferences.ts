@@ -119,3 +119,14 @@ export async function getDisabledInAppTypes(userId: string): Promise<Notificatio
   const map = await getNotificationPreferenceMap(userId);
   return NOTIFICATION_TYPES.filter((type) => !shouldDeliverInApp(map[type]));
 }
+
+/**
+ * Same shape as getDisabledInAppTypes, for the email channel — used by the
+ * digest foundation (src/lib/notifications/jobs/digest-candidates.ts),
+ * since a digest is fundamentally an email-channel concept and should
+ * respect the same per-type opt-out a direct notification email would.
+ */
+export async function getDisabledEmailTypes(userId: string): Promise<NotificationType[]> {
+  const map = await getNotificationPreferenceMap(userId);
+  return NOTIFICATION_TYPES.filter((type) => !shouldDeliverEmail(map[type]));
+}

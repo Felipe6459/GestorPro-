@@ -131,8 +131,14 @@ enum NotificationChannel {
 // because a future queue-backed sender needs exactly this state for "row
 // exists, not yet attempted," and adding it later would be a second
 // migration for a value that obviously belongs here from day one.
+// PROCESSING (Stage 8) is the claim state a background job atomically
+// transitions a row into before calling the provider — never a
+// caller-visible "final" state, always followed by SENT/FAILED/SKIPPED,
+// or reclaimed back out of PROCESSING if a worker died mid-attempt (see
+// lockedAt below).
 enum NotificationDeliveryStatus {
   PENDING
+  PROCESSING
   SENT
   FAILED
   SKIPPED
@@ -489,6 +495,20 @@ model NotificationDelivery {
   // a future retry job from calling the same helper again for a FAILED row.
   attemptCount Int       @default(0)
 
+  // Stage 8: when to retry next, for a FAILED row within the retry
+  // ceiling — null means "no retry scheduled" (either never failed, or the
+  // ceiling was already reached). The retry job's own claim query is what
+  // makes this meaningful; nothing reads it before Stage 8.
+  nextAttemptAt DateTime?
+  // Stage 8: stamped the instant a background job claims this row (moves
+  // it to PROCESSING) — doubles as (a) the claim token two concurrent job
+  // runs race on, via a conditional updateMany matching the row's still-
+  // FAILED/PENDING status, and (b) the staleness clock: a PROCESSING row
+  // whose lockedAt is older than the job's own stale-lock threshold means
+  // whatever worker claimed it died before finishing, and it's safe to
+  // reclaim. Never read/written outside src/lib/notifications/jobs/.
+  lockedAt      DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -496,11 +516,9 @@ model NotificationDelivery {
   // "already SENT → no-op" and "no duplicate email for the same
   // Notification" a database guarantee, not just application discipline.
   @@unique([notificationId, channel])
-  // A future retry job's query shape: "every FAILED/PENDING row, oldest
-  // first" — this is that lookup's index, unused by Stage 6 itself (which
-  // never queries by status), added now because it's free on a new table
-  // and exactly what makes the "future queue path" in the design doc a
-  // reality instead of a promise.
+  // The retry job's own candidate-discovery query shape: "every eligible
+  // PENDING/FAILED/stale-PROCESSING row, oldest first" — unused by the
+  // Stage 6/7 request-bound path, which never queries by status.
   @@index([status, createdAt])
 }
 
