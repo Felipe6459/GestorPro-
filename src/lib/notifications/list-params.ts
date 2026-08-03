@@ -1,4 +1,5 @@
 import type { Prisma } from "@/generated/prisma/client";
+import type { NotificationType } from "@/generated/prisma/enums";
 import { parseEnumParam, parseSearchParam, type RawSearchParams } from "@/lib/list-params";
 import { decodeActivityCursor, type ActivityCursor } from "@/lib/activity/cursor";
 
@@ -36,16 +37,26 @@ export function parseNotificationListParams(searchParams: RawSearchParams): Noti
  * organizationId + recipientId are always the first, non-optional
  * conditions — server-resolved by the caller (never from these params),
  * exactly like buildActivityWhere's own organizationId-first discipline.
+ *
+ * `excludeTypes` is the caller's own, already-fetched result of
+ * getDisabledInAppTypes(recipientId) (see src/lib/notifications/
+ * preferences.ts) — this function stays prisma-runtime-free and pure, so
+ * it takes the list as a plain array rather than fetching it itself.
  */
 export function buildNotificationWhere(
   organizationId: string,
   recipientId: string,
   params: NotificationListParams,
+  excludeTypes: NotificationType[] = [],
 ): Prisma.NotificationWhereInput {
   const where: Prisma.NotificationWhereInput = { organizationId, recipientId };
 
   if (params.filter === "unread") {
     where.readAt = null;
+  }
+
+  if (excludeTypes.length > 0) {
+    where.type = { notIn: excludeTypes };
   }
 
   if (params.cursor) {

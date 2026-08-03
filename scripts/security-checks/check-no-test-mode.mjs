@@ -50,6 +50,7 @@ const expectedConsumers = [
   "src/lib/storage/attachments-storage.ts",
   "src/lib/storage/test-storage.ts",
   "src/app/api/e2e-test-storage/[...path]/route.ts",
+  "src/lib/email/resend-client.ts",
 ];
 const missing = expectedConsumers.filter((f) => !consumerFiles.includes(f));
 ok = report(

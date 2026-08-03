@@ -724,6 +724,117 @@ if there is none, `/notifications`. Never built from metadata.
 
 ---
 
+## 7b. Notification preferences (Stage 7)
+
+### Model: `NotificationPreference`
+
+One additive table, no JSON, no nullable columns — every channel is its
+own typed, `@default(true)` boolean, so a query filters on it directly:
+
+```prisma
+model NotificationPreference {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type NotificationType
+
+  inAppEnabled Boolean @default(true)
+  emailEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, type])
+}
+```
+
+A future push channel adds a `pushEnabled` column to this same table
+(still "one row per user per type"), not a new table — the same reasoning
+`NotificationDelivery`'s `NotificationChannel` enum already follows for
+delivery *tracking*; this is the equivalent extension point for delivery
+*preference*.
+
+### Defaults and lazy rows
+
+Both columns default to `true` at the database level, and that default is
+the entire "no row" behavior — `getNotificationPreferenceMap` (`src/lib/
+notifications/preferences.ts`) fills in `{inAppEnabled: true, emailEnabled:
+true}` for every `NotificationType` that has no row, so callers never
+special-case "not configured yet." Rows are **never** provisioned at
+signup or anywhere in the fan-out path — a brand new user, and a user who
+has used this app for years without ever opening Settings, both have zero
+rows. A row is created lazily, on the first call to
+`updateNotificationPreference`, only for the one `(user, type)` pair being
+changed.
+
+### Reset semantics
+
+"Reset to defaults" (`resetNotificationPreferencesAction`) deletes every
+row for the user rather than writing `{true, true}` back — a user who
+resets and a user who never touched Settings must be indistinguishable in
+this table (same query result, same lazy-row behavior going forward). This
+is also why `updateNotificationPreference` never writes a row proactively
+just to "record" that a value equals its own default.
+
+### Precedence: preference, then allowlist
+
+`shouldDeliverNotificationEmail` (`src/lib/notifications/email/deliver-
+notification-email.ts`) checks the user's preference **before** the
+Stage 6 email allowlist. A preference can only *narrow* what would
+otherwise be sent — enabling email for a `NotificationType` this app never
+emails at all (`INVITATION_ACCEPTED`) still sends nothing; the allowlist is
+a system-level ceiling, the preference is a user-level floor beneath it.
+Order of checks, most specific first: an already-`SENT`/`SKIPPED`/retry-
+exhausted `NotificationDelivery` row (unaffected by preference — a past
+send is never "unsent" by a later toggle) → preference → allowlist →
+recipient email present → provider configured.
+
+### In-app semantics: filtered at read time, never at write time
+
+Even with `inAppEnabled: false`, the `Notification` row is **still
+created** by `dispatchNotificationsForActivity` exactly as before — fan-out
+and `Activity` are completely unchanged by this stage. Disabling in-app
+only removes the row from what the three read queries
+(`getUnreadNotificationCount`, `getRecentNotifications`,
+`getNotificationsPage`) return; it is never deleted, never mutated. This
+is deliberate: a user who turns a notification type off and later turns it
+back on should see nothing missing from their history — the rows were
+there the whole time, just filtered out at the query layer.
+
+### Query strategy: two-stage load, not a JOIN
+
+`getDisabledInAppTypes(userId)` — at most 6 rows — is fetched once per
+request by the caller ((dashboard)/layout.tsx, and separately by
+/notifications' own page) and threaded through as `excludeTypes` into all
+three read queries. Chosen over a `LEFT JOIN` with a `COALESCE(...,
+true)`-shaped condition because Prisma's query builder has no clean way to
+express "default true when the joined row is absent" declaratively, and a
+raw SQL escape hatch for a 6-row lookup isn't worth the loss of type
+safety. Two queries total (preferences, then notifications) is not N+1 —
+N+1 would be one preference query *per notification row*; this is one
+query *per request*, independent of how many notifications exist.
+
+### Security
+
+Every mutation (`updateNotificationPreferenceAction`,
+`resetNotificationPreferencesAction`) resolves `userId` from
+`getCurrentUserOrganization()` alone — neither Server Action accepts a
+`userId` parameter at all, so there is no client input capable of naming a
+different user's row, crafted or otherwise.
+
+### Future push reuse
+
+Exactly like email before it: a future push channel reads the *same*
+`NotificationPreference` row (a new `pushEnabled` column), the *same*
+`Notification` row for *what* to say, and slots into
+`shouldDeliverNotificationEmail`'s precedence pattern as its own
+`shouldDeliverPush` — preference, then whatever push's own allowlist
+turns out to be. No new preference table, no redesign.
+
+---
+
 ## 8. Performance
 
 ### Expected query patterns

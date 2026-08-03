@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUserOrganization, getOrganizationSwitcherItems } from "@/lib/current-user";
 import { getRecentNotifications, getUnreadNotificationCount } from "@/lib/notifications/queries";
+import { getDisabledInAppTypes } from "@/lib/notifications/preferences";
 import { formatNotification } from "@/lib/notifications/format-notification";
 import type { NotificationBellItem } from "@/components/notifications/notification-bell";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -55,13 +56,20 @@ export default async function DashboardLayout({
   // client input.
   const { user: currentUser, organizationId } = await getCurrentUserOrganization();
 
+  // A small (at most 6 rows), separately-fetched preference lookup — kept
+  // out of the Promise.all below so it can be threaded into both
+  // notification queries as excludeTypes, rather than each of them (or this
+  // one) re-fetching the same preference set a second time.
+  const excludeTypes = await getDisabledInAppTypes(currentUser.id);
+
   const [organizations, unreadNotificationCount, recentNotificationRows] = await Promise.all([
     getOrganizationSwitcherItems(),
-    getUnreadNotificationCount({ organizationId, recipientId: currentUser.id }),
+    getUnreadNotificationCount({ organizationId, recipientId: currentUser.id, excludeTypes }),
     getRecentNotifications({
       organizationId,
       recipientId: currentUser.id,
       limit: RECENT_NOTIFICATIONS_LIMIT,
+      excludeTypes,
     }),
   ]);
 

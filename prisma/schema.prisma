@@ -152,12 +152,13 @@ model User {
   assignedTasks Task[]    @relation("TaskAssignee")
   clients       Client[]  @relation("ClientOwner")
 
-  memberships           Membership[]
-  sentInvitations       Invitation[]       @relation("InvitationInvitedBy")
-  sentClientInvitations ClientInvitation[] @relation("ClientInvitationInvitedBy")
-  activities            Activity[]         @relation("ActivityActor")
-  uploadedAttachments   Attachment[]       @relation("AttachmentUploadedBy")
-  notifications         Notification[]     @relation("NotificationRecipient")
+  memberships             Membership[]
+  sentInvitations         Invitation[]             @relation("InvitationInvitedBy")
+  sentClientInvitations   ClientInvitation[]       @relation("ClientInvitationInvitedBy")
+  activities              Activity[]               @relation("ActivityActor")
+  uploadedAttachments     Attachment[]             @relation("AttachmentUploadedBy")
+  notifications           Notification[]           @relation("NotificationRecipient")
+  notificationPreferences NotificationPreference[]
 }
 
 // Multi-tenant scaffolding (schema-only for now; not yet wired into app
@@ -430,6 +431,8 @@ model Notification {
   readAt    DateTime?
   createdAt DateTime  @default(now())
 
+  deliveries NotificationDelivery[]
+
   // Unread count (WHERE recipientId = ? AND readAt IS NULL) and the
   // default "my notifications" list (WHERE recipientId = ? ORDER BY
   // createdAt DESC, id DESC) are both served by this one composite index
@@ -451,8 +454,6 @@ model Notification {
   // Serves the activityId SetNull lookup and any future join from an
   // Activity row to the notifications it produced.
   @@index([activityId])
-
-  deliveries NotificationDelivery[]
 }
 
 // Per-channel delivery attempt tracking for a Notification — Stage 6 adds
@@ -479,14 +480,14 @@ model NotificationDelivery {
   channel NotificationChannel
   status  NotificationDeliveryStatus @default(PENDING)
 
-  attemptedAt DateTime?
-  deliveredAt DateTime?
-  failureCode String?
+  attemptedAt  DateTime?
+  deliveredAt  DateTime?
+  failureCode  String?
   // Stage 6's delivery helper only ever attempts once per call (no
   // in-process retry loop — see deliver-notification-email.ts) — this
   // still counts every attempt across calls, since nothing here prevents
   // a future retry job from calling the same helper again for a FAILED row.
-  attemptCount Int @default(0)
+  attemptCount Int       @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -501,6 +502,37 @@ model NotificationDelivery {
   // and exactly what makes the "future queue path" in the design doc a
   // reality instead of a promise.
   @@index([status, createdAt])
+}
+
+// Per-user, per-type opt-out for the two channels shipped so far (in-app,
+// email — a future push channel adds its own `pushEnabled` column here,
+// not a new table, since it's still "one row per user per type"). No JSON:
+// every channel is its own typed, non-nullable, defaulted boolean column,
+// so a query can filter on it directly instead of unpacking a blob.
+//
+// Rows are created lazily — only when a user actually changes a toggle
+// away from the built-in default (see src/lib/notifications/preferences.ts).
+// No row for a given (user, type) means "both channels enabled", the same
+// default the columns themselves declare; this is why nothing needs to be
+// backfilled here or provisioned at signup. "Reset to defaults" deletes
+// the row entirely rather than writing true/true back, so a user with
+// untouched preferences and a user who explicitly reset both look
+// identical in this table — one row, one meaning.
+model NotificationPreference {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type NotificationType
+
+  inAppEnabled Boolean @default(true)
+  emailEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, type])
 }
 
 // File attachments for Client/Project/Invoice, stored in Supabase Storage.

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { NotificationType, NotificationDeliveryStatus } from "@/generated/prisma/enums";
 import { sendEmailViaResend, type SendEmailFn, type SendEmailResult } from "@/lib/email/resend-client";
 import { resolveNotificationLinkPath } from "@/lib/notifications/format-notification";
+import { shouldDeliverEmail, type NotificationPreferenceValue } from "@/lib/notifications/preferences";
 import { formatNotificationEmail } from "./format-notification-email";
 
 // MVP allowlist — evaluated per type, not per Activity, since one Activity
@@ -36,21 +37,34 @@ export type ShouldDeliverResult =
   | { deliver: true }
   | {
       deliver: false;
-      reason: "not_allowlisted" | "no_recipient_email" | "not_configured" | "already_resolved" | "retry_limit_reached";
+      reason:
+        | "disabled_by_preference"
+        | "not_allowlisted"
+        | "no_recipient_email"
+        | "not_configured"
+        | "already_resolved"
+        | "retry_limit_reached";
     };
 
 /**
  * The one place every "should we email this?" decision is made — a pure
- * function, no I/O, so every branch (allowlist, missing recipient email,
- * unconfigured provider, an already-SENT/SKIPPED row, a FAILED row past
- * its retry ceiling) is unit-testable without a database. deliverNotifica-
- * tionEmails below is a thin orchestrator around this: fetch data, call
- * this, act on the result.
+ * function, no I/O, so every branch (user preference, allowlist, missing
+ * recipient email, unconfigured provider, an already-SENT/SKIPPED row, a
+ * FAILED row past its retry ceiling) is unit-testable without a database.
+ * deliverNotificationEmails below is a thin orchestrator around this:
+ * fetch data, call this, act on the result.
+ *
+ * Preference is checked before the allowlist, per Stage 7's design: a
+ * user's own toggle can only narrow what would otherwise be sent, never
+ * widen it past the allowlist (enabling email for a type this app never
+ * emails at all still sends nothing) — the allowlist is a system-level
+ * ceiling, the preference is a user-level floor beneath it.
  */
 export function shouldDeliverNotificationEmail(params: {
   notification: { type: NotificationType };
   recipient: { email: string | null | undefined };
   providerConfigured: boolean;
+  preference?: NotificationPreferenceValue | null;
   existingDelivery?: { status: NotificationDeliveryStatus; attemptCount: number } | null;
 }): ShouldDeliverResult {
   if (params.existingDelivery) {
@@ -63,6 +77,9 @@ export function shouldDeliverNotificationEmail(params: {
     }
   }
 
+  if (!shouldDeliverEmail(params.preference)) {
+    return { deliver: false, reason: "disabled_by_preference" };
+  }
   if (!EMAIL_ALLOWLIST.has(params.notification.type)) {
     return { deliver: false, reason: "not_allowlisted" };
   }
@@ -161,10 +178,14 @@ export async function deliverNotificationEmails(
   const fromEmail = process.env.INVITATION_FROM_EMAIL;
   const providerConfigured = Boolean(fromEmail);
 
+  // notificationPreferences is the recipient's *entire* preference set
+  // (at most 6 rows, one per NotificationType) — one join-like fetch here,
+  // not a per-notification query, then matched to each row's own type
+  // in-memory below.
   const notifications = await prisma.notification.findMany({
     where: { id: { in: notificationIds } },
     include: {
-      recipient: { select: { email: true } },
+      recipient: { select: { email: true, notificationPreferences: true } },
       organization: { select: { name: true } },
       deliveries: { where: { channel: "EMAIL" } },
     },
@@ -172,11 +193,17 @@ export async function deliverNotificationEmails(
 
   for (const notification of notifications) {
     const existing = notification.deliveries[0] ?? null;
+    const preferenceRow = notification.recipient.notificationPreferences.find(
+      (p) => p.type === notification.type,
+    );
 
     const decision = shouldDeliverNotificationEmail({
       notification: { type: notification.type },
       recipient: { email: notification.recipient.email },
       providerConfigured,
+      preference: preferenceRow
+        ? { inAppEnabled: preferenceRow.inAppEnabled, emailEnabled: preferenceRow.emailEnabled }
+        : null,
       existingDelivery: existing ? { status: existing.status, attemptCount: existing.attemptCount } : null,
     });
 

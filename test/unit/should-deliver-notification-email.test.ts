@@ -139,3 +139,76 @@ describe("shouldDeliverNotificationEmail — precedence", () => {
     expect(result).toEqual({ deliver: false, reason: "already_resolved" });
   });
 });
+
+describe("shouldDeliverNotificationEmail — user preference (Stage 7)", () => {
+  it("no preference at all (undefined) behaves exactly like 'enabled' — the existing default", () => {
+    const result = shouldDeliverNotificationEmail({
+      ...BASE,
+      notification: { type: "ROLE_CHANGED" },
+      preference: undefined,
+    });
+    expect(result).toEqual({ deliver: true });
+  });
+
+  it("a preference row with emailEnabled: true changes nothing", () => {
+    const result = shouldDeliverNotificationEmail({
+      ...BASE,
+      notification: { type: "ROLE_CHANGED" },
+      preference: { inAppEnabled: false, emailEnabled: true },
+    });
+    expect(result).toEqual({ deliver: true });
+  });
+
+  it("emailEnabled: false blocks delivery even for an allowlisted type with a valid recipient and configured provider", () => {
+    const result = shouldDeliverNotificationEmail({
+      ...BASE,
+      notification: { type: "ROLE_CHANGED" },
+      preference: { inAppEnabled: true, emailEnabled: false },
+    });
+    expect(result).toEqual({ deliver: false, reason: "disabled_by_preference" });
+  });
+
+  it("preference is checked before the allowlist — 'Сначала preference, затем allowlist'", () => {
+    // If preference were checked second, a disabled INVITATION_ACCEPTED
+    // (already not_allowlisted) would report "not_allowlisted" either way;
+    // this specifically proves the ORDER by checking a type that IS
+    // allowlisted but has email disabled — the reason must be the
+    // preference one, not something the allowlist branch would produce.
+    const result = shouldDeliverNotificationEmail({
+      ...BASE,
+      notification: { type: "INVOICE_STATUS_CHANGED" },
+      preference: { inAppEnabled: true, emailEnabled: false },
+    });
+    expect(result).toEqual({ deliver: false, reason: "disabled_by_preference" });
+  });
+
+  it("enabling email via preference for a NON-allowlisted type still doesn't deliver — preference only narrows, never widens past the allowlist", () => {
+    const result = shouldDeliverNotificationEmail({
+      ...BASE,
+      notification: { type: "INVITATION_ACCEPTED" },
+      preference: { inAppEnabled: true, emailEnabled: true },
+    });
+    expect(result).toEqual({ deliver: false, reason: "not_allowlisted" });
+  });
+
+  it("existing-delivery state still takes precedence over preference (a SENT row is a no-op regardless)", () => {
+    const result = shouldDeliverNotificationEmail({
+      ...BASE,
+      notification: { type: "ROLE_CHANGED" },
+      preference: { inAppEnabled: true, emailEnabled: false },
+      existingDelivery: { status: "SENT", attemptCount: 1 },
+    });
+    expect(result).toEqual({ deliver: false, reason: "already_resolved" });
+  });
+
+  it("a disabled preference is reported even when the recipient email and provider would otherwise also fail — preference is checked first among the non-delivery-state gates", () => {
+    const result = shouldDeliverNotificationEmail({
+      notification: { type: "ROLE_CHANGED" },
+      recipient: { email: null },
+      providerConfigured: false,
+      preference: { inAppEnabled: true, emailEnabled: false },
+      existingDelivery: null,
+    });
+    expect(result).toEqual({ deliver: false, reason: "disabled_by_preference" });
+  });
+});

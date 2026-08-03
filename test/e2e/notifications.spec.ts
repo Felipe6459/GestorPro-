@@ -288,16 +288,18 @@ test("switching organizations changes the visible notification set", async ({ co
   }
 });
 
-// Stage 6 — email delivery. NotificationDelivery status is never rendered
-// anywhere in the UI (no page/component reads it), so there's nothing to
-// click through beyond what's already covered above; this one test only
-// confirms the new post-commit wiring fires from a real UI action without
-// disturbing the in-app notification UI that Stage 4/5's own tests already
-// exercise. RESEND_API_KEY/INVITATION_FROM_EMAIL are unset in this E2E
-// environment (confirmed absent from .env.local), so this can never send a
-// real email — the real sendEmailViaResend path resolves to SKIPPED before
-// any network call.
-test("a real role change also creates a SKIPPED NotificationDelivery row, and the in-app bell/dropdown are unaffected", async ({
+// Stage 6/7 — email delivery. NotificationDelivery status is never
+// rendered anywhere in the UI (no page/component reads it), so there's
+// nothing to click through beyond what's already covered above; this one
+// test only confirms the post-commit wiring fires from a real UI action
+// without disturbing the in-app notification UI that Stage 4/5's own tests
+// already exercise. No real email is ever sent here: RESEND_API_KEY is
+// unset, and playwright.config.ts's INVITATION_FROM_EMAIL is only a
+// placeholder — the actual "send" is intercepted by sendEmailViaResend's
+// TEST_MODE branch (src/lib/email/resend-client.ts), which fakes success
+// without a network call. See test/e2e/notification-preferences.spec.ts
+// for the SKIPPED-vs-SENT distinction driven by the user's own preference.
+test("a real role change also creates a (test-mode) SENT NotificationDelivery row, and the in-app bell/dropdown are unaffected", async ({
   context,
   baseURL,
   page,
@@ -317,13 +319,13 @@ test("a real role change also creates a SKIPPED NotificationDelivery row, and th
     const notification = await dbQuery<{ id: string }>("notification", "findFirstOrThrow", {
       where: { activityId: activity.id },
     });
-    const delivery = await dbQuery<{ status: string; failureCode: string | null } | null>(
+    const delivery = await dbQuery<{ status: string; deliveredAt: string | null } | null>(
       "notificationDelivery",
       "findUnique",
       { where: { notificationId_channel: { notificationId: notification.id, channel: "EMAIL" } } },
     );
-    expect(delivery?.status).toBe("SKIPPED");
-    expect(delivery?.failureCode).toBe("not_configured");
+    expect(delivery?.status).toBe("SENT");
+    expect(delivery?.deliveredAt).not.toBeNull();
 
     // The in-app UI is entirely unaffected — the recipient still sees a
     // normal, correctly-worded unread notification.

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { Notification, Prisma } from "@/generated/prisma/client";
+import type { NotificationType } from "@/generated/prisma/enums";
 import { encodeActivityCursor } from "@/lib/activity/cursor";
 import { NOTIFICATIONS_PAGE_SIZE } from "@/lib/notifications/list-params";
 
@@ -7,16 +8,26 @@ import { NOTIFICATIONS_PAGE_SIZE } from "@/lib/notifications/list-params";
  * Served by the [recipientId, readAt, createdAt, id] index — readAt IS NULL
  * is a highly selective prefix match, so this stays an index-only count
  * rather than a full-table scan (see docs/notifications-architecture.md §5).
+ *
+ * `excludeTypes` is the caller's own, already-fetched result of
+ * getDisabledInAppTypes(recipientId) (see src/lib/notifications/
+ * preferences.ts) — this function never queries preferences itself, so
+ * calling it alongside getRecentNotifications/getNotificationsPage in the
+ * same request never re-fetches the same small preference set twice.
  */
 export async function getUnreadNotificationCount(params: {
   organizationId: string;
   recipientId: string;
+  excludeTypes?: NotificationType[];
 }): Promise<number> {
   return prisma.notification.count({
     where: {
       organizationId: params.organizationId,
       recipientId: params.recipientId,
       readAt: null,
+      ...(params.excludeTypes && params.excludeTypes.length > 0
+        ? { type: { notIn: params.excludeTypes } }
+        : {}),
     },
   });
 }
@@ -25,16 +36,22 @@ export async function getUnreadNotificationCount(params: {
  * The dropdown's preview list — a plain LIMIT, not cursor pagination. The
  * full, paginated inbox (keyset, mirroring /activity's cursor.ts) is a
  * future /notifications page's concern, not this preview's.
+ *
+ * `excludeTypes` — see getUnreadNotificationCount's own comment above.
  */
 export async function getRecentNotifications(params: {
   organizationId: string;
   recipientId: string;
   limit: number;
+  excludeTypes?: NotificationType[];
 }): Promise<Notification[]> {
   return prisma.notification.findMany({
     where: {
       organizationId: params.organizationId,
       recipientId: params.recipientId,
+      ...(params.excludeTypes && params.excludeTypes.length > 0
+        ? { type: { notIn: params.excludeTypes } }
+        : {}),
     },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: params.limit,

@@ -3,6 +3,7 @@ import { getCurrentUserOrganization } from "@/lib/current-user";
 import { markAllNotificationsReadAction } from "@/app/(dashboard)/actions";
 import { getUnreadNotificationCount, getNotificationsPage } from "@/lib/notifications/queries";
 import { parseNotificationListParams, buildNotificationWhere } from "@/lib/notifications/list-params";
+import { getDisabledInAppTypes } from "@/lib/notifications/preferences";
 import { formatNotification } from "@/lib/notifications/format-notification";
 import { NotificationListItem } from "@/components/notifications/notification-list-item";
 import type { NotificationBellItem } from "@/components/notifications/notification-bell";
@@ -41,11 +42,15 @@ export default async function NotificationsPage({
   const resolvedSearchParams = await searchParams;
   const listParams = parseNotificationListParams(resolvedSearchParams);
 
-  const where = buildNotificationWhere(organizationId, user.id, listParams);
+  // Fetched once, threaded into both queries below — see (dashboard)/
+  // layout.tsx's identical reasoning for why this isn't inside the
+  // Promise.all (both queries depend on its result).
+  const excludeTypes = await getDisabledInAppTypes(user.id);
+  const where = buildNotificationWhere(organizationId, user.id, listParams, excludeTypes);
 
   const [{ rows, nextCursor }, unreadCount] = await Promise.all([
     getNotificationsPage(where),
-    getUnreadNotificationCount({ organizationId, recipientId: user.id }),
+    getUnreadNotificationCount({ organizationId, recipientId: user.id, excludeTypes }),
   ]);
 
   const items: NotificationBellItem[] = rows.map((row) => ({
