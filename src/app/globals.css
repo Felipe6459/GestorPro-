@@ -33,3 +33,16 @@ input:-webkit-autofill:focus {
   -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
   transition: background-color 9999s ease-in-out 0s;
 }
+
+/*
+ * Comments & Mentions Stage 4: highlights the comment a MENTIONED
+ * notification's `#comment-{id}` fragment scrolled to (:target matches
+ * the element whose id equals the current URL fragment) — pure CSS, no
+ * client JS needed for either the scroll (the browser does that natively
+ * for any same-page fragment link) or the highlight itself.
+ */
+li[id^="comment-"]:target {
+  background-color: #fefce8;
+  outline: 2px solid #facc15;
+  outline-offset: -2px;
+}

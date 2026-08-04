@@ -1,9 +1,12 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getCurrentUserOrganization } from "@/lib/current-user";
+import { getCurrentMembership } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { TaskForm } from "@/components/tasks/task-form";
 import { updateTaskAction } from "./actions";
+import { CommentsSection } from "@/components/comments/comments-section";
+import { createTaskCommentAction, editTaskCommentAction, deleteTaskCommentAction } from "./comment-actions";
+import { parseSearchParam, type RawSearchParams } from "@/lib/list-params";
 
 function toDateInputValue(date: Date | null): string {
   return date ? date.toISOString().slice(0, 10) : "";
@@ -11,11 +14,14 @@ function toDateInputValue(date: Date | null): string {
 
 export default async function EditTaskPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<RawSearchParams>;
 }) {
   const { id } = await params;
-  const { organizationId } = await getCurrentUserOrganization();
+  const resolvedSearchParams = await searchParams;
+  const { user, organizationId, membership } = await getCurrentMembership();
 
   const [task, projects] = await Promise.all([
     prisma.task.findFirst({
@@ -33,6 +39,8 @@ export default async function EditTaskPage({
   }
 
   const boundUpdateTaskAction = updateTaskAction.bind(null, task.id);
+  const commentsCursor = parseSearchParam(resolvedSearchParams.commentsCursor) || undefined;
+  const isModerator = membership.role === "OWNER" || membership.role === "ADMIN";
 
   return (
     <div className="mx-auto max-w-xl">
@@ -64,6 +72,20 @@ export default async function EditTaskPage({
           }}
           submitLabel="Save changes"
           pendingLabel="Saving…"
+        />
+        <CommentsSection
+          entityType="TASK"
+          entityId={task.id}
+          organizationId={organizationId}
+          currentUserId={user.id}
+          isModerator={isModerator}
+          parentLabel="task"
+          basePath={`/tasks/${task.id}/edit`}
+          cursorParam="commentsCursor"
+          cursor={commentsCursor}
+          createAction={createTaskCommentAction.bind(null, task.id)}
+          makeEditAction={(commentId) => editTaskCommentAction.bind(null, task.id, commentId)}
+          makeDeleteAction={(commentId) => deleteTaskCommentAction.bind(null, task.id, commentId)}
         />
       </div>
     </div>

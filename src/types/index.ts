@@ -75,3 +75,7 @@ export type MembershipActionState = {
 export type AttachmentUploadState = {
   error: string | null;
 };
+
+export type CommentActionState = {
+  error: string | null;
+};

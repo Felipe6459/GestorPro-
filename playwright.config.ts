@@ -44,7 +44,16 @@ export default defineConfig({
     // actually runs, and dev-server HMR/overlay behavior has no place in
     // E2E assertions. Requires `npm run build` to have already produced
     // .next/ (see package.json's test:e2e script and the Stage 5 report).
-    command: `npm run start -- -p ${PORT}`,
+    //
+    // --keepAliveTimeout: Node's http server defaults to a 5s keep-alive
+    // timeout, which can close a reused socket at the exact moment a
+    // client sends a new request on it — Next's own CLI docs describe
+    // this race under "Configuring a timeout for downstream proxies".
+    // Observed once directly against this suite's own Chromium instance
+    // (a "200 headers, then the body aborts" response) while debugging a
+    // stuck Server Action call — raising it removes that whole failure
+    // mode regardless of how often it would otherwise fire.
+    command: `npm run start -- -p ${PORT} --keepAliveTimeout 60000`,
     url: `http://127.0.0.1:${PORT}/login`,
     reuseExistingServer: false,
     timeout: 30_000,

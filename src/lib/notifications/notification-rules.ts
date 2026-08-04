@@ -7,6 +7,7 @@ import {
   buildInvitationAcceptedNotificationMetadata,
   buildPortalInvitationAcceptedNotificationMetadata,
   buildInvoiceStatusChangedNotificationMetadata,
+  buildMentionedNotificationMetadata,
 } from "./notification-metadata";
 
 /**
@@ -17,12 +18,29 @@ import {
  * OWNERSHIP_TRANSFERRED code path, it always equals the actor and is
  * therefore dropped by the universal actor-exclusion rule in
  * dispatch-notifications.ts.
+ *
+ * mentionedUserIds (Comments & Mentions Stage 3): already fully validated
+ * by the caller before createActivity is ever invoked — real users, real
+ * current Membership in this Activity's own organizationId, actor already
+ * excluded, deduped, capped at MAX_MENTIONS_PER_COMMENT (src/lib/comments/
+ * mentions.ts). For a create, this is every valid mention in the comment;
+ * for an edit, only the newly-added ones (src/lib/comments §5/§7) — never
+ * removed or unchanged mentions, which must never re-notify.
+ *
+ * parentEntityId (Comments & Mentions Stage 4): the Project/Task id a
+ * MENTIONED comment belongs to — resolveCommentTarget's already-verified
+ * result, never a client-supplied value. Exists solely so MENTIONED's own
+ * buildMetadata can carry it into the Notification's metadata for deep-
+ * linking; deliberately never written to Activity.metadata (see comment-
+ * metadata.ts's own "never IDs" discipline, which this doesn't change).
  */
 export type NotificationContext = {
   affectedUserId?: string;
   invitedById?: string | null;
   previousOwnerId?: string;
   newOwnerId?: string;
+  mentionedUserIds?: string[];
+  parentEntityId?: string;
 };
 
 /** The minimal shape dispatchNotificationsForActivity needs from a just-created Activity row. */
@@ -48,7 +66,8 @@ export type NotificationRule = {
     activity: CreatedActivity,
     context: NotificationContext | undefined,
   ) => Promise<string[]>;
-  buildMetadata: (activity: CreatedActivity) => Prisma.InputJsonValue;
+  /** context is optional to implement — every existing rule ignores it; only MENTIONED reads it (for parentEntityId). */
+  buildMetadata: (activity: CreatedActivity, context: NotificationContext | undefined) => Prisma.InputJsonValue;
 };
 
 const ROLE_CHANGED: NotificationRule = {
@@ -107,12 +126,33 @@ const INVOICE_STATUS_CHANGED: NotificationRule = {
 };
 
 /**
- * Keyed by entityType then action — deliberately only the 6 approved MVP
+ * Comments & Mentions Stage 3 (docs/comments-architecture.md §5). The only
+ * Comment-related event that ever notifies anyone — a bare comment with no
+ * `@mention` never reaches this rule at all (createCommentForEntity only
+ * passes `mentionedUserIds` in NotificationContext when there is at least
+ * one). Recipients are simply the already-validated list the caller
+ * computed (see NotificationContext's own doc comment above) — no further
+ * Membership query needed here, unlike INVOICE_STATUS_CHANGED, since the
+ * caller already resolved "which of these ids are real, current members of
+ * this organization" before createActivity was ever called. The universal
+ * actor-exclusion/dedup/existence-check dispatch-notifications.ts applies
+ * to every rule still runs on top of this — redundant here by
+ * construction, but harmless defense in depth, not load-bearing.
+ */
+const MENTIONED: NotificationRule = {
+  type: "MENTIONED",
+  resolveRecipients: async (_tx, _activity, context) => context?.mentionedUserIds ?? [],
+  buildMetadata: (activity, context) => buildMentionedNotificationMetadata(activity.metadata, context),
+};
+
+/**
+ * Keyed by entityType then action — deliberately only the approved MVP
  * pairs. Every other (entityType, action) combination (CREATED/UPDATED/
  * DELETED of regular entities, attachments, invitation SENT/RESENT/
  * CANCELED, MEMBER_LEFT, Activity reads, login/logout, portal views/
  * downloads) has no entry and resolves to undefined — a deliberate no-op,
- * not an oversight.
+ * not an oversight. COMMENT/DELETED has no entry either — deleting a
+ * comment never notifies anyone (docs/comments-architecture.md §5).
  */
 const RULES: Partial<Record<ActivityEntityType, Partial<Record<ActivityAction, NotificationRule>>>> = {
   MEMBERSHIP: {
@@ -128,6 +168,10 @@ const RULES: Partial<Record<ActivityEntityType, Partial<Record<ActivityAction, N
   },
   INVOICE: {
     STATUS_CHANGED: INVOICE_STATUS_CHANGED,
+  },
+  COMMENT: {
+    CREATED: MENTIONED,
+    UPDATED: MENTIONED,
   },
 };
 

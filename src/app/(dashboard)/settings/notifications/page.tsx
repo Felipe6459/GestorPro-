@@ -29,6 +29,16 @@ const NOTIFICATION_TYPE_LABELS: Record<NotificationType, { title: string; descri
     title: "Invoice status changed",
     description: "When an invoice's status changes (Owners/Admins only).",
   },
+  // Comments & Mentions Stage 1/2 (docs/comments-architecture.md): the enum
+  // value exists ahead of the feature (schema-only stage), but this type
+  // stays out of NOTIFICATION_TYPES above until fan-out/UI actually ship in
+  // a later stage — this entry only satisfies the exhaustive Record type
+  // and is never rendered (the settings page iterates NOTIFICATION_TYPES,
+  // not this map's keys).
+  MENTIONED: {
+    title: "Mentioned in a comment",
+    description: "When someone @mentions you in a comment.",
+  },
 };
 
 export default async function NotificationPreferencesPage() {

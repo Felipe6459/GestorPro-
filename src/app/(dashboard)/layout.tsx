@@ -8,6 +8,7 @@ import { formatNotification } from "@/lib/notifications/format-notification";
 import type { NotificationBellItem } from "@/components/notifications/notification-bell";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { TEST_MODE } from "@/lib/test-mode";
 
 const RECENT_NOTIFICATIONS_LIMIT = 10;
 
@@ -86,7 +87,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50 md:flex-row">
-      <Sidebar />
+      <Sidebar disablePrefetch={TEST_MODE} />
       <div className="flex flex-1 flex-col">
         <Header
           email={user.email ?? ""}

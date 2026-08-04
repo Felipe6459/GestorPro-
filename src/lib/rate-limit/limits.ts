@@ -101,3 +101,13 @@ export const PORTAL_ATTACHMENT_DOWNLOAD_LIMIT: RateLimitConfig = {
 // scheduled run, or a few manual re-triggers while debugging, but still
 // catches a brute-force secret-guessing script hammering the endpoint.
 export const CRON_JOB_LIMIT: RateLimitConfig = { scope: "cron", limit: 20, windowMs: HOUR_MS };
+
+// Comments & Mentions Stage 3 (docs/comments-architecture.md §8) — per
+// authenticated staff user, same shape as every other per-user limiter
+// above. No number is given in the design doc; these are a deliberate,
+// documented MVP ceiling generous enough for normal use, tight enough to
+// stop a single account from flooding a Project/Task or mass-notifying
+// via repeated mentions.
+export const COMMENT_CREATE_LIMIT: RateLimitConfig = { scope: "comment-create", limit: 60, windowMs: HOUR_MS };
+export const COMMENT_EDIT_LIMIT: RateLimitConfig = { scope: "comment-edit", limit: 120, windowMs: HOUR_MS };
+export const COMMENT_DELETE_LIMIT: RateLimitConfig = { scope: "comment-delete", limit: 60, windowMs: HOUR_MS };

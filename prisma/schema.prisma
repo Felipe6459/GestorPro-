@@ -71,6 +71,15 @@ enum ActivityEntityType {
   INVITATION
   ATTACHMENT
   PORTAL_USER
+  // Comments & Mentions Stage 1 (docs/comments-architecture.md §10): a
+  // Comment create/edit/delete records an Activity row exactly like every
+  // other entity, using the existing CREATED/UPDATED/DELETED ActivityAction
+  // values below — deliberately no COMMENT-specific action names, the same
+  // choice Client/Project/Invoice already made (only Task and Membership
+  // have genuinely distinct extra actions like STATUS_CHANGED/ROLE_CHANGED;
+  // a comment has no such transition to name). A mention is a consequence
+  // of a create/edit, never its own ActivityAction.
+  COMMENT
 }
 
 enum ActivityAction {
@@ -101,6 +110,17 @@ enum AttachmentEntityType {
   INVOICE
 }
 
+// Scoped narrower than ActivityEntityType/AttachmentEntityType on purpose —
+// same precedent as Attachment's own enum not covering every entity type
+// Activity does. Comments & Mentions Stage 1 design doc (docs/comments-
+// architecture.md §2) supports exactly these two targets; a third target
+// is a new enum value in its own additive migration, never a reinterpreted
+// existing one.
+enum CommentEntityType {
+  PROJECT
+  TASK
+}
+
 // Deliberately NOT one-to-one with ActivityAction: only the subset of
 // events with a well-defined, non-empty recipient today produces a
 // notification (see docs/notifications-architecture.md §2's full
@@ -117,6 +137,13 @@ enum NotificationType {
   INVITATION_ACCEPTED
   PORTAL_INVITATION_ACCEPTED
   INVOICE_STATUS_CHANGED
+  // Comments & Mentions Stage 1 (docs/comments-architecture.md §5/§10):
+  // the only Comment-related event that ever notifies anyone — a bare
+  // comment (no @mention) never produces a Notification. Added now,
+  // schema-only, because Stage 3's fan-out rule needs this value to
+  // exist; no NotificationRule references it yet (see notification-
+  // rules.ts, untouched by this stage) and no Server Action creates one.
+  MENTIONED
 }
 
 // Only channel implemented so far (Stage 6) — SMS/webhook/etc. are future
@@ -165,6 +192,8 @@ model User {
   uploadedAttachments     Attachment[]             @relation("AttachmentUploadedBy")
   notifications           Notification[]           @relation("NotificationRecipient")
   notificationPreferences NotificationPreference[]
+  authoredComments        Comment[]                @relation("CommentAuthor")
+  commentMentions         CommentMention[]         @relation("CommentMentionUser")
 }
 
 // Multi-tenant scaffolding (schema-only for now; not yet wired into app
@@ -187,6 +216,7 @@ model Organization {
   tasks       Task[]
   invoices    Invoice[]
   attachments Attachment[]
+  comments    Comment[]
 }
 
 model Membership {
@@ -592,6 +622,109 @@ model Attachment {
   // as Activity's indexes, even though this stage doesn't add pagination.
   @@index([organizationId, entityType, entityId, createdAt, id])
   @@index([organizationId, createdAt, id])
+}
+
+// Comments & Mentions Stage 1 design (docs/comments-architecture.md §2).
+// Schema only in this stage — no Server Action writes to this table yet,
+// createActivity()/dispatch-notifications.ts are untouched, and no parser
+// exists (see that doc's own §10 staged rollout: schema first, fan-out
+// hook second, UI last — the same order Notification itself shipped in).
+//
+// entityId is deliberately not a foreign key, same reasoning as Activity
+// and Attachment: a Project or Task can be deleted without this row
+// needing to participate in that cascade chain via its own FK (Comment's
+// cascade is via organizationId instead — see below). PROJECT/TASK
+// ownership of a given entityId (i.e. "does this Project actually belong
+// to this organizationId") is an application-layer check, not a schema
+// guarantee — the same division of responsibility Activity/Attachment
+// already have.
+model Comment {
+  id String @id @default(uuid()) @db.Uuid
+
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Nullable + SetNull, identical reasoning to Activity.actorId/
+  // Attachment.uploadedById: no action deletes a User today, but a
+  // comment shouldn't vanish (or block the delete) just because of who
+  // wrote it — it stays in the thread as an authorless historical row.
+  authorId String? @db.Uuid
+  author   User?   @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  entityType CommentEntityType
+  entityId   String            @db.Uuid
+
+  // Plain text only — never Markdown, never an HTML/AST blob. A comment
+  // may contain zero or more embedded mention tokens as literal text
+  // (parsed by a future Stage 3 parser, not this schema); rendering never
+  // trusts the raw body as markup (docs/comments-architecture.md §8).
+  body String
+
+  // Non-null = has been edited at least once; the UI shows "(edited)"
+  // next to this timestamp. No revision/version table — see the design
+  // doc's explicit rejection of that as over-engineering for what this
+  // product needs.
+  editedAt DateTime?
+
+  // Soft delete: the row is never removed and body is never cleared at
+  // the schema level (nullable timestamp only) — whether/how to blank the
+  // body and render a placeholder is an application-layer decision for a
+  // later stage, not something this schema enforces or assumes.
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mentions CommentMention[]
+
+  // Primary read path: "comments for this Project/Task, oldest or newest
+  // first" — org first, so a foreign entityId can never be queried across
+  // tenants, same shape as Activity/Attachment's own entity-specific index.
+  @@index([organizationId, entityType, entityId, createdAt, id])
+  // Author history / moderation view ("every comment this person wrote").
+  // No separate organization-wide "all comments" index — no named query
+  // needs one yet, and this stage doesn't add indexes speculatively.
+  @@index([authorId, createdAt])
+}
+
+// The @mention join row for a Comment — deliberately its own table, not a
+// column on Comment or a value embedded only in body text (docs/comments-
+// architecture.md §3): "who was mentioned" needs to be a real, queryable,
+// duplicate-proof fact, independent of whatever text-parsing produced it.
+// Stores only the two ids and when — no display name, no raw mention
+// token, no Notification id, no email, no organizationId (all fully
+// derivable via comment.organizationId and not needed by either index
+// below).
+model CommentMention {
+  id String @id @default(uuid()) @db.Uuid
+
+  commentId String  @db.Uuid
+  comment   Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  // Cascade, not SetNull: unlike a comment's author, a mention with no
+  // resolvable user is meaningless — it exists only to answer "who was
+  // mentioned," and a deleted user is no longer an active notification
+  // recipient. This does NOT fire on Membership removal (a user leaving
+  // the org, User row intact) — only on the User row itself being
+  // deleted, which no action in this app does today. If a historical
+  // mention ever needs to survive real User deletion, that requires a
+  // nullable userId plus a captured display-name snapshot, which the
+  // design doc does not call for and this migration does not add.
+  userId String @db.Uuid
+  user   User   @relation("CommentMentionUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  // The duplicate-mention guarantee as a database constraint, not just a
+  // future parser's own dedup logic — belt and suspenders, the same
+  // relationship NotificationDelivery's own @@unique has with its caller's
+  // pre-check. Its leading column (commentId) already serves "all mentions
+  // for this comment" efficiently via the standard leftmost-prefix rule,
+  // so no separate single-column @@index([commentId]) is needed.
+  @@unique([commentId, userId])
+  // "Comments that mention me" — not built this stage, but real enough
+  // (named explicitly in the design doc's §7) to index for now.
+  @@index([userId, createdAt])
 }
 
 // A Client Portal login — deliberately a separate identity from the staff

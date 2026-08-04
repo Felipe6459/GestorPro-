@@ -216,7 +216,7 @@ export async function retryNotificationDeliveries(params: {
         continue;
       }
 
-      const linkPath = resolveNotificationLinkPath(notification.type, notification.entityId);
+      const linkPath = resolveNotificationLinkPath(notification.type, notification.entityId, notification.metadata);
       const ctaUrl = `${getAppBaseUrl()}${linkPath ?? "/notifications"}`;
       const content = formatNotificationEmail({
         type: notification.type,

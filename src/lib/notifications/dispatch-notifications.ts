@@ -57,7 +57,7 @@ export async function dispatchNotificationsForActivity(
     return [];
   }
 
-  const metadata = rule.buildMetadata(activity);
+  const metadata = rule.buildMetadata(activity, context);
 
   const created = await tx.notification.createManyAndReturn({
     data: finalRecipientIds.map((recipientId) => ({

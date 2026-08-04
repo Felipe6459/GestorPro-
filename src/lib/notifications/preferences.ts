@@ -13,6 +13,15 @@ export const NOTIFICATION_TYPES = [
   "INVITATION_ACCEPTED",
   "PORTAL_INVITATION_ACCEPTED",
   "INVOICE_STATUS_CHANGED",
+  // Comments & Mentions Stage 3: added here (not in Stage 2's schema-only
+  // change) because this array is what actually makes in-app/email
+  // preference enforcement work for a type — getDisabledInAppTypes/
+  // getDisabledEmailTypes below both iterate it, and the settings page
+  // (already shipped in Stage 7) iterates it too, so a real row for this
+  // type now becomes visible/toggleable there as an unavoidable, correct
+  // consequence of preferences genuinely applying to MENTIONED — not new
+  // UI work of this stage's own.
+  "MENTIONED",
 ] as const satisfies readonly NotificationType[];
 
 export type NotificationPreferenceValue = {
