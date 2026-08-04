@@ -101,6 +101,49 @@ enum AttachmentEntityType {
   INVOICE
 }
 
+// Deliberately NOT one-to-one with ActivityAction: only the subset of
+// events with a well-defined, non-empty recipient today produces a
+// notification (see docs/notifications-architecture.md §2's full
+// classification of every ActivityAction). Most Activity volume —
+// routine Client/Project/Task/Invoice CREATED/UPDATED, every Attachment
+// event, every non-accepted Invitation/Portal event — is intentionally
+// never notified; adding a type here should mean a new fan-out rule is
+// actually ready to ship, not "this action exists in ActivityAction so it
+// gets a Notification counterpart too."
+enum NotificationType {
+  ROLE_CHANGED
+  OWNERSHIP_TRANSFERRED
+  MEMBER_REMOVED
+  INVITATION_ACCEPTED
+  PORTAL_INVITATION_ACCEPTED
+  INVOICE_STATUS_CHANGED
+}
+
+// Only channel implemented so far (Stage 6) — SMS/webhook/etc. are future
+// values on this same enum, never a reason to add another table.
+enum NotificationChannel {
+  EMAIL
+}
+
+// PENDING is never actually persisted by Stage 6's synchronous, request-
+// bound delivery helper (a row goes straight from "about to attempt" to
+// SENT/FAILED/SKIPPED within the same call) — kept in the enum anyway
+// because a future queue-backed sender needs exactly this state for "row
+// exists, not yet attempted," and adding it later would be a second
+// migration for a value that obviously belongs here from day one.
+// PROCESSING (Stage 8) is the claim state a background job atomically
+// transitions a row into before calling the provider — never a
+// caller-visible "final" state, always followed by SENT/FAILED/SKIPPED,
+// or reclaimed back out of PROCESSING if a worker died mid-attempt (see
+// lockedAt below).
+enum NotificationDeliveryStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  SKIPPED
+}
+
 // id is intended to match Supabase auth.users.id once auth is wired up.
 model User {
   id        String   @id @default(uuid()) @db.Uuid
@@ -115,11 +158,13 @@ model User {
   assignedTasks Task[]    @relation("TaskAssignee")
   clients       Client[]  @relation("ClientOwner")
 
-  memberships           Membership[]
-  sentInvitations       Invitation[]       @relation("InvitationInvitedBy")
-  sentClientInvitations ClientInvitation[] @relation("ClientInvitationInvitedBy")
-  activities            Activity[]         @relation("ActivityActor")
-  uploadedAttachments   Attachment[]       @relation("AttachmentUploadedBy")
+  memberships             Membership[]
+  sentInvitations         Invitation[]             @relation("InvitationInvitedBy")
+  sentClientInvitations   ClientInvitation[]       @relation("ClientInvitationInvitedBy")
+  activities              Activity[]               @relation("ActivityActor")
+  uploadedAttachments     Attachment[]             @relation("AttachmentUploadedBy")
+  notifications           Notification[]           @relation("NotificationRecipient")
+  notificationPreferences NotificationPreference[]
 }
 
 // Multi-tenant scaffolding (schema-only for now; not yet wired into app
@@ -132,9 +177,10 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships Membership[]
-  invitations Invitation[]
-  activities  Activity[]
+  memberships   Membership[]
+  invitations   Invitation[]
+  activities    Activity[]
+  notifications Notification[]
 
   clients     Client[]
   projects    Project[]
@@ -321,11 +367,190 @@ model Activity {
 
   createdAt DateTime @default(now())
 
+  notifications Notification[]
+
   // General organization timeline: ORDER BY createdAt DESC, id DESC.
   @@index([organizationId, createdAt, id])
   // Entity-specific timeline (a later stage) — scoped by org first so a
   // foreign entityId can never be queried across tenants.
   @@index([organizationId, entityType, entityId, createdAt, id])
+}
+
+// In-app notification inbox — see docs/notifications-architecture.md for
+// the full design and the classification of exactly which ActivityAction
+// values produce one (§2) and why every field below is shaped the way it
+// is (§3). Nothing outside this migration wires a fan-out yet: no Server
+// Action writes to this table, and createActivity() is untouched — this
+// stage is schema-only, on purpose (see the design doc's §9 migration
+// strategy: schema first, fan-out hook second, UI last).
+//
+// Deliberately User-only for this stage: a PortalUser's notification
+// inbox is a structurally separate concept (same reasoning as PortalUser
+// itself never being mixed with User elsewhere in this schema), and no
+// MVP notification type targets a portal contact — recipientId is
+// required and points at User alone. Portal delivery later means a new
+// nullable FK (or a fully separate table) added in its own additive
+// migration, never repurposing this column to mean two different
+// identity types.
+model Notification {
+  id String @id @default(uuid()) @db.Uuid
+
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  recipientId String @db.Uuid
+  recipient   User   @relation("NotificationRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  // The Activity row this notification was generated from, when there is
+  // one. Nullable + SetNull, same reasoning as Activity.actorId: a future
+  // scheduled job (a due-date check — see the design doc's §7) writes a
+  // Notification with no Activity row behind it at all, since nothing
+  // "happened" in the Activity sense — entityType/entityId below (not
+  // activityId) is what such a notification uses to say what it's about.
+  activityId String?   @db.Uuid
+  activity   Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+
+  type NotificationType
+
+  // Deliberately not a foreign key — identical reasoning to Activity's
+  // own entityId and Attachment's own entityId: the referenced Client/
+  // Project/Task/Invoice/Membership/etc. row can be deleted later without
+  // orphaning or blocking this read history. Nullable because not every
+  // notification type needs to name one specific entity.
+  entityType ActivityEntityType?
+  entityId   String?             @db.Uuid
+
+  // Structured snapshot data only — the same allowlisted-field discipline
+  // as Activity.metadata (an entity name, a changed-field list, a
+  // {from, to} pair, an actor name) — never a pre-rendered display
+  // string, a token, a signed URL, or any other secret. Display text is
+  // computed at read time from `type` + this metadata by a future
+  // formatter mirroring formatActivity() exactly, not stored pre-rendered
+  // here — kept consistent with how Activity itself already works,
+  // rather than introducing a second, subtly different rendering
+  // philosophy for a sibling table.
+  metadata Json @default("{}")
+
+  // The only mutable column in this table at this stage — every other
+  // field is written once at create and never updated again, the same
+  // append-only discipline Activity already follows.
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  deliveries NotificationDelivery[]
+
+  // Unread count (WHERE recipientId = ? AND readAt IS NULL) and the
+  // default "my notifications" list (WHERE recipientId = ? ORDER BY
+  // createdAt DESC, id DESC) are both served by this one composite index
+  // — readAt sits before createdAt/id since the unread-first view is the
+  // hot path, and the full list still scans an efficient recipientId-
+  // bounded range even without the readAt predicate at this app's
+  // expected data volume (see the design doc's §8). Deliberately a plain
+  // composite index, not a Postgres partial index on `readAt IS NULL`:
+  // partial indexes aren't expressed by this Prisma version without a
+  // preview feature this project doesn't otherwise need, and at the
+  // small-org, 90-day-read-retention scale this product targets, the
+  // extra narrowing isn't worth that cost — revisit only if real volume
+  // ever says otherwise.
+  @@index([recipientId, readAt, createdAt, id])
+  // Org-scoped admin/debug listing — a future "what has this org been
+  // notified about" view, organizationId first the same way every other
+  // org-scoped table in this schema already indexes.
+  @@index([organizationId, recipientId, createdAt, id])
+  // Serves the activityId SetNull lookup and any future join from an
+  // Activity row to the notifications it produced.
+  @@index([activityId])
+}
+
+// Per-channel delivery attempt tracking for a Notification — Stage 6 adds
+// only EMAIL, but the shape is channel-generic from day one. Deliberately
+// its own table rather than columns on Notification itself: Notification
+// is the in-app read model (append-only except `readAt`), or delivery
+// state is a completely separate, per-channel, mutable-on-retry concern —
+// mixing them would mean every future channel adds more columns to the
+// one table every read-model query already scans.
+//
+// Never stores: the raw provider response, the API key, the rendered
+// email body, a token, a signed URL, a stack trace, or the recipient's
+// email address (that's already on User — this table only ever points at
+// notificationId, never duplicates PII). `failureCode` is a short,
+// stable, non-identifying label (e.g. "not_configured", "provider_error",
+// "network_error") — never a message string that could embed any of the
+// above.
+model NotificationDelivery {
+  id String @id @default(uuid()) @db.Uuid
+
+  notificationId String       @db.Uuid
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  channel NotificationChannel
+  status  NotificationDeliveryStatus @default(PENDING)
+
+  attemptedAt  DateTime?
+  deliveredAt  DateTime?
+  failureCode  String?
+  // Stage 6's delivery helper only ever attempts once per call (no
+  // in-process retry loop — see deliver-notification-email.ts) — this
+  // still counts every attempt across calls, since nothing here prevents
+  // a future retry job from calling the same helper again for a FAILED row.
+  attemptCount Int       @default(0)
+
+  // Stage 8: when to retry next, for a FAILED row within the retry
+  // ceiling — null means "no retry scheduled" (either never failed, or the
+  // ceiling was already reached). The retry job's own claim query is what
+  // makes this meaningful; nothing reads it before Stage 8.
+  nextAttemptAt DateTime?
+  // Stage 8: stamped the instant a background job claims this row (moves
+  // it to PROCESSING) — doubles as (a) the claim token two concurrent job
+  // runs race on, via a conditional updateMany matching the row's still-
+  // FAILED/PENDING status, and (b) the staleness clock: a PROCESSING row
+  // whose lockedAt is older than the job's own stale-lock threshold means
+  // whatever worker claimed it died before finishing, and it's safe to
+  // reclaim. Never read/written outside src/lib/notifications/jobs/.
+  lockedAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The one row per (Notification, channel) invariant — this is what makes
+  // "already SENT → no-op" and "no duplicate email for the same
+  // Notification" a database guarantee, not just application discipline.
+  @@unique([notificationId, channel])
+  // The retry job's own candidate-discovery query shape: "every eligible
+  // PENDING/FAILED/stale-PROCESSING row, oldest first" — unused by the
+  // Stage 6/7 request-bound path, which never queries by status.
+  @@index([status, createdAt])
+}
+
+// Per-user, per-type opt-out for the two channels shipped so far (in-app,
+// email — a future push channel adds its own `pushEnabled` column here,
+// not a new table, since it's still "one row per user per type"). No JSON:
+// every channel is its own typed, non-nullable, defaulted boolean column,
+// so a query can filter on it directly instead of unpacking a blob.
+//
+// Rows are created lazily — only when a user actually changes a toggle
+// away from the built-in default (see src/lib/notifications/preferences.ts).
+// No row for a given (user, type) means "both channels enabled", the same
+// default the columns themselves declare; this is why nothing needs to be
+// backfilled here or provisioned at signup. "Reset to defaults" deletes
+// the row entirely rather than writing true/true back, so a user with
+// untouched preferences and a user who explicitly reset both look
+// identical in this table — one row, one meaning.
+model NotificationPreference {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type NotificationType
+
+  inAppEnabled Boolean @default(true)
+  emailEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, type])
 }
 
 // File attachments for Client/Project/Invoice, stored in Supabase Storage.
@@ -355,10 +580,10 @@ model Attachment {
   storageBucket String
   // The actual Supabase Storage object key — unique because it's built
   // server-side from a fresh attachmentId, never from user input alone.
-  storagePath String @unique
-  originalName String
-  mimeType     String
-  sizeBytes    Int
+  storagePath   String @unique
+  originalName  String
+  mimeType      String
+  sizeBytes     Int
 
   createdAt DateTime @default(now())
 

@@ -11,6 +11,7 @@ const links = [
   { href: "/invoices", label: "Invoices" },
   { href: "/team", label: "Team" },
   { href: "/activity", label: "Activity" },
+  { href: "/settings/notifications", label: "Settings" },
 ];
 
 function isActive(pathname: string, href: string): boolean {

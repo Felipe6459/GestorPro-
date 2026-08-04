@@ -14,6 +14,7 @@ import {
 import { parseInviteForm } from "@/lib/validation/invitation";
 import { withToast } from "@/lib/toast-url";
 import { sendInvitationEmail } from "@/lib/email/invitations";
+import { deliverNotificationEmails } from "@/lib/notifications/email/deliver-notification-email";
 import { createActivity } from "@/lib/activity/create-activity";
 import {
   buildInvitationMetadata,
@@ -352,8 +353,9 @@ export async function changeRoleAction(
     // conditional demote finds zero matching rows and aborts. Its Activity
     // row is part of the same transaction, so a failed insert rolls back
     // both membership updates too.
+    let notificationIds: string[];
     try {
-      await prisma.$transaction(async (tx) => {
+      notificationIds = await prisma.$transaction(async (tx) => {
         const demoted = await tx.membership.updateMany({
           where: { userId: user.id, organizationId, role: Role.OWNER },
           data: { role: Role.ADMIN },
@@ -372,14 +374,17 @@ export async function changeRoleAction(
 
         // One combined event for the whole transfer — not two separate
         // ROLE_CHANGED rows for the demoted/promoted memberships.
-        await createActivity(tx, {
+        const activity = await createActivity(tx, {
           organizationId,
           actorId: user.id,
           entityType: "MEMBERSHIP",
           entityId: membershipId,
           action: "OWNERSHIP_TRANSFERRED",
           metadata: buildOwnershipTransferredMetadata(user.name, target.user.name, user.name),
+          notificationContext: { newOwnerId: target.userId, previousOwnerId: user.id },
         });
+
+        return activity.notificationIds;
       });
     } catch (err) {
       if (err instanceof Error && err.message === "NOT_OWNER") {
@@ -390,6 +395,11 @@ export async function changeRoleAction(
       }
       throw err;
     }
+
+    // Only ever runs once the transaction above has actually committed —
+    // an email provider outage must never roll back the ownership
+    // transfer, and this call is documented to never throw either way.
+    await deliverNotificationEmails(notificationIds);
   } else {
     // Simple ADMIN <-> MEMBER promote/demote. role: { not: OWNER } is
     // defense in depth — the invariant already means target can never be
@@ -401,24 +411,27 @@ export async function changeRoleAction(
         data: { role: newRole },
       });
       if (result.count === 0) {
-        return "not_found" as const;
+        return { status: "not_found" as const, notificationIds: [] as string[] };
       }
 
-      await createActivity(tx, {
+      const activity = await createActivity(tx, {
         organizationId,
         actorId: user.id,
         entityType: "MEMBERSHIP",
         entityId: membershipId,
         action: "ROLE_CHANGED",
         metadata: buildRoleChangedMetadata(target.user, target.role, newRole, user.name),
+        notificationContext: { affectedUserId: target.userId },
       });
 
-      return "updated" as const;
+      return { status: "updated" as const, notificationIds: activity.notificationIds };
     });
 
-    if (outcome === "not_found") {
+    if (outcome.status === "not_found") {
       return { error: "Member not found." };
     }
+
+    await deliverNotificationEmails(outcome.notificationIds);
   }
 
   revalidatePath("/team");
@@ -465,21 +478,27 @@ export async function removeMemberAction(membershipId: string): Promise<void> {
   // Delete and its Activity row are one atomic unit — snapshot the member's
   // name/email now, since Activity.entityId isn't a foreign key and this
   // row won't exist to look them up from after the delete.
-  await prisma.$transaction(async (tx) => {
+  const notificationIds = await prisma.$transaction(async (tx) => {
     const result = await tx.membership.deleteMany({ where: { id: membershipId, organizationId } });
     if (result.count === 0) {
-      return;
+      return [];
     }
 
-    await createActivity(tx, {
+    const activity = await createActivity(tx, {
       organizationId,
       actorId: user.id,
       entityType: "MEMBERSHIP",
       entityId: membershipId,
       action: "MEMBER_REMOVED",
       metadata: buildMembershipMetadata(target.user, target.role, user.name),
+      notificationContext: { affectedUserId: target.userId },
     });
+
+    return activity.notificationIds;
   });
+
+  // Post-commit, best-effort — see deliverNotificationEmails's own header.
+  await deliverNotificationEmails(notificationIds);
 
   revalidatePath("/team");
 }

@@ -164,6 +164,7 @@ Visit [http://localhost:3000](http://localhost:3000).
 | `RESEND_API_KEY` | [resend.com](https://resend.com) → API Keys (**keep secret**) | Server-only — sends team invitation emails (`src/lib/email/`). Optional: if unset, invites/resends still work, they just fall back to "created, but the email could not be sent" and the Copy link button. |
 | `INVITATION_FROM_EMAIL` | Any address on a domain verified in your Resend account | The "From" address on invitation emails. |
 | `APP_BASE_URL` | Your deployed app's URL (e.g. `https://your-app.vercel.app`) | Server-only — builds the `/invite/{token}` link inside invitation emails. Optional on Vercel (falls back to the auto-provided `VERCEL_URL`, then to `http://localhost:3000` in dev). |
+| `CRON_SECRET` | Generate your own (e.g. `openssl rand -base64 32`) | Server-only — required by every `/api/cron/*` route (notification delivery retry, notification cleanup). Vercel Cron sends it back as `Authorization: Bearer <value>` on every scheduled call (see [Deployment](#deployment-vercel) below). Without it set, cron routes reject everything with 401. |
 
 No real values are shown here — copy `.env.example` to `.env` and fill in your own Supabase project's credentials.
 
@@ -199,11 +200,27 @@ During active development, use `npx prisma migrate dev` instead of `migrate depl
 
 1. Push the repo to GitHub.
 2. Import it in Vercel.
-3. Add the environment variables above in Vercel's Project Settings → Environment Variables (`SUPABASE_SERVICE_ROLE_KEY` only if you intend to run the seed script against production, which most people won't; `RESEND_API_KEY`/`INVITATION_FROM_EMAIL`/`APP_BASE_URL` only if you want invitation emails actually delivered instead of falling back to Copy link).
+3. Add the environment variables above in Vercel's Project Settings → Environment Variables (`SUPABASE_SERVICE_ROLE_KEY` only if you intend to run the seed script against production, which most people won't; `RESEND_API_KEY`/`INVITATION_FROM_EMAIL`/`APP_BASE_URL` only if you want invitation emails actually delivered instead of falling back to Copy link; `CRON_SECRET` is required for the background jobs below to run at all).
 4. Vercel runs `next build` automatically. Make sure migrations have already been applied to the target database (`npx prisma migrate deploy`, run locally against the production `DIRECT_URL` or via a CI step) — the build does not run migrations for you.
 5. Deploy.
 
 No further configuration is needed — there's no separate backend to deploy; Server Actions run as part of the Next.js deployment itself.
+
+### Background jobs (Vercel Cron)
+
+Two scheduled jobs, defined in `vercel.json`, retry failed notification
+emails and clean up old read notifications — see
+`docs/notifications-architecture.md`'s cron section for the full retry/
+cleanup policy. Both are gated by `CRON_SECRET` (`src/lib/cron/auth.ts`);
+Vercel automatically sends it as `Authorization: Bearer <CRON_SECRET>` on
+every scheduled invocation once the env var is set in Project Settings —
+no extra configuration needed beyond adding that one variable.
+
+**Vercel plan note**: this project assumes a **Hobby** plan, which caps
+Cron Jobs at once per day *per job*. Both jobs below are scheduled daily
+as a result — the delivery retry job's ideal cadence (every 15–30
+minutes) needs a **Pro** plan or higher; if you're on Pro, tighten
+`vercel.json`'s schedule for `/api/cron/notification-delivery` accordingly.
 
 ## Security approach
 

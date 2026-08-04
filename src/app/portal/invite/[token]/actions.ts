@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { withToast } from "@/lib/toast-url";
 import { createActivity } from "@/lib/activity/create-activity";
+import { deliverNotificationEmails } from "@/lib/notifications/email/deliver-notification-email";
 import { buildPortalInvitationAcceptedMetadata } from "@/lib/activity/portal-metadata";
 import { checkRateLimit, getRequestIp, ACCEPT_PORTAL_INVITE_LIMIT } from "@/lib/rate-limit";
 import type { InviteAcceptState } from "@/types";
@@ -114,8 +115,9 @@ export async function acceptClientInvitationAction(token: string): Promise<Invit
 
   const portalUserName = resolvePortalUserName(authUser, normalizedUserEmail);
 
+  let notificationIds: string[];
   try {
-    await prisma.$transaction(async (tx) => {
+    notificationIds = await prisma.$transaction(async (tx) => {
       // A conditional updateMany (not a plain findFirst-then-update) so two
       // concurrent accepts of the same token can't both "win": only the
       // first to commit finds status still PENDING and flips it; a second,
@@ -163,7 +165,7 @@ export async function acceptClientInvitationAction(token: string): Promise<Invit
       // to the staff User model, and a PortalUser is never a valid actor
       // there — portalUserName doubles as the display name via
       // formatActivity's metadata.actorName fallback.
-      await createActivity(tx, {
+      const activity = await createActivity(tx, {
         organizationId,
         actorId: null,
         entityType: "PORTAL_USER",
@@ -174,7 +176,10 @@ export async function acceptClientInvitationAction(token: string): Promise<Invit
           invitation.client.name,
           portalUser.name,
         ),
+        notificationContext: { invitedById: invitation.invitedById },
       });
+
+      return activity.notificationIds;
     });
   } catch (err) {
     if (err instanceof Error && err.message === "STALE_INVITATION") {
@@ -188,6 +193,9 @@ export async function acceptClientInvitationAction(token: string): Promise<Invit
     }
     throw err;
   }
+
+  // Post-commit, best-effort — see deliverNotificationEmails's own header.
+  await deliverNotificationEmails(notificationIds);
 
   revalidatePath("/portal");
 

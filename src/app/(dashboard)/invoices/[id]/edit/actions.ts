@@ -7,6 +7,7 @@ import { getCurrentUserOrganization } from "@/lib/current-user";
 import { parseInvoiceForm } from "@/lib/validation/invoice";
 import { withToast } from "@/lib/toast-url";
 import { createActivity } from "@/lib/activity/create-activity";
+import { deliverNotificationEmails } from "@/lib/notifications/email/deliver-notification-email";
 import {
   diffInvoiceFields,
   buildInvoiceStatusChangedMetadata,
@@ -56,7 +57,7 @@ export async function updateInvoiceAction(
       });
 
       if (!existing) {
-        return "not_found" as const;
+        return { status: "not_found" as const, notificationIds: [] as string[] };
       }
 
       // paidAt lifecycle, server-derived only — never read from formData:
@@ -90,7 +91,7 @@ export async function updateInvoiceAction(
       });
 
       if (result.count === 0) {
-        return "not_found" as const;
+        return { status: "not_found" as const, notificationIds: [] as string[] };
       }
 
       // A pure resubmit of identical values creates no Activity at all.
@@ -102,8 +103,12 @@ export async function updateInvoiceAction(
       const statusChanged = changedFields.includes("status");
       const otherChangedFields = changedFields.filter((field) => field !== "status");
 
+      // Only STATUS_CHANGED ever fans out to Notification rows (UPDATED
+      // never does — see docs/notifications-architecture.md §2) — this is
+      // the only one of the two whose notificationIds matter.
+      let notificationIds: string[] = [];
       if (statusChanged) {
-        await createActivity(tx, {
+        const activity = await createActivity(tx, {
           organizationId,
           actorId: user.id,
           entityType: "INVOICE",
@@ -117,6 +122,7 @@ export async function updateInvoiceAction(
             user.name,
           ),
         });
+        notificationIds = activity.notificationIds;
       }
 
       if (otherChangedFields.length > 0) {
@@ -135,12 +141,15 @@ export async function updateInvoiceAction(
         });
       }
 
-      return "updated" as const;
+      return { status: "updated" as const, notificationIds };
     });
 
-    if (outcome === "not_found") {
+    if (outcome.status === "not_found") {
       return { error: "This invoice could not be found." };
     }
+
+    // Post-commit, best-effort — see deliverNotificationEmails's own header.
+    await deliverNotificationEmails(outcome.notificationIds);
   } catch (err) {
     if (
       err instanceof Prisma.PrismaClientKnownRequestError &&

@@ -57,6 +57,12 @@ export default defineConfig({
       TEST_MODE: "1",
       NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54321",
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "test-anon-key",
+      // Only needed so deliverNotificationEmails's own "is the provider
+      // configured" check (Boolean(process.env.INVITATION_FROM_EMAIL))
+      // passes — the actual send is intercepted by sendEmailViaResend's
+      // TEST_MODE branch before this value (or RESEND_API_KEY, which stays
+      // unset) is ever used for a real network call.
+      INVITATION_FROM_EMAIL: "Test <test@example.com>",
     },
   },
 });

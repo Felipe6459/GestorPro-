@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getOrCreateUser, setActiveOrganization } from "@/lib/current-user";
 import { withToast } from "@/lib/toast-url";
 import { createActivity } from "@/lib/activity/create-activity";
+import { deliverNotificationEmails } from "@/lib/notifications/email/deliver-notification-email";
 import { buildInvitationAcceptedMetadata } from "@/lib/activity/team-metadata";
 import { checkRateLimit, getRequestIp, ACCEPT_MEMBER_INVITE_LIMIT } from "@/lib/rate-limit";
 import type { InviteAcceptState } from "@/types";
@@ -89,8 +90,9 @@ export async function acceptInvitationAction(
     return { error: "This invitation was sent to a different email address." };
   }
 
+  let notificationIds: string[];
   try {
-    await prisma.$transaction(async (tx) => {
+    notificationIds = await prisma.$transaction(async (tx) => {
       // Re-read and re-validate inside the transaction to close the gap
       // between the checks above and this write (e.g. a concurrent cancel
       // or a second tab racing the same accept).
@@ -123,14 +125,17 @@ export async function acceptInvitationAction(
       // so a duplicate/concurrent accept never logs a second event here.
       // Self-referential, like leaveOrganizationAction — the actor
       // accepting IS the new member.
-      await createActivity(tx, {
+      const activity = await createActivity(tx, {
         organizationId: fresh.organizationId,
         actorId: user.id,
         entityType: "INVITATION",
         entityId: fresh.id,
         action: "INVITATION_ACCEPTED",
         metadata: buildInvitationAcceptedMetadata(fresh, user.name, user.name),
+        notificationContext: { invitedById: fresh.invitedById },
       });
+
+      return activity.notificationIds;
     });
   } catch (err) {
     if (err instanceof Error && err.message === "STALE_INVITATION") {
@@ -141,6 +146,13 @@ export async function acceptInvitationAction(
     }
     throw err;
   }
+
+  // INVITATION_ACCEPTED is not on the email allowlist (see deliver-
+  // notification-email.ts) — this always resolves to a SKIPPED delivery
+  // row, never an email. Called anyway so every notification-producing
+  // call site follows the same uniform post-commit pattern; the allowlist
+  // decision lives once, in the helper, not duplicated at each call site.
+  await deliverNotificationEmails(notificationIds);
 
   await setActiveOrganization(invitation.organizationId);
 

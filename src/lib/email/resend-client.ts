@@ -1,3 +1,5 @@
+import { TEST_MODE } from "@/lib/test-mode";
+
 // Reads process.env.RESEND_API_KEY (a server-only secret) and is only ever
 // imported from "use server" action files, so this never reaches the
 // client bundle — same trust boundary as src/lib/prisma.ts.
@@ -28,6 +30,17 @@ export type SendEmailFn = (input: SendEmailInput) => Promise<SendEmailResult>;
  * only a coarse, non-identifying reason is ever returned to the caller.
  */
 export async function sendEmailViaResend(input: SendEmailInput): Promise<SendEmailResult> {
+  // E2E-only fake, gated on the identical TEST_MODE flag src/lib/test-
+  // mode.ts's identity bypass and src/lib/storage/test-storage.ts's fake
+  // Storage both use — never a second independent check. This sandbox has
+  // no real Resend to reach any more than it has real Supabase, so a real
+  // send is equally unreachable in an E2E run; this reports the same
+  // shape a real successful send would, without ever calling fetch() or
+  // needing a real RESEND_API_KEY/INVITATION_FROM_EMAIL.
+  if (TEST_MODE) {
+    return { ok: true };
+  }
+
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     return { ok: false, reason: "not_configured" };
