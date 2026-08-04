@@ -22,12 +22,19 @@ import { formatNotificationEmail } from "./format-notification-email";
 //                                      Deliberately follows the existing Notification rows
 //                                      rather than inventing a narrower email-only rule — a
 //                                      digest or opt-out is a real follow-up, not MVP.
+//   MENTIONED                    yes — a direct, personal "you specifically are wanted"
+//                                      signal, the same reasoning as ROLE_CHANGED/
+//                                      OWNERSHIP_TRANSFERRED (docs/comments-architecture.md
+//                                      §5). A bare comment with no @mention never reaches
+//                                      this allowlist at all — it never produces a
+//                                      Notification in the first place.
 const EMAIL_ALLOWLIST: ReadonlySet<NotificationType> = new Set([
   "ROLE_CHANGED",
   "OWNERSHIP_TRANSFERRED",
   "MEMBER_REMOVED",
   "PORTAL_INVITATION_ACCEPTED",
   "INVOICE_STATUS_CHANGED",
+  "MENTIONED",
 ]);
 
 /**

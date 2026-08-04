@@ -15,6 +15,7 @@ describe("shouldDeliverNotificationEmail — allowlist", () => {
       "MEMBER_REMOVED",
       "PORTAL_INVITATION_ACCEPTED",
       "INVOICE_STATUS_CHANGED",
+      "MENTIONED",
     ] as const) {
       const result = shouldDeliverNotificationEmail({ ...BASE, notification: { type } });
       expect(result).toEqual({ deliver: true });

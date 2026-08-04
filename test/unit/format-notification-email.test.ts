@@ -58,6 +58,33 @@ describe("formatNotificationEmail — one happy path per deliverable type", () =
     expect(result.subject).toBe("Invoice INV-042 status changed");
     expect(result.text).toContain("Jane Doe changed invoice INV-042 (Website Redesign) status from SENT to PAID.");
   });
+
+  it("MENTIONED on a project", () => {
+    const result = email("MENTIONED", {
+      actorName: "Jane Doe",
+      commentPreview: "Can you take a look at this?",
+      parentEntityType: "PROJECT",
+      parentEntityLabel: "Website Redesign",
+    });
+    expect(result.subject).toBe("Jane Doe mentioned you in a comment");
+    expect(result.text).toContain('Jane Doe mentioned you in a comment on project Website Redesign: "Can you take a look at this?"');
+  });
+
+  it("MENTIONED on a task", () => {
+    const result = email("MENTIONED", {
+      actorName: "Jane Doe",
+      commentPreview: "",
+      parentEntityType: "TASK",
+      parentEntityLabel: "Fix login bug",
+    });
+    expect(result.subject).toBe("Jane Doe mentioned you in a comment");
+    expect(result.text).toContain("Jane Doe mentioned you in a comment on task Fix login bug.");
+  });
+
+  it("MENTIONED with no parentEntityLabel falls back to the generic subject/body", () => {
+    const result = email("MENTIONED", { actorName: "Jane Doe", commentPreview: "hi" });
+    expect(result.subject).toBe("New notification");
+  });
 });
 
 describe("formatNotificationEmail — INVITATION_ACCEPTED (never sent, but must still degrade safely)", () => {

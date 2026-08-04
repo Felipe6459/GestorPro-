@@ -90,6 +90,18 @@ describe("formatNotification — one happy path per type", () => {
     expect(result.title).toBe("Jane Doe changed invoice INV-042 status");
     expect(result.link).toBeNull();
   });
+
+  it("MENTIONED", () => {
+    const result = notification("MENTIONED", {
+      actorName: "Jane Doe",
+      commentPreview: "Can you take a look at this?",
+      parentEntityType: "PROJECT",
+      parentEntityLabel: "Website Redesign",
+    });
+    expect(result.title).toBe("Jane Doe mentioned you in a comment");
+    expect(result.detail).toBe("Can you take a look at this?");
+    expect(result.link).toBeNull();
+  });
 });
 
 describe("formatNotification — actor/name fallback when actorName is missing", () => {
@@ -119,6 +131,11 @@ describe("formatNotification — actor/name fallback when actorName is missing",
   it("PORTAL_INVITATION_ACCEPTED falls back to 'Someone'", () => {
     const result = notification("PORTAL_INVITATION_ACCEPTED", {});
     expect(result.title).toBe("Someone accepted Client Portal access");
+  });
+
+  it("MENTIONED falls back to 'Someone'", () => {
+    const result = notification("MENTIONED", { parentEntityType: "PROJECT", parentEntityLabel: "Website Redesign" });
+    expect(result.title).toBe("Someone mentioned you in a comment");
   });
 
   it("INVOICE_STATUS_CHANGED falls back to 'Someone' but still needs invoiceNumber", () => {
@@ -246,6 +263,15 @@ describe("formatNotification — link allowlist", () => {
       const result = notification(type, { actorName: "Jane Doe", from: "MEMBER", to: "ADMIN" }, { entityId: null });
       expect(result.link).toBe("/team");
     }
+  });
+
+  it("MENTIONED never gets a link yet, even with an entityId present (docs/comments-architecture.md — no reliable parent id available at this stage)", () => {
+    const result = notification(
+      "MENTIONED",
+      { actorName: "Jane Doe", commentPreview: "hi", parentEntityType: "PROJECT", parentEntityLabel: "Website Redesign" },
+      { entityId: "33333333-3333-3333-3333-333333333333" },
+    );
+    expect(result.link).toBeNull();
   });
 
   it("PORTAL_INVITATION_ACCEPTED never gets a link, even with an entityId present", () => {

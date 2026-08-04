@@ -90,6 +90,29 @@ function buildPortalInvitationAccepted(metadata: Record<string, unknown>): Parti
   };
 }
 
+/**
+ * Comments & Mentions Stage 3. parentEntityLabel/parentEntityType are
+ * required — without them there's no safe way to say what was commented
+ * on, so this degrades to the generic fallback rather than a half sentence
+ * (same discipline as buildInvoiceStatusChanged below).
+ */
+function buildMentioned(metadata: Record<string, unknown>): PartialContent | null {
+  const parentEntityLabel = str(metadata.parentEntityLabel);
+  const parentEntityTypeRaw = str(metadata.parentEntityType);
+  if (!parentEntityLabel || !parentEntityTypeRaw) return null;
+
+  const parentNoun = parentEntityTypeRaw === "TASK" ? "task" : "project";
+  const actorName = str(metadata.actorName) ?? UNKNOWN_ACTOR;
+  const commentPreview = str(metadata.commentPreview);
+
+  return {
+    subject: `${actorName} mentioned you in a comment`,
+    text: `${actorName} mentioned you in a comment on ${parentNoun} ${parentEntityLabel}${
+      commentPreview ? `: "${commentPreview}"` : "."
+    }`,
+  };
+}
+
 /** invoiceNumber is required — with no invoice to name, there's nothing safe to say. */
 function buildInvoiceStatusChanged(metadata: Record<string, unknown>): PartialContent | null {
   const invoiceNumber = str(metadata.invoiceNumber);
@@ -124,6 +147,8 @@ function buildContent(
       return buildPortalInvitationAccepted(metadata);
     case "INVOICE_STATUS_CHANGED":
       return buildInvoiceStatusChanged(metadata);
+    case "MENTIONED":
+      return buildMentioned(metadata);
     // INVITATION_ACCEPTED is a deliberate email non-send (see deliver-
     // notification-email.ts's EMAIL_ALLOWLIST) — never reached in
     // practice, but a safe generic fallback either way, never a throw.

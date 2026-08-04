@@ -326,6 +326,59 @@ function buildPortalUserModel(
   }
 }
 
+// The only parent entity types Comment metadata is ever written for (see
+// CommentEntityType) — anything else in parentEntityType is treated as
+// malformed metadata, not rendered. Same discipline as
+// ATTACHMENT_PARENT_NOUNS above, kept as its own map since Comment's set
+// of valid parents (PROJECT, TASK) differs from Attachment's (CLIENT,
+// PROJECT, INVOICE).
+const COMMENT_PARENT_NOUNS: Record<string, string> = {
+  PROJECT: "project",
+  TASK: "task",
+};
+
+/**
+ * CREATED/UPDATED/DELETED — metadata never carries the full comment body
+ * (only a bounded preview), a raw mention token, or any id (see
+ * src/lib/activity/comment-metadata.ts). The DELETED case renders the same
+ * phrasing whether the actor deleted their own comment or an OWNER/ADMIN
+ * moderation-deleted someone else's — `moderated` is recorded in metadata
+ * for audit purposes but doesn't change the displayed sentence.
+ */
+function buildCommentModel(action: ActivityAction, metadata: Record<string, unknown>): PartialModel {
+  const parentNoun = COMMENT_PARENT_NOUNS[str(metadata.parentEntityType) ?? ""];
+  const parentEntityLabel = str(metadata.parentEntityLabel);
+  if (!parentNoun || !parentEntityLabel) return FALLBACK;
+
+  if (action === "CREATED") {
+    const commentPreview = str(metadata.commentPreview);
+    return {
+      actionLabel: `commented on ${parentNoun} ${parentEntityLabel}`,
+      entityLabel: parentEntityLabel,
+      detailLines: commentPreview ? [commentPreview] : [],
+    };
+  }
+
+  if (action === "UPDATED") {
+    const commentPreview = str(metadata.commentPreview);
+    return {
+      actionLabel: `updated a comment on ${parentNoun} ${parentEntityLabel}`,
+      entityLabel: parentEntityLabel,
+      detailLines: commentPreview ? [commentPreview] : [],
+    };
+  }
+
+  if (action === "DELETED") {
+    return {
+      actionLabel: `deleted a comment from ${parentNoun} ${parentEntityLabel}`,
+      entityLabel: parentEntityLabel,
+      detailLines: [],
+    };
+  }
+
+  return FALLBACK;
+}
+
 function buildModel(
   entityType: ActivityEntityType,
   action: ActivityAction,
@@ -336,6 +389,7 @@ function buildModel(
   if (entityType === "MEMBERSHIP") return buildMembershipModel(action, metadata);
   if (entityType === "ATTACHMENT") return buildAttachmentModel(action, metadata);
   if (entityType === "PORTAL_USER") return buildPortalUserModel(action, metadata);
+  if (entityType === "COMMENT") return buildCommentModel(action, metadata);
   return FALLBACK;
 }
 

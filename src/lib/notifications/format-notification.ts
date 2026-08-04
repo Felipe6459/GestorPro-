@@ -97,6 +97,21 @@ function buildInvoiceStatusChanged(metadata: Record<string, unknown>): PartialMo
   };
 }
 
+/**
+ * Comments & Mentions Stage 3 (docs/comments-architecture.md §5/§6).
+ * commentPreview is already a bounded, whitespace-collapsed plain-text
+ * string (src/lib/comments/preview.ts) — rendered as-is, never re-escaped
+ * or reinterpreted as markup.
+ */
+function buildMentioned(metadata: Record<string, unknown>): PartialModel {
+  const actorName = str(metadata.actorName) ?? UNKNOWN_ACTOR;
+  const commentPreview = str(metadata.commentPreview);
+  return {
+    title: `${actorName} mentioned you in a comment`,
+    detail: commentPreview,
+  };
+}
+
 function buildModel(type: NotificationType, metadata: Record<string, unknown>): PartialModel | null {
   switch (type) {
     case "ROLE_CHANGED":
@@ -111,6 +126,8 @@ function buildModel(type: NotificationType, metadata: Record<string, unknown>): 
       return buildPortalInvitationAccepted(metadata);
     case "INVOICE_STATUS_CHANGED":
       return buildInvoiceStatusChanged(metadata);
+    case "MENTIONED":
+      return buildMentioned(metadata);
     default:
       // Defensive only — NotificationType has no other value today, but a
       // future enum addition without a matching case here must degrade to
@@ -145,6 +162,18 @@ export function resolveNotificationLinkPath(type: NotificationType, entityId: st
       return "/team";
     case "INVOICE_STATUS_CHANGED":
       return entityId ? `/invoices/${entityId}/edit` : null;
+    // Comments & Mentions Stage 3: no link yet, deliberately, same reasoning
+    // as PORTAL_INVITATION_ACCEPTED above. dispatch-notifications.ts (left
+    // untouched this stage) copies the source Activity's own entityType/
+    // entityId onto every Notification row unconditionally — for a
+    // COMMENT/CREATED or COMMENT/UPDATED Activity that's the Comment's own
+    // id, not its parent Project/Task id, and this function only receives
+    // entityId (no entityType) to build a path from. Building a safe
+    // Project/Task link from just a Comment id needs either a lookup at
+    // render time or a schema/dispatch change, neither of which this
+    // backend-only stage makes — left as an explicit open question for the
+    // UI stage rather than guessed at here.
+    case "MENTIONED":
     case "PORTAL_INVITATION_ACCEPTED":
     default:
       return null;
