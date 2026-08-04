@@ -136,6 +136,42 @@ function buildModel(type: NotificationType, metadata: Record<string, unknown>): 
   }
 }
 
+// Comments & Mentions Stage 4 — the two (and only two) parent routes a
+// MENTIONED notification can ever link into, keyed by the exact
+// CommentEntityType string stored in Notification.metadata.parentEntityType
+// (itself copied verbatim from Activity metadata, which src/lib/comments/
+// resolve-target.ts only ever sets to "PROJECT" or "TASK"). Anything else
+// (a malformed/unexpected value) falls through to no link at all.
+const MENTIONED_PARENT_ROUTES: Record<string, string> = {
+  PROJECT: "projects",
+  TASK: "tasks",
+};
+
+/**
+ * Stage 4's deep-link decision: Notification.entityId for a MENTIONED
+ * notification is (and stays) the Comment's own id — copied verbatim by
+ * dispatch-notifications.ts from the source Activity row, which this
+ * change does not touch — so it's exactly what the `#comment-{id}`
+ * fragment needs. The *path* needs the parent Project/Task's own id,
+ * which never lived in Activity.metadata (comment-metadata.ts's own
+ * "never IDs" rule) and instead flows in only through this one
+ * notification's own metadata (parentEntityId — see notification-
+ * metadata.ts's buildMentionedNotificationMetadata for the full
+ * reasoning on why this specific exception is safe). Both
+ * parentEntityType and parentEntityId are validated here — an unexpected
+ * parentEntityType or a missing parentEntityId degrades to no link,
+ * never a guessed or partially-built URL.
+ */
+function resolveMentionedLinkPath(commentId: string | null, metadata: unknown): string | null {
+  if (!commentId) return null;
+  const m = isRecord(metadata) ? metadata : {};
+  const parentEntityId = str(m.parentEntityId);
+  if (!parentEntityId) return null;
+  const routeSegment = MENTIONED_PARENT_ROUTES[str(m.parentEntityType) ?? ""];
+  if (!routeSegment) return null;
+  return `/${routeSegment}/${parentEntityId}/edit#comment-${commentId}`;
+}
+
 /**
  * Allowlisted per type — never built from arbitrary metadata. MEMBERSHIP/
  * INVITATION notifications point at /team (a list page, not a per-id
@@ -145,7 +181,9 @@ function buildModel(type: NotificationType, metadata: Record<string, unknown>): 
  * but this one degrades gracefully instead of needing a live check here.
  * PORTAL_INVITATION_ACCEPTED gets no link: its Notification.metadata only
  * ever carries clientName (a display string), never a clientId, so there is
- * no reliable id to build /clients/[id]/edit from.
+ * no reliable id to build /clients/[id]/edit from. MENTIONED is the one
+ * type whose link needs metadata beyond entityId — see
+ * resolveMentionedLinkPath above.
  *
  * Exported so the email formatter (src/lib/notifications/email/format-
  * notification-email.ts) builds its CTA from this exact same allowlist
@@ -153,7 +191,11 @@ function buildModel(type: NotificationType, metadata: Record<string, unknown>): 
  * two channels rendering it differently (a relative in-app href here, an
  * absolute APP_BASE_URL-prefixed URL there).
  */
-export function resolveNotificationLinkPath(type: NotificationType, entityId: string | null): string | null {
+export function resolveNotificationLinkPath(
+  type: NotificationType,
+  entityId: string | null,
+  metadata?: unknown,
+): string | null {
   switch (type) {
     case "ROLE_CHANGED":
     case "OWNERSHIP_TRANSFERRED":
@@ -162,18 +204,8 @@ export function resolveNotificationLinkPath(type: NotificationType, entityId: st
       return "/team";
     case "INVOICE_STATUS_CHANGED":
       return entityId ? `/invoices/${entityId}/edit` : null;
-    // Comments & Mentions Stage 3: no link yet, deliberately, same reasoning
-    // as PORTAL_INVITATION_ACCEPTED above. dispatch-notifications.ts (left
-    // untouched this stage) copies the source Activity's own entityType/
-    // entityId onto every Notification row unconditionally — for a
-    // COMMENT/CREATED or COMMENT/UPDATED Activity that's the Comment's own
-    // id, not its parent Project/Task id, and this function only receives
-    // entityId (no entityType) to build a path from. Building a safe
-    // Project/Task link from just a Comment id needs either a lookup at
-    // render time or a schema/dispatch change, neither of which this
-    // backend-only stage makes — left as an explicit open question for the
-    // UI stage rather than guessed at here.
     case "MENTIONED":
+      return resolveMentionedLinkPath(entityId, metadata);
     case "PORTAL_INVITATION_ACCEPTED":
     default:
       return null;
@@ -201,6 +233,6 @@ export function formatNotification(input: NotificationFormatInput): Notification
     detail: partial?.detail ?? null,
     timestamp: input.createdAt,
     isUnread: input.readAt === null,
-    link: partial ? resolveNotificationLinkPath(input.type, input.entityId) : null,
+    link: partial ? resolveNotificationLinkPath(input.type, input.entityId, input.metadata) : null,
   };
 }

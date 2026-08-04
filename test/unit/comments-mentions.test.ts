@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMentionTokens, MAX_MENTIONS_PER_COMMENT } from "@/lib/comments/mentions";
+import { parseMentionTokens, buildMentionToken, MAX_MENTIONS_PER_COMMENT } from "@/lib/comments/mentions";
 
 const UUID_A = "3f9e2b41-1234-4abc-9def-0123456789ab";
 const UUID_B = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
@@ -191,4 +191,48 @@ describe("parseMentionTokens — no catastrophic behavior on long/adversarial in
     }
     return out;
   }
+});
+
+describe("buildMentionToken — the composer's own token constructor", () => {
+  const UUID_A = "3f9e2b41-1234-4abc-9def-0123456789ab";
+
+  it("builds a token that the parser recognizes, round-trip", () => {
+    const token = buildMentionToken("Jane Doe", UUID_A);
+    expect(token).toBe(`@[Jane Doe](user:${UUID_A})`);
+    const parsed = parseMentionTokens(token);
+    expect(parsed.mentions).toEqual([
+      { userId: UUID_A, displayName: "Jane Doe", raw: token, start: 0, end: token.length },
+    ]);
+  });
+
+  it("strips a literal ']' from the display name so the token still parses", () => {
+    const token = buildMentionToken("Jane [Doe]", UUID_A);
+    expect(token).not.toContain("]Doe]");
+    const parsed = parseMentionTokens(token);
+    expect(parsed.mentions).toHaveLength(1);
+    expect(parsed.mentions[0].userId).toBe(UUID_A);
+  });
+
+  it("strips newlines from the display name so the token still parses", () => {
+    const token = buildMentionToken("Jane\nDoe", UUID_A);
+    const parsed = parseMentionTokens(token);
+    expect(parsed.mentions).toHaveLength(1);
+  });
+
+  it("truncates a very long display name to the parser's own 100-char cap", () => {
+    const longName = "x".repeat(500);
+    const token = buildMentionToken(longName, UUID_A);
+    const parsed = parseMentionTokens(token);
+    expect(parsed.mentions).toHaveLength(1);
+    expect(parsed.mentions[0].displayName.length).toBeLessThanOrEqual(100);
+  });
+
+  it("falls back to a safe generic name if the display name is empty or only unsafe characters", () => {
+    expect(buildMentionToken("", UUID_A)).toBe(`@[User](user:${UUID_A})`);
+    expect(buildMentionToken("]\n", UUID_A)).toBe(`@[User](user:${UUID_A})`);
+  });
+
+  it("trims surrounding whitespace from the display name", () => {
+    expect(buildMentionToken("  Jane Doe  ", UUID_A)).toBe(`@[Jane Doe](user:${UUID_A})`);
+  });
 });

@@ -26,6 +26,13 @@ import {
  * mentions.ts). For a create, this is every valid mention in the comment;
  * for an edit, only the newly-added ones (src/lib/comments §5/§7) — never
  * removed or unchanged mentions, which must never re-notify.
+ *
+ * parentEntityId (Comments & Mentions Stage 4): the Project/Task id a
+ * MENTIONED comment belongs to — resolveCommentTarget's already-verified
+ * result, never a client-supplied value. Exists solely so MENTIONED's own
+ * buildMetadata can carry it into the Notification's metadata for deep-
+ * linking; deliberately never written to Activity.metadata (see comment-
+ * metadata.ts's own "never IDs" discipline, which this doesn't change).
  */
 export type NotificationContext = {
   affectedUserId?: string;
@@ -33,6 +40,7 @@ export type NotificationContext = {
   previousOwnerId?: string;
   newOwnerId?: string;
   mentionedUserIds?: string[];
+  parentEntityId?: string;
 };
 
 /** The minimal shape dispatchNotificationsForActivity needs from a just-created Activity row. */
@@ -58,7 +66,8 @@ export type NotificationRule = {
     activity: CreatedActivity,
     context: NotificationContext | undefined,
   ) => Promise<string[]>;
-  buildMetadata: (activity: CreatedActivity) => Prisma.InputJsonValue;
+  /** context is optional to implement — every existing rule ignores it; only MENTIONED reads it (for parentEntityId). */
+  buildMetadata: (activity: CreatedActivity, context: NotificationContext | undefined) => Prisma.InputJsonValue;
 };
 
 const ROLE_CHANGED: NotificationRule = {
@@ -133,7 +142,7 @@ const INVOICE_STATUS_CHANGED: NotificationRule = {
 const MENTIONED: NotificationRule = {
   type: "MENTIONED",
   resolveRecipients: async (_tx, _activity, context) => context?.mentionedUserIds ?? [],
-  buildMetadata: (activity) => buildMentionedNotificationMetadata(activity.metadata),
+  buildMetadata: (activity, context) => buildMentionedNotificationMetadata(activity.metadata, context),
 };
 
 /**

@@ -98,3 +98,24 @@ export function parseMentionTokens(body: unknown): ParseMentionTokensResult {
     return EMPTY_RESULT;
   }
 }
+
+/** Same 100-char cap the parser's own capture group enforces (§2 above). */
+const MAX_DISPLAY_NAME_LENGTH = 100;
+const FALLBACK_DISPLAY_NAME = "User";
+
+/**
+ * Comments & Mentions Stage 4 — the composer's mention picker is the only
+ * place a token is ever constructed (never hand-typed by a user), and this
+ * is the one function that builds one. A real `User.name` is otherwise
+ * unconstrained text — nothing stops it from containing a `]` or a
+ * newline, either of which would break `@[Name](user:uuid)`'s own syntax
+ * (a `]` ends the display-name capture early, a newline can't appear in it
+ * at all — see parseMentionTokens' own tests). Stripped here so the
+ * composer can never insert a token its own parser would then fail to
+ * recognize; truncated to the same length the parser's capture group
+ * allows, so nothing this function builds is silently mis-parsed later.
+ */
+export function buildMentionToken(displayName: string, userId: string): string {
+  const sanitized = displayName.replace(/[\]\n]/g, "").trim().slice(0, MAX_DISPLAY_NAME_LENGTH);
+  return `@[${sanitized || FALLBACK_DISPLAY_NAME}](user:${userId})`;
+}

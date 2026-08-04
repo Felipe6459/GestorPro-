@@ -123,7 +123,8 @@ export async function editComment(params: {
         addedMentionCount: added.length,
         removedMentionCount: removed.length,
       }),
-      notificationContext: added.length > 0 ? { mentionedUserIds: added } : undefined,
+      notificationContext:
+        added.length > 0 ? { mentionedUserIds: added, parentEntityId: target.entityId } : undefined,
     });
 
     return {

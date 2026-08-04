@@ -1,10 +1,13 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getCurrentUserOrganization } from "@/lib/current-user";
+import { getCurrentMembership } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { ProjectForm } from "@/components/projects/project-form";
 import { updateProjectAction } from "./actions";
 import { ProjectAttachmentsSection } from "./attachments-section";
+import { CommentsSection } from "@/components/comments/comments-section";
+import { createProjectCommentAction, editProjectCommentAction, deleteProjectCommentAction } from "./comment-actions";
+import { parseSearchParam, type RawSearchParams } from "@/lib/list-params";
 
 function toDateInputValue(date: Date | null): string {
   return date ? date.toISOString().slice(0, 10) : "";
@@ -12,11 +15,14 @@ function toDateInputValue(date: Date | null): string {
 
 export default async function EditProjectPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<RawSearchParams>;
 }) {
   const { id } = await params;
-  const { organizationId } = await getCurrentUserOrganization();
+  const resolvedSearchParams = await searchParams;
+  const { user, organizationId, membership } = await getCurrentMembership();
 
   const [project, clients] = await Promise.all([
     prisma.project.findFirst({
@@ -34,6 +40,8 @@ export default async function EditProjectPage({
   }
 
   const boundUpdateProjectAction = updateProjectAction.bind(null, project.id);
+  const commentsCursor = parseSearchParam(resolvedSearchParams.commentsCursor) || undefined;
+  const isModerator = membership.role === "OWNER" || membership.role === "ADMIN";
 
   return (
     <div className="mx-auto max-w-xl">
@@ -63,6 +71,20 @@ export default async function EditProjectPage({
           pendingLabel="Saving…"
         />
         <ProjectAttachmentsSection projectId={project.id} organizationId={organizationId} />
+        <CommentsSection
+          entityType="PROJECT"
+          entityId={project.id}
+          organizationId={organizationId}
+          currentUserId={user.id}
+          isModerator={isModerator}
+          parentLabel="project"
+          basePath={`/projects/${project.id}/edit`}
+          cursorParam="commentsCursor"
+          cursor={commentsCursor}
+          createAction={createProjectCommentAction.bind(null, project.id)}
+          makeEditAction={(commentId) => editProjectCommentAction.bind(null, project.id, commentId)}
+          makeDeleteAction={(commentId) => deleteProjectCommentAction.bind(null, project.id, commentId)}
+        />
       </div>
     </div>
   );

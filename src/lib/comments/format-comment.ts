@@ -70,6 +70,15 @@ export type CommentViewModel = {
   /** Empty for a deleted comment — its body is never rendered, only the placeholder above. */
   segments: CommentTextSegment[];
   placeholder: string | null;
+  /**
+   * Comments & Mentions Stage 4: the exact stored body, mention tokens
+   * intact — needed only to pre-fill the edit composer's textarea (§7:
+   * "mention tokens included verbatim — the raw stored form, not the
+   * rendered @Name tags"). Deliberately `null` for a deleted comment (it's
+   * never editable, so there's nothing safe to prefill, and its body must
+   * never be exposed at all, matching `segments`/`placeholder` above).
+   */
+  rawBody: string | null;
 };
 
 export type CommentViewModelInput = {
@@ -106,5 +115,34 @@ export function formatCommentViewModel(comment: CommentViewModelInput): CommentV
     editedAt: comment.editedAt,
     segments: isDeleted ? [] : splitBodyIntoSegments(comment.body, validMentionUserIds),
     placeholder: isDeleted ? DELETED_BODY_PLACEHOLDER : null,
+    rawBody: isDeleted ? null : comment.body,
   };
+}
+
+export type CommentPermissions = {
+  canEdit: boolean;
+  canDelete: boolean;
+};
+
+/**
+ * Comments & Mentions Stage 4 (docs/comments-architecture.md §4) — a pure
+ * mirror of the actual backend rule (src/lib/comments/edit-comment.ts /
+ * delete-comment.ts), used only to decide whether to *render* an Edit/
+ * Delete affordance at all. This is never the real permission boundary —
+ * hiding a button here changes nothing about what the Server Action
+ * itself allows; it only avoids showing a control that would just be
+ * rejected server-side anyway. Edit is author-only, no role ever
+ * overrides that (not even OWNER/ADMIN — moderation is delete-only).
+ * Delete is author-or-moderator; a deleted comment gets neither.
+ */
+export function resolveCommentPermissions(
+  comment: Pick<CommentViewModel, "authorId" | "isDeleted">,
+  currentUserId: string,
+  isModerator: boolean,
+): CommentPermissions {
+  if (comment.isDeleted) {
+    return { canEdit: false, canDelete: false };
+  }
+  const isAuthor = comment.authorId === currentUserId;
+  return { canEdit: isAuthor, canDelete: isAuthor || isModerator };
 }

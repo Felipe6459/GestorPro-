@@ -111,7 +111,9 @@ export async function createCommentForEntity(params: {
         mentionCount: validMentionedUserIds.length,
       }),
       notificationContext:
-        validMentionedUserIds.length > 0 ? { mentionedUserIds: validMentionedUserIds } : undefined,
+        validMentionedUserIds.length > 0
+          ? { mentionedUserIds: validMentionedUserIds, parentEntityId: target.entityId }
+          : undefined,
     });
 
     return { status: "created" as const, commentId: comment.id, notificationIds: activity.notificationIds };

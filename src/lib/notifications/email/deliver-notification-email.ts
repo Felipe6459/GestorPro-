@@ -291,7 +291,7 @@ export async function deliverNotificationEmails(
 
     summary.attempted += 1;
 
-    const linkPath = resolveNotificationLinkPath(notification.type, notification.entityId);
+    const linkPath = resolveNotificationLinkPath(notification.type, notification.entityId, notification.metadata);
     const ctaUrl = `${getAppBaseUrl()}${linkPath ?? "/notifications"}`;
     const content = formatNotificationEmail({
       type: notification.type,

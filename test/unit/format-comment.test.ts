@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { splitBodyIntoSegments, formatCommentViewModel } from "@/lib/comments/format-comment";
+import { splitBodyIntoSegments, formatCommentViewModel, resolveCommentPermissions } from "@/lib/comments/format-comment";
 import { FIXED_NOW } from "../support/fixtures";
 
 const UUID_A = "3f9e2b41-1234-4abc-9def-0123456789ab";
@@ -110,5 +110,45 @@ describe("formatCommentViewModel", () => {
 
   it("never throws on malformed body content", () => {
     expect(() => formatCommentViewModel({ ...baseInput, body: "@[".repeat(5000) })).not.toThrow();
+  });
+
+  it("rawBody carries the exact stored body, mention tokens intact, for a non-deleted comment", () => {
+    const body = `Hey @[Jane Doe](user:${UUID_A})`;
+    const result = formatCommentViewModel({ ...baseInput, body, mentions: [{ userId: UUID_A }] });
+    expect(result.rawBody).toBe(body);
+  });
+
+  it("rawBody is null for a deleted comment — its body is never exposed at all", () => {
+    const result = formatCommentViewModel({ ...baseInput, deletedAt: FIXED_NOW, body: "something regrettable" });
+    expect(result.rawBody).toBeNull();
+  });
+});
+
+describe("resolveCommentPermissions", () => {
+  const authorComment = { authorId: "user-1", isDeleted: false };
+
+  it("the author can edit and delete their own comment, regardless of role", () => {
+    expect(resolveCommentPermissions(authorComment, "user-1", false)).toEqual({ canEdit: true, canDelete: true });
+    expect(resolveCommentPermissions(authorComment, "user-1", true)).toEqual({ canEdit: true, canDelete: true });
+  });
+
+  it("a plain MEMBER (non-author, non-moderator) can neither edit nor delete someone else's comment", () => {
+    expect(resolveCommentPermissions(authorComment, "user-2", false)).toEqual({ canEdit: false, canDelete: false });
+  });
+
+  it("OWNER/ADMIN (isModerator=true) can delete but never edit someone else's comment", () => {
+    expect(resolveCommentPermissions(authorComment, "user-2", true)).toEqual({ canEdit: false, canDelete: true });
+  });
+
+  it("a deleted comment grants neither permission, even to its own author or a moderator", () => {
+    const deletedComment = { authorId: "user-1", isDeleted: true };
+    expect(resolveCommentPermissions(deletedComment, "user-1", false)).toEqual({ canEdit: false, canDelete: false });
+    expect(resolveCommentPermissions(deletedComment, "user-2", true)).toEqual({ canEdit: false, canDelete: false });
+  });
+
+  it("an authorless (author-deleted) comment can still be moderation-deleted but never edited by anyone", () => {
+    const authorlessComment = { authorId: null, isDeleted: false };
+    expect(resolveCommentPermissions(authorlessComment, "user-2", true)).toEqual({ canEdit: false, canDelete: true });
+    expect(resolveCommentPermissions(authorlessComment, "user-2", false)).toEqual({ canEdit: false, canDelete: false });
   });
 });
