@@ -1,26 +1,67 @@
 import { describe, expect, it } from "vitest";
 import { isSearchShortcut, isEditableTarget, shouldHandleSearchShortcut } from "@/lib/search-ui/shortcut";
 
+const NO_SHIFT_ALT = { shiftKey: false, altKey: false };
+
 describe("isSearchShortcut", () => {
   it("recognizes Cmd+K (macOS)", () => {
-    expect(isSearchShortcut({ key: "k", metaKey: true, ctrlKey: false })).toBe(true);
+    expect(isSearchShortcut({ key: "k", metaKey: true, ctrlKey: false, ...NO_SHIFT_ALT })).toBe(true);
   });
 
   it("recognizes Ctrl+K (Windows/Linux)", () => {
-    expect(isSearchShortcut({ key: "k", metaKey: false, ctrlKey: true })).toBe(true);
+    expect(isSearchShortcut({ key: "k", metaKey: false, ctrlKey: true, ...NO_SHIFT_ALT })).toBe(true);
   });
 
-  it("is case-insensitive on the key itself (Shift+K reports 'K')", () => {
-    expect(isSearchShortcut({ key: "K", metaKey: true, ctrlKey: false })).toBe(true);
+  it("is case-insensitive on the key itself, independent of modifier state (a real Shift+K keypress reports key: 'K')", () => {
+    expect(isSearchShortcut({ key: "K", metaKey: true, ctrlKey: false, ...NO_SHIFT_ALT })).toBe(true);
   });
 
   it("is not triggered by K alone, with neither modifier", () => {
-    expect(isSearchShortcut({ key: "k", metaKey: false, ctrlKey: false })).toBe(false);
+    expect(isSearchShortcut({ key: "k", metaKey: false, ctrlKey: false, ...NO_SHIFT_ALT })).toBe(false);
   });
 
   it("is not triggered by Cmd/Ctrl plus a different key", () => {
-    expect(isSearchShortcut({ key: "p", metaKey: true, ctrlKey: false })).toBe(false);
-    expect(isSearchShortcut({ key: "j", metaKey: false, ctrlKey: true })).toBe(false);
+    expect(isSearchShortcut({ key: "p", metaKey: true, ctrlKey: false, ...NO_SHIFT_ALT })).toBe(false);
+    expect(isSearchShortcut({ key: "j", metaKey: false, ctrlKey: true, ...NO_SHIFT_ALT })).toBe(false);
+  });
+});
+
+describe("isSearchShortcut — Shift/Alt modifier guard", () => {
+  it("Cmd+Shift+K is excluded (shadows real OS/browser bindings elsewhere)", () => {
+    expect(isSearchShortcut({ key: "K", metaKey: true, ctrlKey: false, shiftKey: true, altKey: false })).toBe(false);
+  });
+
+  it("Ctrl+Shift+K is excluded", () => {
+    expect(isSearchShortcut({ key: "K", metaKey: false, ctrlKey: true, shiftKey: true, altKey: false })).toBe(false);
+  });
+
+  it("Cmd+Alt+K is excluded", () => {
+    expect(isSearchShortcut({ key: "k", metaKey: true, ctrlKey: false, shiftKey: false, altKey: true })).toBe(false);
+  });
+
+  it("Ctrl+Alt+K is excluded", () => {
+    expect(isSearchShortcut({ key: "k", metaKey: false, ctrlKey: true, shiftKey: false, altKey: true })).toBe(false);
+  });
+
+  it("Cmd+Shift+Alt+K is excluded (both extra modifiers held at once)", () => {
+    expect(isSearchShortcut({ key: "k", metaKey: true, ctrlKey: false, shiftKey: true, altKey: true })).toBe(false);
+  });
+
+  it("Ctrl+Shift+Alt+K is excluded", () => {
+    expect(isSearchShortcut({ key: "k", metaKey: false, ctrlKey: true, shiftKey: true, altKey: true })).toBe(false);
+  });
+
+  it("Shift+K alone (no Cmd/Ctrl) is excluded, same as any other unmodified-by-Cmd/Ctrl key", () => {
+    expect(isSearchShortcut({ key: "K", metaKey: false, ctrlKey: false, shiftKey: true, altKey: false })).toBe(false);
+  });
+
+  it("Alt+K alone (no Cmd/Ctrl) is excluded", () => {
+    expect(isSearchShortcut({ key: "k", metaKey: false, ctrlKey: false, shiftKey: false, altKey: true })).toBe(false);
+  });
+
+  it("still recognizes plain Cmd+K and Ctrl+K once Shift/Alt are explicitly false", () => {
+    expect(isSearchShortcut({ key: "k", metaKey: true, ctrlKey: false, shiftKey: false, altKey: false })).toBe(true);
+    expect(isSearchShortcut({ key: "k", metaKey: false, ctrlKey: true, shiftKey: false, altKey: false })).toBe(true);
   });
 });
 

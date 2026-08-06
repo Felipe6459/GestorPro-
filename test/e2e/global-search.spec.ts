@@ -366,6 +366,95 @@ test.describe("States", () => {
   });
 });
 
+test.describe("Race conditions", () => {
+  test("an out-of-order response never overwrites the UI with stale results — proves the requestId staleness guard specifically, independent of AbortController", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
+    await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+
+    // Neutralizes AbortController.abort() for this page only. Without
+    // this, use-global-search.ts's own call to abortControllerRef.current
+    // ?.abort() when query B starts would genuinely cancel query A's
+    // still-in-flight fetch at the browser network level — its promise
+    // would reject with AbortError almost immediately, and the *later*
+    // release of the delayed response below would just be fulfilling an
+    // already-dead request. That would only prove the browser's own abort
+    // machinery works, not this hook's own requestId staleness check
+    // (use-global-search.ts: `if (requestIdRef.current !== thisRequestId)
+    // return;`) — the belt-and-suspenders guard this test exists to
+    // verify in isolation, exactly as the hook's own comment names
+    // ("even if something in the fetch chain ... doesn't fully honor
+    // abort()"). With abort() neutralized, both requests genuinely race
+    // to completion and only the requestId check can save the UI.
+    await page.addInitScript(() => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).AbortController.prototype.abort = function () {};
+    });
+
+    await gotoAndSettle(page, `${baseURL}/dashboard`);
+    await openSearch(page);
+
+    const queryA = fixtures.clientA.name; // "Test Client A" — a Client result
+    const queryB = fixtures.project.name; // "Test Project" — a Project result, unambiguously distinct
+
+    let releaseA: () => void = () => {};
+    const aReleased = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    let aRequestSeen = false;
+
+    await page.route("**/api/search**", async (route) => {
+      const q = new URL(route.request().url()).searchParams.get("q") ?? "";
+      if (q === queryA) {
+        aRequestSeen = true;
+        // Blocks here until the test explicitly releases it, well after
+        // query B's own response has already landed below.
+        await aReleased;
+        await route.continue();
+      } else {
+        await route.continue();
+      }
+    });
+
+    await searchInput(page).fill(queryA);
+    // Waits for query A's debounced request to genuinely be in flight
+    // (not merely scheduled) before query B is typed — otherwise the two
+    // requests wouldn't actually overlap.
+    await expect.poll(() => aRequestSeen, { timeout: 5000 }).toBe(true);
+
+    await searchInput(page).fill(queryB);
+
+    const projectGroup = page.getByRole("group", { name: "Projects" });
+    await expect(projectGroup.getByRole("option", { name: new RegExp(queryB) })).toBeVisible();
+    // Scoped to the Clients group specifically, not a bare option-name
+    // search across the whole listbox — a Project's own subtitle shows
+    // its Client's name (see search-result-item.tsx), so an unscoped
+    // getByRole("option", { name: /Test Client A/ }) would also match the
+    // Project option rendered for query B and produce a false negative.
+    await expect(page.getByRole("group", { name: "Clients" })).toHaveCount(0);
+
+    // Now release query A's response — reversed order: requested first,
+    // resolved last, arriving well after query B already rendered.
+    releaseA();
+    // Gives the late response a real window to (wrongly) apply if the
+    // requestId guard were broken, rather than asserting immediately.
+    await page.waitForTimeout(500);
+
+    await expect(projectGroup.getByRole("option", { name: new RegExp(queryB) })).toBeVisible();
+    // Scoped to the Clients group specifically, not a bare option-name
+    // search across the whole listbox — a Project's own subtitle shows
+    // its Client's name (see search-result-item.tsx), so an unscoped
+    // getByRole("option", { name: /Test Client A/ }) would also match the
+    // Project option rendered for query B and produce a false negative.
+    await expect(page.getByRole("group", { name: "Clients" })).toHaveCount(0);
+    await expect(searchInput(page)).toHaveValue(queryB);
+
+    await page.unroute("**/api/search**");
+  });
+});
+
 test.describe("Accessibility — combobox ARIA state", () => {
   test("idle: aria-expanded is false and aria-controls/aria-activedescendant are absent", async ({
     context,

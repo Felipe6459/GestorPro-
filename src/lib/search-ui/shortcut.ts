@@ -9,11 +9,28 @@
  * site either.
  */
 
-export type ShortcutKeyEvent = { key: string; metaKey: boolean; ctrlKey: boolean };
+export type ShortcutKeyEvent = {
+  key: string;
+  metaKey: boolean;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+};
 
-/** True for either Cmd+K (macOS) or Ctrl+K (Windows/Linux) — never both required at once. */
+/**
+ * True for exactly Cmd+K (macOS) or Ctrl+K (Windows/Linux) — never both
+ * required at once. Shift or Alt held alongside either modifier is
+ * deliberately excluded: Cmd+Shift+K/Ctrl+Shift+K and Cmd+Alt+K/Ctrl+Alt+K
+ * are real OS/browser bindings elsewhere (e.g. "reopen closed tab",
+ * DevTools panels) this shortcut must never shadow.
+ */
 export function isSearchShortcut(event: ShortcutKeyEvent): boolean {
-  return (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
+  return (
+    (event.metaKey || event.ctrlKey) &&
+    !event.shiftKey &&
+    !event.altKey &&
+    event.key.toLowerCase() === "k"
+  );
 }
 
 export type EditableTargetLike = { tagName?: string; isContentEditable?: boolean } | null | undefined;
