@@ -21,11 +21,19 @@ export type SearchDialogHandle = {
  *
  * `useGlobalSearch`'s state is reset on every close (`onClose`, the native
  * `close` DOM event React exposes for `<dialog>`) — whether the user
- * pressed Escape, clicked the backdrop, selected a result, or the
- * organization changed underneath it (see global-search.tsx's own
- * remount-on-org-change note) — so a re-opened dialog always starts from
- * the neutral empty state, never a stale query or stale result set from
- * whatever was last searched.
+ * pressed Escape, clicked the backdrop, or selected a result — so a
+ * re-opened dialog always starts from the neutral empty state, never a
+ * stale query or stale result set from whatever was last searched.
+ *
+ * A switch to a different organization is handled independently of that:
+ * `<dialog>` is modal (`showModal()`), which makes the rest of the document
+ * — including the organization switcher — inert while this is open, so an
+ * org switch cannot even begin mid-search. As defense-in-depth against that
+ * assumption ever changing, header.tsx also mounts `<GlobalSearch
+ * key={activeOrganizationId}>` — React fully unmounts and remounts this
+ * whole subtree (discarding all `useGlobalSearch` state) whenever the
+ * active organization id changes, independent of whether the dialog
+ * happened to be open at the time.
  */
 export function SearchDialog({ ref }: { ref?: Ref<SearchDialogHandle> }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -78,6 +86,10 @@ export function SearchDialog({ ref }: { ref?: Ref<SearchDialogHandle> }) {
 
   const activeResult = state.flatResults[state.activeIndex];
   const activeDescendantId = activeResult ? `global-search-option-${activeResult.flatIndex}` : undefined;
+  // Matches search-results.tsx's own condition for rendering the
+  // `id={listboxId}` element exactly — the single source of truth for
+  // whether a listbox actually exists in the DOM right now.
+  const hasListbox = state.flatResults.length > 0;
 
   return (
     <dialog
@@ -101,6 +113,7 @@ export function SearchDialog({ ref }: { ref?: Ref<SearchDialogHandle> }) {
         onKeyDown={handleKeyDown}
         isLoading={state.phase === "loading"}
         listboxId={listboxId}
+        hasListbox={hasListbox}
         activeDescendantId={activeDescendantId}
       />
       <SearchResults

@@ -18,6 +18,15 @@ import { SearchIcon, SpinnerIcon } from "@/components/ui/icons";
  * focus never leaves this input (see search-result-item.tsx's own
  * `tabIndex={-1}`), so `aria-activedescendant` is the sole mechanism that
  * tells assistive tech which result is "active."
+ *
+ * `aria-expanded`/`aria-controls` are driven by `hasListbox`, which the
+ * caller (search-dialog.tsx) computes from the exact same condition
+ * search-results.tsx uses to decide whether it renders the `id={listboxId}`
+ * element at all (`state.flatResults.length > 0`). Idle/loading-with-
+ * nothing-cached/no-results/error/rate-limited/unauthorized never render
+ * that element, so asserting `aria-expanded="true"` or pointing
+ * `aria-controls` at it in those states would be a broken ARIA reference —
+ * semantics must never claim a popup exists when it doesn't.
  */
 export function SearchInput({
   inputRef,
@@ -26,6 +35,7 @@ export function SearchInput({
   onKeyDown,
   isLoading,
   listboxId,
+  hasListbox,
   activeDescendantId,
 }: {
   inputRef: Ref<HTMLInputElement>;
@@ -34,6 +44,7 @@ export function SearchInput({
   onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
   isLoading: boolean;
   listboxId: string;
+  hasListbox: boolean;
   activeDescendantId: string | undefined;
 }) {
   return (
@@ -47,8 +58,8 @@ export function SearchInput({
         ref={inputRef}
         type="search"
         role="combobox"
-        aria-expanded="true"
-        aria-controls={listboxId}
+        aria-expanded={hasListbox}
+        aria-controls={hasListbox ? listboxId : undefined}
         aria-activedescendant={activeDescendantId}
         aria-autocomplete="list"
         aria-label="Search"

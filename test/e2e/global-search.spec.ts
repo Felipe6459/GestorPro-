@@ -67,6 +67,18 @@ let fixtures: TestFixtures;
 
 test.beforeAll(async () => {
   fixtures = await seedE2EFixtures();
+  // The "real org switch" test below needs a user who is genuinely a
+  // member of both seeded orgs — every fixture user from seedTestData()
+  // belongs to exactly one org by design (see test/fixtures/seed.ts), so
+  // the real OrganizationSwitcher would otherwise render as a plain,
+  // non-interactive label (organizations.length === 1) and there would be
+  // nothing to click. Scoped to this file only, not seed.ts itself, so no
+  // other spec file's assumption about `owner`'s single-org membership
+  // changes; cascade-deleted automatically when cleanupTestData() below
+  // deletes orgB.
+  await dbQuery("membership", "create", {
+    data: { userId: fixtures.owner.id, organizationId: fixtures.orgB.id, role: "MEMBER" },
+  });
 });
 
 test.afterEach(async () => {
@@ -354,6 +366,117 @@ test.describe("States", () => {
   });
 });
 
+test.describe("Accessibility — combobox ARIA state", () => {
+  test("idle: aria-expanded is false and aria-controls/aria-activedescendant are absent", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
+    await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    await gotoAndSettle(page, `${baseURL}/dashboard`);
+    await openSearch(page);
+
+    await expect(searchInput(page)).toHaveAttribute("aria-expanded", "false");
+    expect(await searchInput(page).getAttribute("aria-controls")).toBeNull();
+    expect(await searchInput(page).getAttribute("aria-activedescendant")).toBeNull();
+  });
+
+  test("loading with nothing cached yet: aria-expanded stays false and no listbox exists in the DOM", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
+    await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    await gotoAndSettle(page, `${baseURL}/dashboard`);
+
+    await page.route("**/api/search**", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      await route.continue();
+    });
+
+    await openSearch(page);
+    await searchInput(page).fill(fixtures.clientA.name);
+    await expect(page.locator("svg.animate-spin")).toBeVisible({ timeout: 5000 });
+
+    await expect(searchInput(page)).toHaveAttribute("aria-expanded", "false");
+    expect(await searchInput(page).getAttribute("aria-controls")).toBeNull();
+    await expect(page.getByRole("listbox")).toHaveCount(0);
+
+    await page.unroute("**/api/search**");
+  });
+
+  test("results: aria-expanded is true, aria-controls points at the real listbox, and aria-activedescendant tracks the active option", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
+    await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    await gotoAndSettle(page, `${baseURL}/dashboard`);
+    await search(page, fixtures.clientA.name);
+
+    const clientGroup = page.getByRole("group", { name: "Clients" });
+    await expect(clientGroup.getByRole("option", { name: new RegExp(fixtures.clientA.name) })).toBeVisible();
+
+    await expect(searchInput(page)).toHaveAttribute("aria-expanded", "true");
+
+    const controlsId = await searchInput(page).getAttribute("aria-controls");
+    expect(controlsId).toBeTruthy();
+    // Attribute-selector form, not `#id` — React's useId() output (e.g.
+    // `:r3:`) contains characters that are not valid unescaped in a CSS id
+    // selector.
+    await expect(page.locator(`[id="${controlsId}"]`)).toHaveAttribute("role", "listbox");
+
+    const activeDescendantId = await searchInput(page).getAttribute("aria-activedescendant");
+    expect(activeDescendantId).toBeTruthy();
+    const activeOption = page.locator(`[id="${activeDescendantId}"]`);
+    await expect(activeOption).toHaveAttribute("role", "option");
+    await expect(activeOption).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("no results: aria-expanded is false and aria-controls is absent", async ({ context, baseURL, page }) => {
+    await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    await gotoAndSettle(page, `${baseURL}/dashboard`);
+    await search(page, "zzz-definitely-no-match-zzz");
+    await expect(page.getByText("No results found.").first()).toBeVisible();
+
+    await expect(searchInput(page)).toHaveAttribute("aria-expanded", "false");
+    expect(await searchInput(page).getAttribute("aria-controls")).toBeNull();
+    expect(await searchInput(page).getAttribute("aria-activedescendant")).toBeNull();
+  });
+
+  test("error: aria-expanded is false and aria-controls is absent", async ({ context, baseURL, page }) => {
+    await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    await gotoAndSettle(page, `${baseURL}/dashboard`);
+
+    await page.route("**/api/search**", (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "boom" }),
+      }),
+    );
+
+    await search(page, "anything");
+    await expect(page.getByText("Something went wrong. Please try again.").first()).toBeVisible();
+
+    await expect(searchInput(page)).toHaveAttribute("aria-expanded", "false");
+    expect(await searchInput(page).getAttribute("aria-controls")).toBeNull();
+
+    await page.unroute("**/api/search**");
+  });
+
+  test("closed dialog: the combobox is removed from the accessibility tree entirely", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
+    await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    await gotoAndSettle(page, `${baseURL}/dashboard`);
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await expect(searchInput(page)).toBeHidden();
+  });
+});
+
 test.describe("Security / isolation", () => {
   test("org A's data is never visible while searching from an org B session", async ({ context, baseURL, page }) => {
     await actAsMember(context, baseURL!, fixtures.orgBOwner, fixtures.orgB.id);
@@ -363,25 +486,76 @@ test.describe("Security / isolation", () => {
     await expect(page.getByText(fixtures.clientA.name)).toHaveCount(0);
   });
 
-  test("switching the active organization clears any stale results", async ({ context, baseURL, page }) => {
+  test("the search dialog blocks interaction with the organization switcher while open", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
+    await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    await gotoAndSettle(page, `${baseURL}/dashboard`);
+    await openSearch(page);
+
+    // This is the actual mechanism that makes an org switch impossible
+    // mid-search: showModal() makes the rest of the document — including
+    // the switcher — inert, so a click at its coordinates never reaches
+    // it. A bounded timeout keeps this fast instead of waiting out
+    // Playwright's full default actionability timeout; the click is
+    // expected to never become actionable.
+    const switcherSummary = page.locator("summary", { hasText: "Test Org A" });
+    await switcherSummary.click({ timeout: 2000 }).catch(() => {});
+
+    await expect(page.getByRole("button", { name: /Test Org B/ })).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(searchInput(page)).toBeFocused();
+  });
+
+  test("switching the active organization via the real switcher UI clears stale search state", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
     await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
     await gotoAndSettle(page, `${baseURL}/dashboard`);
     await search(page, fixtures.clientA.name);
     const clientGroup = page.getByRole("group", { name: "Clients" });
     await expect(clientGroup.getByRole("option", { name: new RegExp(fixtures.clientA.name) })).toBeVisible();
+    // The dialog must be closed before the switcher is reachable at all
+    // (see the modal-blocking test above) — this is the real precondition
+    // a user would hit, not a shortcut around it. Two Escape presses,
+    // deliberately: `<input type="search">`'s own native "clear on
+    // Escape" behavior consumes the first one (clearing the query, not
+    // closing anything) whenever the field has text — only a second
+    // Escape then reaches the dialog's own cancel/close handling.
     await page.keyboard.press("Escape");
+    if (await page.getByRole("dialog").isVisible()) {
+      await page.keyboard.press("Escape");
+    }
+    await expect(page.getByRole("dialog")).toBeHidden();
 
-    // Simulate a real organization switch: the actual OrganizationSwitcher
-    // writes this same cookie and redirects, which fully reloads (and
-    // therefore remounts) the Header — this reproduces exactly that end
-    // state without depending on a second, unrelated org existing to
-    // switch to via the real UI control.
-    await setActiveOrg(context, baseURL!, fixtures.orgB.id);
-    await gotoAndSettle(page, `${baseURL}/dashboard`);
+    // Drives the real OrganizationSwitcher control end-to-end: opens the
+    // <details> disclosure, clicks the target org's button, which invokes
+    // switchOrganizationAction (a real Server Action) and follows its
+    // redirect() — the exact code path a production user takes, not a
+    // simulated cookie write + hard page.goto().
+    await page.locator("summary", { hasText: "Test Org A" }).click();
+    await page.getByRole("button", { name: /Test Org B/ }).click();
+    await expect(page.locator("summary", { hasText: "Test Org B" })).toBeVisible();
+    await expect(page).toHaveURL(/\/dashboard/);
 
     await openSearch(page);
     await expect(searchInput(page)).toHaveValue("");
     await expect(page.getByRole("option")).toHaveCount(0);
+
+    // A fresh search after the switch only ever sees org B's own data —
+    // confirms the reset isn't merely cosmetic (stale org A results
+    // couldn't resurface) and that the new session is correctly scoped.
+    // The dialog from openSearch() above is already open, so this fills
+    // the existing input directly rather than calling search() (which
+    // would re-click the trigger — blocked by the dialog's own modal
+    // backdrop, exactly as the "blocks interaction" test above proves).
+    await searchInput(page).fill(fixtures.clientA.name);
+    await expect(page.getByText("No results found.").first()).toBeVisible();
+    await expect(page.getByText(fixtures.clientA.name)).toHaveCount(0);
   });
 
   test("a Client Portal identity has no search trigger anywhere in the portal", async ({ context, baseURL, page }) => {

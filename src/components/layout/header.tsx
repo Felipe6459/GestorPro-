@@ -15,11 +15,21 @@ export function Header({
   unreadNotificationCount: number;
   recentNotifications: NotificationBellItem[];
 }) {
+  const activeOrganizationId = organizations.find((org) => org.isActive)?.organizationId;
+
   return (
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-6 py-4">
       <OrganizationSwitcher organizations={organizations} action={switchOrganizationAction} />
       <div className="flex items-center gap-4">
-        <GlobalSearch />
+        {/*
+          key={activeOrganizationId} forces React to fully unmount and
+          remount GlobalSearch (discarding its search state) whenever the
+          active organization changes — defense-in-depth alongside the
+          search dialog's own modal-blocking (see search-dialog.tsx). No
+          new prop/fetch needed: `organizations` (already server-resolved
+          in (dashboard)/layout.tsx) already carries the active org's id.
+        */}
+        <GlobalSearch key={activeOrganizationId} />
         <NotificationBell
           initialUnreadCount={unreadNotificationCount}
           initialNotifications={recentNotifications}

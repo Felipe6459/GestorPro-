@@ -41,21 +41,23 @@ export function flatResultKey(result: Pick<FlatSearchResult, "type" | "id">): st
 export type FlatResultGroup = { type: SearchResultGroup["type"]; items: FlatSearchResult[] };
 
 /**
- * Same flattening as `flattenSearchGroups`, but re-bucketed back into
- * per-type sections with the correct *global* `flatIndex` already attached
- * to each item — lets a rendering component (search-results.tsx) render
- * one section per group with no offset bookkeeping of its own. All
- * index-tracking mutation is contained to this one function's own local
- * scope, never leaked into a component's render body.
+ * Re-buckets `flattenSearchGroups`'s own output back into per-type
+ * sections — lets a rendering component (search-results.tsx) render one
+ * section per group with no offset bookkeeping of its own. Deliberately
+ * built on top of `flattenSearchGroups` rather than a second, independent
+ * index-walk: `flatIndex` assignment has exactly one implementation, so a
+ * flat item's index (used for keyboard navigation) and a grouped item's
+ * index (used for rendering `id`/`aria-activedescendant`) can never drift
+ * apart. Slicing by `group.items.length` is safe because
+ * `flattenSearchGroups` visits groups/items in the same order this `map`
+ * does.
  */
 export function groupFlatResults(groups: readonly SearchResultGroup[]): FlatResultGroup[] {
-  let index = 0;
+  const flat = flattenSearchGroups(groups);
+  let cursor = 0;
   return groups.map((group) => {
-    const items = group.items.map((item) => {
-      const flatItem: FlatSearchResult = { ...item, flatIndex: index };
-      index += 1;
-      return flatItem;
-    });
+    const items = flat.slice(cursor, cursor + group.items.length);
+    cursor += group.items.length;
     return { type: group.type, items };
   });
 }

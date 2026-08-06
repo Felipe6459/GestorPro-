@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
+import { useMemo, type ReactNode, type RefObject } from "react";
 import { SearchResultGroupSection } from "./search-result-group";
 import { SEARCH_UNAUTHORIZED_MESSAGE, SEARCH_GENERIC_ERROR_MESSAGE } from "@/lib/search-ui/response-mapping";
 import { groupFlatResults } from "@/lib/search-ui/flatten-results";
@@ -31,8 +31,13 @@ export function SearchResults({
   itemRefs: RefObject<Map<number, HTMLAnchorElement | null>>;
 }) {
   const totalResults = state.flatResults.length;
+  // Memoized on `state.groups` specifically (not `state` as a whole) so a
+  // re-render caused only by `activeIndex` changing (every ArrowUp/
+  // ArrowDown keystroke) reuses the same grouped array instead of
+  // re-walking the result set on every keystroke.
+  const groupedResults = useMemo(() => groupFlatResults(state.groups), [state.groups]);
   let liveMessage = "";
-  let body: React.ReactNode;
+  let body: ReactNode;
 
   if (state.phase === "idle") {
     body = (
@@ -54,7 +59,7 @@ export function SearchResults({
     // query's request is still in flight but the previous result set is
     // still the most recent thing we actually know.
     liveMessage = `${totalResults} result${totalResults === 1 ? "" : "s"}`;
-    const sections = groupFlatResults(state.groups).map((group) => (
+    const sections = groupedResults.map((group) => (
       <SearchResultGroupSection
         key={group.type}
         type={group.type}

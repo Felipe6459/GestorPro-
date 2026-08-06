@@ -73,6 +73,33 @@ describe("groupFlatResults", () => {
   });
 });
 
+describe("groupFlatResults — single source of truth with flattenSearchGroups", () => {
+  it("its items, concatenated in group order, are exactly flattenSearchGroups's own output — same flatIndex per item, no duplicates, no drift between the two derivations", () => {
+    const groups: SearchResultGroup[] = [
+      { type: "CLIENT", items: [makeResult("CLIENT", "c1"), makeResult("CLIENT", "c2")] },
+      { type: "PROJECT", items: [] },
+      { type: "TASK", items: [makeResult("TASK", "t1")] },
+      { type: "INVOICE", items: [makeResult("INVOICE", "i1"), makeResult("INVOICE", "i2")] },
+      { type: "COMMENT", items: [makeResult("COMMENT", "cm1")] },
+    ];
+
+    const flat = flattenSearchGroups(groups);
+    const grouped = groupFlatResults(groups);
+    const reflattened = grouped.flatMap((group) => group.items);
+
+    expect(reflattened).toEqual(flat);
+    expect(new Set(reflattened.map((item) => item.flatIndex)).size).toBe(reflattened.length);
+  });
+
+  it("produces the same result on repeated calls with the same input (deterministic)", () => {
+    const groups: SearchResultGroup[] = [
+      { type: "CLIENT", items: [makeResult("CLIENT", "c1")] },
+      { type: "PROJECT", items: [makeResult("PROJECT", "p1")] },
+    ];
+    expect(groupFlatResults(groups)).toEqual(groupFlatResults(groups));
+  });
+});
+
 describe("flatResultKey", () => {
   it("produces a distinct key for the same id across different types (UUID collision safety)", () => {
     const sameId = "11111111-1111-1111-1111-111111111111";
