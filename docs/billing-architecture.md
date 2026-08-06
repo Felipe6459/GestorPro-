@@ -1345,3 +1345,35 @@ fully buildable and fully testable without it.
   of inactivity"), which is a genuinely open product/legal question, not
   resolved here, and interacts with whatever data-retention obligations
   emerge from §16's own legal review.
+
+---
+
+## Stage 2 implementation note
+
+Stage 2 (schema, plan catalog, entitlements, and enforcement — see the
+Stage 2 report for the full account) implemented this document's design
+with one deliberate refinement, made explicit here since it changes what
+§5/§9 originally proposed:
+
+- **No `BillingCustomer` model.** §5's original proposal was evaluated
+  against Stage 2's own instruction to skip it unless a real independent
+  lifecycle justified it — since this schema already enforces one
+  `Subscription` row per `Organization` (`organizationId` unique), a
+  provider customer id has no lifecycle a separate table would add any
+  value over. `providerCustomerId`/`providerSubscriptionId` live directly
+  on `Subscription` instead.
+- **Trial provisioning is explicit, not implicit.** §9 originally proposed
+  no `Subscription` row at all for a trialing org (computed from
+  `Organization.createdAt` alone); Stage 2 instead creates a real
+  `TRIALING` `Subscription` row atomically with every new `Organization`
+  (`src/lib/billing/provisioning.ts`), per that stage's own explicit
+  instruction.
+
+**Status as of Stage 2: a provider-neutral foundation only.**
+- No payment provider is connected — no SDK, no API client, no webhook
+  route, no checkout, no customer portal.
+- No `/settings/billing` page or any other billing UI exists yet.
+- Live billing is not enabled, and cannot be from this stage's code alone.
+- Paddle-vs-Stripe eligibility for this seller (§2) is still an open,
+  unverified pre-implementation item — nothing in Stage 2 depends on it,
+  and nothing in Stage 2 should be read as confirming it either way.

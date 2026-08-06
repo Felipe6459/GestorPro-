@@ -281,6 +281,20 @@ Ideas for future iterations. None of these are implemented yet:
 - **File attachments** on clients, projects, or invoices (e.g. contracts, deliverables) — no file storage is wired up yet.
 - **Invoice PDF export / email delivery** — invoices currently exist only as database records with a status field; there's no PDF generation or send-by-email flow.
 
+## Billing (foundation only, not connected)
+
+A provider-neutral billing foundation exists in code — see
+[`docs/billing-architecture.md`](docs/billing-architecture.md): a
+`Subscription`/`WebhookEvent` schema, a typed plan catalog, organization
+entitlements, and server-side limit enforcement on a small set of write
+paths (staff invites, Client/Project creation, Attachment uploads). **No
+payment provider is connected** (no SDK, no checkout, no webhooks, no
+customer portal), **no billing UI exists**, and **live billing is
+disabled** — nothing in this repository can charge a real customer.
+Provider eligibility (Paddle vs. Stripe) for this project is still an open,
+unverified item pending legal/provider review (see the architecture doc's
+own §16/§2).
+
 ## License
 
 Portfolio project — no license specified.

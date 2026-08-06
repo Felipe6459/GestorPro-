@@ -7,6 +7,7 @@ import { parseProjectForm } from "@/lib/validation/project";
 import { withToast } from "@/lib/toast-url";
 import { createActivity } from "@/lib/activity/create-activity";
 import { buildProjectMetadata } from "@/lib/activity/project-metadata";
+import { assertCanCreateProject, BillingLimitError } from "@/lib/billing/enforcement";
 import type { ProjectFormState } from "@/types";
 
 export async function createProjectAction(
@@ -36,33 +37,45 @@ export async function createProjectAction(
     };
   }
 
-  // Project create and its Activity row are one atomic unit — if the
-  // Activity insert fails for any reason, the Project create rolls back
-  // with it rather than leaving an unlogged row behind.
-  await prisma.$transaction(async (tx) => {
-    const project = await tx.project.create({
-      data: {
-        name: values.name,
-        status: values.status,
-        startDate: values.startDate,
-        endDate: values.endDate,
-        clientId: values.clientId,
-        // Kept for backward compatibility; organizationId is now the source
-        // of truth for access scoping.
-        ownerId: user.id,
-        organizationId,
-      },
-    });
+  try {
+    // Project create and its Activity row are one atomic unit — if the
+    // Activity insert fails for any reason, the Project create rolls back
+    // with it rather than leaving an unlogged row behind.
+    await prisma.$transaction(async (tx) => {
+      // Billing & Subscriptions Stage 2 — re-checked from inside this same
+      // transaction (docs/billing-architecture.md §7's race handling),
+      // immediately before the Project write it guards.
+      await assertCanCreateProject(organizationId, tx);
 
-    await createActivity(tx, {
-      organizationId,
-      actorId: user.id,
-      entityType: "PROJECT",
-      entityId: project.id,
-      action: "CREATED",
-      metadata: buildProjectMetadata(project, client.name, user.name),
+      const project = await tx.project.create({
+        data: {
+          name: values.name,
+          status: values.status,
+          startDate: values.startDate,
+          endDate: values.endDate,
+          clientId: values.clientId,
+          // Kept for backward compatibility; organizationId is now the source
+          // of truth for access scoping.
+          ownerId: user.id,
+          organizationId,
+        },
+      });
+
+      await createActivity(tx, {
+        organizationId,
+        actorId: user.id,
+        entityType: "PROJECT",
+        entityId: project.id,
+        action: "CREATED",
+        metadata: buildProjectMetadata(project, client.name, user.name),
+      });
     });
-  });
+  } catch (err) {
+    if (err instanceof BillingLimitError) {
+      return { error: err.message };
+    }
+    throw err;
+  }
 
   redirect(withToast("/projects", "Project created"));
 }

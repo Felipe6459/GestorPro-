@@ -11,6 +11,7 @@ import {
 import { uploadAttachmentObject, removeAttachmentObject } from "@/lib/storage/attachments-storage";
 import { ATTACHMENTS_BUCKET, MAX_ATTACHMENTS_PER_ENTITY } from "@/lib/storage/attachments-config";
 import { checkRateLimit, ATTACHMENT_UPLOAD_LIMIT } from "@/lib/rate-limit";
+import { assertCanUploadAttachment, BillingLimitError } from "@/lib/billing/enforcement";
 import type { AttachmentEntityType } from "@/generated/prisma/enums";
 import type { AttachmentUploadState } from "@/types";
 
@@ -74,6 +75,23 @@ export async function uploadAttachmentForEntity({
   });
   if (!validation.valid) {
     return { error: VALIDATION_ERROR_MESSAGES[validation.error] };
+  }
+
+  // Billing & Subscriptions Stage 2 — checked before the Storage upload
+  // (never after) so a rejected upload never wastes a real Storage write.
+  // Deliberately a plain read here, not inside a transaction: this
+  // function's own pre-existing per-entity count check just above already
+  // follows the same "read now, upload happens outside any transaction
+  // anyway" shape (Storage isn't transactional with Postgres), so this
+  // adds no new residual race beyond what already exists — see
+  // assertCanUploadAttachment's own doc comment for the exact trade-off.
+  try {
+    await assertCanUploadAttachment(organizationId, file.size);
+  } catch (err) {
+    if (err instanceof BillingLimitError) {
+      return { error: err.message };
+    }
+    throw err;
   }
 
   // The sanitized name is used everywhere from here on — as the stored
