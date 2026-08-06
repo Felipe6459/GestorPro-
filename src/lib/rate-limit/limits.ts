@@ -111,3 +111,13 @@ export const CRON_JOB_LIMIT: RateLimitConfig = { scope: "cron", limit: 20, windo
 export const COMMENT_CREATE_LIMIT: RateLimitConfig = { scope: "comment-create", limit: 60, windowMs: HOUR_MS };
 export const COMMENT_EDIT_LIMIT: RateLimitConfig = { scope: "comment-edit", limit: 120, windowMs: HOUR_MS };
 export const COMMENT_DELETE_LIMIT: RateLimitConfig = { scope: "comment-delete", limit: 60, windowMs: HOUR_MS };
+
+// Global Search Stage 2 (docs/search-architecture.md §6/§8, and this
+// stage's own rate-limit decision) — per authenticated staff user, same
+// shape as every other per-user limiter above. 200/15min is generous
+// enough for legitimate fast typing at Stage 4's planned ~200-250ms
+// debounce (worst case a handful of requests per second for a few
+// seconds of continuous typing, never sustained for a full 15-minute
+// window), while still bounding a scripted enumeration attempt against
+// the search endpoint.
+export const SEARCH_LIMIT: RateLimitConfig = { scope: "search", limit: 200, windowMs: 15 * MINUTE_MS };
