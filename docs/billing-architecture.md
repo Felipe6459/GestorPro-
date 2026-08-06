@@ -1377,3 +1377,88 @@ with one deliberate refinement, made explicit here since it changes what
 - Paddle-vs-Stripe eligibility for this seller (§2) is still an open,
   unverified pre-implementation item — nothing in Stage 2 depends on it,
   and nothing in Stage 2 should be read as confirming it either way.
+
+---
+
+## Stage 3 implementation note
+
+Stage 3 built the staff-only Billing page and its provider-neutral
+placeholder actions directly on top of Stage 2's foundation, with no
+changes to Stage 2's schema, plan catalog, access-mode state machine, or
+enforcement contracts.
+
+**Route and permissions.** `src/app/(dashboard)/settings/billing/page.tsx`
+sits behind the existing `(dashboard)` layout's own staff-only guard — no
+new authorization code was needed at that layer. The page itself renders
+for every staff role (OWNER/ADMIN/MEMBER); only OWNER sees enabled
+plan-management controls. ADMIN/MEMBER get the *same* read-only
+presentation: every management button (`Upgrade`/`Downgrade`/`Manage
+subscription`) still renders, always visible, but `disabled`, with a
+one-line explanation ("Only the organization owner can manage billing.")
+— chosen over hiding the buttons entirely, so a non-owner can see what
+exists without being told nothing is there. The Server Actions
+independently re-check role server-side regardless of what the client
+renders; the disabled attribute is a UX affordance, never the
+authorization boundary.
+
+**View-model, not recomputed semantics.** `getBillingPageData()`
+(`src/lib/billing/view-model.ts`) is the single server-side function the
+page and its components render from — it calls the existing
+`getOrganizationEntitlements()` (never reimplements plan/status/usage
+logic) and layers two small, additive-only reads on top, neither of which
+touches Stage 2's own contracts: a `PENDING` Invitation count (so the
+Members usage row can show the same number that actually constrains
+`canInviteMember`, mirroring — not duplicating — `entitlements.ts`'s own
+internal pending-invite math) and the raw Subscription row's
+`currentPeriodEnd`/`cancelAtPeriodEnd` (fields `OrganizationEntitlements`
+never exposed, since Stage 2's enforcement never needed them).
+
+**Provider-neutral placeholder actions (§8's "choose one option, justify
+it").** `requestPlanChangeAction`/`manageSubscriptionAction`
+(`src/app/(dashboard)/settings/billing/actions.ts`) are real, enabled,
+OWNER-only Server Actions — not disabled buttons with static text. They
+run the full intended flow (role check → plan validation against the
+catalog's `billingAvailable` flag → provider-availability check) and
+return a controlled `{ ok: false, message: "Billing provider is not
+configured." }` result with zero side effects: no Subscription/WebhookEvent
+write, no Activity/Notification row. The reasoning: a disabled button
+demonstrates nothing, while these actions demonstrate the entire
+end-to-end shape a real Stage 4 provider integration will have — the only
+code Stage 4 needs to add is what happens once
+`getBillingProviderAvailability()` reports `configured: true`, not a
+rewrite of the authorization/validation path.
+
+**Provider availability is a swappable seam.**
+`getBillingProviderAvailability()` (`src/lib/billing/provider-availability.ts`)
+always returns `{ configured: false, provider: "PADDLE", checkoutAvailable:
+false, portalAvailable: false }` in Stage 3 — no env var read, no attempt
+to detect a real Paddle config (there isn't one). Every caller (the
+view-model, both placeholder actions) goes through this one function, so
+Stage 4 wiring a real provider check in is a one-file change.
+
+**Unknown plan key: two independent safety nets, one real.** Stage 2's
+`buildOrganizationEntitlements()` already normalizes any
+`Subscription.planKey` it doesn't recognize to `LEGACY` before Stage 3's
+view-model ever sees it — so a real, corrupted-data DB row renders as the
+Legacy plan, not a crash (verified end-to-end in
+`test/e2e/billing-ui.spec.ts`). The view-model's own `PLAN_CATALOG` lookup
+additionally falls back to a generic "Custom plan" label rather than
+throwing on `undefined` — defense-in-depth for a hypothetical caller that
+bypasses `getOrganizationEntitlements()` entirely (exercised directly in
+`test/unit/billing-view-model.test.ts`), not a path any real request can
+currently reach.
+
+**No new middleware, no new global blocker.** Access-mode banners
+(FULL_ACCESS/LIMITED_WRITES/READ_ONLY) render only on the Billing page
+itself — existing Stage 2 server-side enforcement is unchanged and remains
+the only place writes are actually blocked.
+
+**Status as of Stage 3: foundation + UI, still no live payments.**
+- No payment provider is connected — no SDK, no checkout/webhook/
+  customer-portal route, no real price IDs, no new env vars.
+- The Billing page and its placeholder actions are real and fully
+  wired, but every provider-facing action returns a controlled
+  "not configured" result with no side effects.
+- Live billing is not enabled, and cannot be from this stage's code alone.
+- See `docs/operator-setup.md` for what a future operator must still
+  connect before any of this becomes live billing.

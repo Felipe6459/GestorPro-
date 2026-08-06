@@ -116,4 +116,90 @@ ok = report("WebhookEvent has no raw/summary payload column", !hasPayloadColumn 
 const portalImportInBilling = grep('from "@/lib/current-portal-user"', BILLING_LIB_DIR);
 ok = report("no Client Portal import anywhere in src/lib/billing", portalImportInBilling === "", portalImportInBilling) && ok;
 
+// Billing & Subscriptions Stage 3 (this stage's own §15) — 5 additional
+// checks, appended rather than replacing anything above.
+
+const BILLING_UI_DIRS = ["src/app/(dashboard)/settings/billing", "src/components/billing"];
+const BILLING_ACTIONS_FILE = "src/app/(dashboard)/settings/billing/actions.ts";
+
+// 9. The Billing page/component tree itself never imports a Paddle/Stripe
+// SDK — a scoped, targeted variant of check 2 above (which already covers
+// all of src/), called out separately because this stage's own instructions
+// name the billing UI specifically.
+const billingUiProviderImports = BILLING_UI_DIRS.filter(existsSync)
+  .map((dir) => grep('from "(@paddle|@stripe|paddle-|stripe)', dir))
+  .join("");
+ok = report(
+  "the Billing page/component tree never imports a Paddle/Stripe SDK",
+  billingUiProviderImports === "",
+  billingUiProviderImports,
+) && ok;
+
+// 10. "use client" billing components never import server-only billing
+// internals directly — the only sanctioned client -> server boundary is the
+// "use server" actions file (src/app/(dashboard)/settings/billing/actions.ts),
+// never src/lib/billing/* directly from a client bundle.
+function findClientFilesUnder(dir) {
+  if (!existsSync(dir)) return [];
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...findClientFilesUnder(full));
+    } else if (full.endsWith(".ts") || full.endsWith(".tsx")) {
+      const content = readFileSync(full, "utf8");
+      if (content.startsWith('"use client"') || content.startsWith("'use client'")) {
+        out.push(full);
+      }
+    }
+  }
+  return out;
+}
+// Type-only imports (`import type { X } from "@/lib/billing/..."`) compile
+// away entirely and carry no runtime risk — a client component importing
+// just the PlanKey string-literal type is fine; only a value import would
+// pull real billing logic into the client bundle.
+const billingClientFiles = BILLING_UI_DIRS.flatMap(findClientFilesUnder);
+const clientFilesImportingBillingLib = billingClientFiles.filter((file) =>
+  readFileSync(file, "utf8")
+    .split("\n")
+    .some((line) => /from ["']@\/lib\/billing\//.test(line) && !/^\s*import\s+type\b/.test(line)),
+);
+ok = report(
+  "\"use client\" billing components never import src/lib/billing/* directly (only via the Server Action boundary, or a type-only import)",
+  clientFilesImportingBillingLib.length === 0,
+  clientFilesImportingBillingLib.join(", "),
+) && ok;
+
+// 11. The placeholder billing actions resolve organization/role server-side
+// only — they must never reference organizationId/userId as a real code
+// identifier (doc comments are allowed to discuss the rule in prose; this
+// strips /** */ and // comments first so only actual code is checked).
+const actionsSource = existsSync(BILLING_ACTIONS_FILE) ? readFileSync(BILLING_ACTIONS_FILE, "utf8") : "";
+const actionsCodeOnly = actionsSource.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+const referencesClientSuppliedIds = /\borganizationId\b|\buserId\b/.test(actionsCodeOnly);
+ok = report(
+  "billing placeholder actions never reference organizationId/userId (always server-resolved via getCurrentMembership)",
+  existsSync(BILLING_ACTIONS_FILE) && !referencesClientSuppliedIds,
+  referencesClientSuppliedIds ? BILLING_ACTIONS_FILE : "actions file not found",
+) && ok;
+
+// 12. The placeholder actions have zero side effects — never write a
+// Subscription or WebhookEvent row. A regression here would mean a
+// "not configured" UI action silently started mutating billing state.
+const mutatesSubscriptionOrWebhook = /\.subscription\.(update|create|upsert|delete)|\.webhookEvent\.(update|create|upsert|delete)/.test(
+  actionsCodeOnly,
+);
+ok = report(
+  "billing placeholder actions never mutate Subscription or WebhookEvent",
+  existsSync(BILLING_ACTIONS_FILE) && !mutatesSubscriptionOrWebhook,
+  mutatesSubscriptionOrWebhook ? BILLING_ACTIONS_FILE : "actions file not found",
+) && ok;
+
+// 13. The Client Portal never imports the Billing UI — same staff-only
+// boundary as check 4 (which covers src/lib/billing), verified here for the
+// UI layer this stage adds.
+const billingUiImportInPortal = grep('from "@/components/billing|from "@/app/\\(dashboard\\)/settings/billing', PORTAL_APP_DIR);
+ok = report("the Client Portal never imports the Billing UI", billingUiImportInPortal === "", billingUiImportInPortal) && ok;
+
 process.exit(ok ? 0 : 1);

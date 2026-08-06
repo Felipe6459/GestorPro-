@@ -281,19 +281,26 @@ Ideas for future iterations. None of these are implemented yet:
 - **File attachments** on clients, projects, or invoices (e.g. contracts, deliverables) — no file storage is wired up yet.
 - **Invoice PDF export / email delivery** — invoices currently exist only as database records with a status field; there's no PDF generation or send-by-email flow.
 
-## Billing (foundation only, not connected)
+## Billing (foundation + UI, no payment provider connected)
 
 A provider-neutral billing foundation exists in code — see
 [`docs/billing-architecture.md`](docs/billing-architecture.md): a
 `Subscription`/`WebhookEvent` schema, a typed plan catalog, organization
 entitlements, and server-side limit enforcement on a small set of write
-paths (staff invites, Client/Project creation, Attachment uploads). **No
-payment provider is connected** (no SDK, no checkout, no webhooks, no
-customer portal), **no billing UI exists**, and **live billing is
-disabled** — nothing in this repository can charge a real customer.
-Provider eligibility (Paddle vs. Stripe) for this project is still an open,
-unverified item pending legal/provider review (see the architecture doc's
-own §16/§2).
+paths (staff invites, Client/Project creation, Attachment uploads). A
+staff-only **Billing page** (`/settings/billing`) now renders on top of
+that foundation — current plan, status, usage, and Starter/Pro plan
+cards, all sourced from local data — plus provider-neutral placeholder
+actions ("Upgrade", "Manage subscription") that run the full
+authorization/validation path and return a controlled "Billing provider
+is not configured." result. **No payment provider is connected** (no SDK,
+no checkout, no webhooks, no customer portal, no real price IDs), and
+**live billing is disabled** — nothing in this repository can charge a
+real customer. A future operator must connect a real provider before any
+of this becomes live billing — see
+[`docs/operator-setup.md`](docs/operator-setup.md). Provider eligibility
+(Paddle vs. Stripe) for this project is still an open, unverified item
+pending legal/provider review (see the architecture doc's own §16/§2).
 
 ## License
 

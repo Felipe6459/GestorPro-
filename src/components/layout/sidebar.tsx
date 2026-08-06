@@ -12,6 +12,7 @@ const links = [
   { href: "/team", label: "Team" },
   { href: "/activity", label: "Activity" },
   { href: "/settings/notifications", label: "Settings" },
+  { href: "/settings/billing", label: "Billing" },
 ];
 
 function isActive(pathname: string, href: string): boolean {

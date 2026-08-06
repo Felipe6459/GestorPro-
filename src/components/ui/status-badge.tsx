@@ -50,6 +50,15 @@ export const STATUS_TONES: Record<string, StatusTone> = {
   ACCEPTED: "success",
   REVOKED: "danger",
   EXPIRED: "muted",
+
+  // Billing & Subscriptions (Subscription.status / OrganizationEntitlements
+  // .subscriptionStatus) — ACTIVE above is already shared with these.
+  TRIALING: "info",
+  PAST_DUE: "warning",
+  CANCELED: "danger",
+  INCOMPLETE: "warning",
+  UNPAID: "danger",
+  LEGACY: "neutral",
 };
 
 export function StatusBadge({ status }: { status: string }) {
