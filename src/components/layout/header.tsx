@@ -1,6 +1,7 @@
 import { signOut, switchOrganizationAction } from "@/app/(dashboard)/actions";
 import { OrganizationSwitcher } from "@/components/layout/organization-switcher";
 import { NotificationBell, type NotificationBellItem } from "@/components/notifications/notification-bell";
+import { GlobalSearch } from "@/components/search/global-search";
 import type { OrganizationSwitcherItem } from "@/lib/current-user";
 
 export function Header({
@@ -18,6 +19,7 @@ export function Header({
     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-6 py-4">
       <OrganizationSwitcher organizations={organizations} action={switchOrganizationAction} />
       <div className="flex items-center gap-4">
+        <GlobalSearch />
         <NotificationBell
           initialUnreadCount={unreadNotificationCount}
           initialNotifications={recentNotifications}
