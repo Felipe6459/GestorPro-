@@ -281,6 +281,19 @@ Ideas for future iterations. None of these are implemented yet:
 - **File attachments** on clients, projects, or invoices (e.g. contracts, deliverables) — no file storage is wired up yet.
 - **Invoice PDF export / email delivery** — invoices currently exist only as database records with a status field; there's no PDF generation or send-by-email flow.
 
+## Onboarding (backend foundation only, no UI yet)
+
+A provider-neutral onboarding progress engine exists in code — see
+[`docs/onboarding-architecture.md`](docs/onboarding-architecture.md): a
+minimal `OrganizationOnboardingStep` table (only for the two things that
+can't be derived from real data — an explicit skip and an explicit
+dismiss), a pure progress-computation engine that reads live
+Client/Project/Task/Membership/PortalUser data, and skip/acknowledge/
+finish Server Actions. **No UI exists yet** — no dashboard checklist card,
+no settings entry point, no new route — and nothing in the app calls any
+of this yet. Independent of the not-yet-merged Billing branch: the
+"Review billing" step is a fully inert placeholder on `main` today.
+
 ## License
 
 Portfolio project — no license specified.

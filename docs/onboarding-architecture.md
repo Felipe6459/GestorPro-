@@ -1011,3 +1011,69 @@ production:
 No stage after this one (Stage 1) is started automatically — each is its
 own explicit continuation, per this engagement's own standing
 instruction.
+
+---
+
+## Stage 2 implementation note
+
+Stage 2 (schema, progress engine, skip/dismiss backend contract — no UI,
+no wizard, no dashboard change) implemented this document's design with
+three deliberate refinements, made explicit here since each changes what
+§9 originally proposed:
+
+- **No `actedById`/`User` relation on `OrganizationOnboardingStep`.**
+  §9 Option C's own illustrative snippet included one, described there as
+  "informational only, never part of the authorization boundary." Stage
+  2's own explicit instructions required no `User` FK on this table at
+  all. Since nothing in this document's actual feature set (§1–§20) ever
+  reads *who* skipped/dismissed a step — only whether the organization
+  did — dropping it is a pure simplification with no loss of any
+  described capability. Adding it back later, if a real need shows up, is
+  a compatible, additive nullable column.
+- **A `NOT_APPLICABLE` step status, alongside Done/Available/Blocked/
+  Skipped.** §10's four UI-facing states didn't need a fifth for Stage 1's
+  own purposes, but Stage 2's real backend contract needed a way to
+  represent "this step is not currently offered at all" for
+  `REVIEW_BILLING` on this branch (§16) without producing a false
+  completion *or* a false "not started" signal — both of which would be
+  misleading for a step nothing can act on yet. `NOT_APPLICABLE` steps are
+  excluded from `totalCount`/`percent`/`requiredCompleted` entirely, never
+  rendered as an actionable "next" item, and never writable by
+  `skipOnboardingStepAction` (rejected explicitly, even though the
+  catalog's own static metadata still marks `REVIEW_BILLING` as
+  `skippable: true` for when it *does* become available).
+- **An explicit, tested percent formula.** §4's own "3 of 6" example was
+  illustrative, not a fully specified formula. Stage 2 settled it
+  precisely, grounded in this document's own "six real steps" wording in
+  §16: the denominator excludes `WELCOME` (a greeting, not an
+  accomplishment) and excludes any `NOT_APPLICABLE` step, but **includes**
+  `FINISH` — so on this branch (`REVIEW_BILLING` unavailable) the
+  denominator is 6: Client, Project, Task, Invite teammate, Invite Portal
+  User, Finish. `isComplete` (§3 path 1) is evaluated over a *different,
+  narrower* set — the five/six substantive steps only, excluding both
+  `WELCOME` and `FINISH` — so that reaching "nothing left to do" never
+  depends on the user having formally clicked Finish, keeping §3's two
+  completion paths genuinely independent as originally intended. Both
+  sets, and every boundary between them, are unit-tested
+  (`test/unit/onboarding-progress.test.ts`).
+
+**Status as of Stage 2: computed backend + minimal persisted state, no
+UI, independent of Billing.**
+- `OrganizationOnboardingStep` (one new enum, one new table, purely
+  additive — `prisma/migrations/20260907090000_add_onboarding_foundation/`)
+  is real and migrated locally, never applied to any shared/production
+  database.
+- `getOrganizationOnboardingProgress()`/`getCurrentOrganizationOnboardingProgress()`
+  and the three actions (`skipOnboardingStepAction`,
+  `acknowledgeOnboardingWelcomeAction`, `finishOnboardingAction`) are real,
+  fully unit- and integration-tested, and importable — but nothing in the
+  app calls them yet. No dashboard card, no settings entry point, no
+  route.
+- `src/lib/onboarding/*` imports nothing from `src/lib/billing` and
+  nothing from the Client Portal identity module — verified by
+  `scripts/security-checks/check-onboarding-security.mjs`, not just
+  asserted here.
+- `REVIEW_BILLING` remains fully inert: excluded from every computed
+  total, rejected by the skip action, and carries no real `targetHref` —
+  see §16 for the seam Stage 6 fills in once `feature/billing-subscriptions`
+  (or its successor) actually merges.
