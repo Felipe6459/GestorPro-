@@ -7,7 +7,7 @@ import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { BreakdownCard } from "@/components/dashboard/breakdown-card";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { OnboardingCard } from "@/components/onboarding/onboarding-card";
+import { OnboardingCard, ONBOARDING_DISMISS_RETURN_FOCUS_ID } from "@/components/onboarding/onboarding-card";
 import { parseDashboardPeriod, formatDashboardPeriodLabel } from "@/lib/dashboard/period";
 import { getOrganizationOnboardingProgress } from "@/lib/onboarding/progress";
 import { getDashboardAnalytics } from "./query";
@@ -40,7 +40,11 @@ export default async function DashboardPage({
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+          <h1
+            id={ONBOARDING_DISMISS_RETURN_FOCUS_ID}
+            tabIndex={-1}
+            className="text-2xl font-semibold tracking-tight text-gray-900 focus:outline-none"
+          >
             Dashboard
           </h1>
           <p className="mt-1 text-sm text-gray-600">

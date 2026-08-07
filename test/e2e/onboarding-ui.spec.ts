@@ -255,10 +255,57 @@ test.describe("Accessibility", () => {
     await dismissButton.focus();
     await expect(dismissButton).toBeFocused();
   });
+
+  test("the progress bar's aria-valuetext announces a human-readable summary, not just the raw percent", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
+    await actAsMember(context, baseURL!, fixtures.orgBOwner, fixtures.orgB.id);
+    await gotoAndSettle(page, `${baseURL}/dashboard`);
+
+    const bar = onboardingCard(page).getByRole("progressbar", { name: "Onboarding progress" });
+    await expect(bar).toHaveAttribute("aria-valuetext", /^\d+ of \d+ complete$/);
+  });
+
+  test("Stage 5: skipping a step moves focus to that row's own label, never silently dropped to <body>", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
+    const fresh = await createFreshOrg(fixtures.runId, "skip-focus");
+    await actAsMember(context, baseURL!, fresh.owner, fresh.org.id);
+    await gotoAndSettle(page, `${baseURL}/dashboard`);
+
+    const teammateRow = rowFor(page, "Invite a teammate");
+    await teammateRow.getByRole("button", { name: /Skip/ }).click();
+
+    await expect(teammateRow.getByText("Skipped", { exact: true })).toBeVisible();
+    await expect(page.getByText("Invite a teammate", { exact: true })).toBeFocused();
+
+    await cleanupFreshOrg(fresh);
+  });
+
+  test("Stage 5: dismissing moves focus to the Dashboard's own heading, never silently dropped to <body>", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
+    const fresh = await createFreshOrg(fixtures.runId, "dismiss-focus");
+    await actAsMember(context, baseURL!, fresh.owner, fresh.org.id);
+    await gotoAndSettle(page, `${baseURL}/dashboard`);
+
+    await page.getByRole("button", { name: "Dismiss onboarding" }).click();
+
+    await expect(onboardingCard(page)).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeFocused();
+
+    await cleanupFreshOrg(fresh);
+  });
 });
 
 test.describe("Mobile", () => {
-  for (const width of [320, 375, 768, 1024]) {
+  for (const width of [320, 360, 375, 390, 768, 1024]) {
     test(`the card itself collapses to fit ${width}px without its own horizontal overflow`, async ({
       context,
       baseURL,
@@ -289,6 +336,21 @@ test.describe("Mobile", () => {
       await expect(teammateRow.getByRole("button", { name: /Skip/ })).toBeVisible();
     });
   }
+
+  test("the card still fits a short landscape phone viewport (812x375) without its own horizontal overflow", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
+    await page.setViewportSize({ width: 812, height: 375 });
+    await actAsMember(context, baseURL!, fixtures.orgBOwner, fixtures.orgB.id);
+    await gotoAndSettle(page, `${baseURL}/dashboard`);
+
+    await expect(onboardingCard(page)).toBeVisible();
+    const box = await onboardingCard(page).boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeLessThanOrEqual(812 + 1);
+  });
 });
 
 test.describe("Client Portal", () => {

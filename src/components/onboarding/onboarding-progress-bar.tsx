@@ -26,6 +26,7 @@ export function OnboardingProgressBar({
         aria-valuenow={percent}
         aria-valuemin={0}
         aria-valuemax={100}
+        aria-valuetext={`${completedCount} of ${totalCount} complete`}
         aria-label="Onboarding progress"
         className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100"
       >

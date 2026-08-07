@@ -214,7 +214,7 @@ test.describe("Placement isolation", () => {
 });
 
 test.describe("Mobile", () => {
-  for (const width of [320, 375, 768]) {
+  for (const width of [320, 360, 375, 390, 768]) {
     test(`the banner itself fits within ${width}px without its own horizontal overflow`, async ({
       context,
       baseURL,
@@ -233,4 +233,20 @@ test.describe("Mobile", () => {
       await expect(banner.getByRole("button", { name: "Dismiss welcome message" })).toBeVisible();
     });
   }
+
+  test("the banner still fits a short landscape phone viewport (812x375) without its own horizontal overflow", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
+    await page.setViewportSize({ width: 812, height: 375 });
+    await actAsPortal(context, baseURL!, fixtures.portalUser);
+    await gotoAndSettle(page, `${baseURL}/portal`);
+
+    const banner = welcomeBanner(page);
+    await expect(banner).toBeVisible();
+    const box = await banner.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeLessThanOrEqual(812 + 1);
+  });
 });

@@ -10,8 +10,22 @@ import type { OnboardingStepKey } from "@/generated/prisma/enums";
  * ResetPreferencesButton/NotificationDropdown — the action's own
  * `revalidatePath("/dashboard")` (src/lib/onboarding/actions.ts) refreshes
  * this row's status without a manual reload or router.refresh() call.
+ *
+ * Stage 5 polish: on success this button itself unmounts (the row's own
+ * `showSkip` flips false once its status is SKIPPED) — `returnFocusId`
+ * moves focus to the row's own label so it isn't silently dropped to
+ * <body>, the same pattern DismissOnboardingButton now uses for the whole
+ * card.
  */
-export function SkipStepButton({ stepKey, label }: { stepKey: OnboardingStepKey; label: string }) {
+export function SkipStepButton({
+  stepKey,
+  label,
+  returnFocusId,
+}: {
+  stepKey: OnboardingStepKey;
+  label: string;
+  returnFocusId: string;
+}) {
   const [isPending, startTransition] = useTransition();
   const { showToast } = useToast();
 
@@ -20,7 +34,9 @@ export function SkipStepButton({ stepKey, label }: { stepKey: OnboardingStepKey;
       const result = await skipOnboardingStepAction(stepKey);
       if (!result.ok) {
         showToast(result.message, "error");
+        return;
       }
+      document.getElementById(returnFocusId)?.focus();
     });
   }
 

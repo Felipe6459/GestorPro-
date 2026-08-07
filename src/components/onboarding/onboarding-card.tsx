@@ -5,6 +5,16 @@ import { shouldRenderOnboardingCard } from "./should-render-card";
 import type { OnboardingProgressSummary } from "@/lib/onboarding/progress";
 
 /**
+ * Stage 5 polish — the id of the Dashboard page's own `<h1>`
+ * ((dashboard)/dashboard/page.tsx), which must carry this exact id and
+ * `tabIndex={-1}` for DismissOnboardingButton's own focus-return to have
+ * somewhere real to land once this whole card unmounts. Exported (not a
+ * private string duplicated in two files) so the two call sites can never
+ * drift out of sync.
+ */
+export const ONBOARDING_DISMISS_RETURN_FOCUS_ID = "dashboard-heading";
+
+/**
  * Stage 3 task §2/§3/§4/§11. An ordinary Dashboard card — never a wizard,
  * modal, full page, or blocking overlay (docs/onboarding-architecture.md
  * §11) — visually consistent with the bordered-card treatment every other
@@ -38,7 +48,7 @@ export function OnboardingCard({ progress }: { progress: OnboardingProgressSumma
             Complete these steps to get the most out of your workspace.
           </p>
         </div>
-        <DismissOnboardingButton />
+        <DismissOnboardingButton returnFocusId={ONBOARDING_DISMISS_RETURN_FOCUS_ID} />
       </div>
 
       {/* Live region: a step flipping to Done (e.g. a Client created in

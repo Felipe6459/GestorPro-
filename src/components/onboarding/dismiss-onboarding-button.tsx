@@ -10,8 +10,14 @@ import { finishOnboardingAction } from "@/lib/onboarding/actions";
  * architecture.md §9's row-existence model) — `revalidatePath("/dashboard")`
  * inside that action makes the whole card disappear on the next render,
  * no manual reload.
+ *
+ * Stage 5 polish: on success, this button is about to unmount along with
+ * the whole card — without `returnFocusId`, focus would silently fall
+ * back to <body>. Moving it to the Dashboard's own heading mirrors the
+ * same focus-return pattern the Client Portal's own welcome banner
+ * (src/components/portal/) already uses for its own dismiss.
  */
-export function DismissOnboardingButton() {
+export function DismissOnboardingButton({ returnFocusId }: { returnFocusId: string }) {
   const [isPending, startTransition] = useTransition();
   const { showToast } = useToast();
 
@@ -20,7 +26,9 @@ export function DismissOnboardingButton() {
       const result = await finishOnboardingAction();
       if (!result.ok) {
         showToast(result.message, "error");
+        return;
       }
+      document.getElementById(returnFocusId)?.focus();
     });
   }
 

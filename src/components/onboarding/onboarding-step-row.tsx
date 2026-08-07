@@ -22,15 +22,27 @@ import type { OnboardingStepResult } from "@/lib/onboarding/progress";
  * null` and `skippable: false`, so the two conditions above simply never
  * trigger for them — no special-casing needed.
  */
+/** Stable per-row id: unique across the fixed 8-step catalog, unaffected by re-ordering elsewhere on the page — used only as a Stage 5 focus-return target for this row's own Skip button. */
+function stepLabelId(key: string): string {
+  return `onboarding-step-${key}`;
+}
+
 export function OnboardingStepRow({ step }: { step: OnboardingStepResult }) {
-  const { showGoTo, showSkip, description } = getOnboardingStepRowActions(step);
+  const { isBlocked, showGoTo, showSkip, description } = getOnboardingStepRowActions(step);
+  const labelId = stepLabelId(step.key);
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-      <div className="flex items-start gap-3">
+      {/* Blocked rows are visually dimmed (docs/onboarding-architecture.md
+          §10's own "Blocked — grayed" state) — never the only signal
+          (the description text and the absent action buttons already
+          convey the same fact), just a supporting visual cue. */}
+      <div className={`flex items-start gap-3 ${isBlocked ? "opacity-60" : ""}`}>
         <OnboardingStepIcon status={step.status} />
         <div>
-          <p className="text-sm font-medium text-gray-900">{step.label}</p>
+          <p id={labelId} tabIndex={-1} className="text-sm font-medium text-gray-900 focus:outline-none">
+            {step.label}
+          </p>
           <p className="mt-0.5 text-sm text-gray-500">{description}</p>
         </div>
       </div>
@@ -45,7 +57,7 @@ export function OnboardingStepRow({ step }: { step: OnboardingStepResult }) {
             Go to
           </Link>
         )}
-        {showSkip && <SkipStepButton stepKey={step.key} label={step.label} />}
+        {showSkip && <SkipStepButton stepKey={step.key} label={step.label} returnFocusId={labelId} />}
       </div>
     </div>
   );

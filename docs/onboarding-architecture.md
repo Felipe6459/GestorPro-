@@ -1125,3 +1125,60 @@ side). Stage 4 settles it in favor of the **zero-migration option**:
   already established for the staff Dashboard onboarding card. Every
   other Portal page (Projects, Invoices, Profile, login, invite-accept)
   is unaffected — no existing `EmptyState` usage was touched.
+
+## Stage 5 implementation note
+
+Stage 5 is a no-new-capability audit pass (polish, accessibility,
+performance, security, consistency, maintainability) across both Stages
+3 and 4's UI. No schema, no route, no step, no CTA, no new persisted
+state — `git diff prisma/` stayed empty throughout, same as Stage 4.
+
+Real findings fixed:
+
+- **Focus was silently dropped to `<body>` after Skip and Dismiss.**
+  Neither `SkipStepButton` nor the staff `DismissOnboardingButton` moved
+  focus anywhere once their own element unmounted (a row's Skip button
+  disappearing once `SKIPPED`; the whole card disappearing once
+  dismissed) — the Portal welcome banner's own dismiss already did this
+  correctly (§17's own Stage 4 note), the staff side didn't. Fixed by
+  giving each step row's label a stable, focusable id and the Dashboard
+  page's own `<h1>` a stable id (`ONBOARDING_DISMISS_RETURN_FOCUS_ID`,
+  exported from `onboarding-card.tsx` so the two call sites can't drift
+  out of sync), and moving focus there on a successful skip/dismiss —
+  the same pattern the Portal banner already established, now applied
+  consistently on both sides.
+- **Blocked rows computed `isBlocked` but never used it visually.** §10's
+  own "Blocked — grayed" state wasn't fully implemented — a blocked row
+  read identically to an actionable one except for its description text.
+  Fixed with a plain `opacity-60` on the row's icon+label (never the only
+  signal — the description text and the absent action buttons already
+  carry the actual meaning).
+- **`aria-valuetext` was missing from the progress bar.** Screen readers
+  announced a bare percent; added `"N of M complete"` so the announcement
+  matches what's visually shown next to the bar.
+- **A very long Client name had no overflow protection.** The Portal
+  overview page's own `<h1>{client.name}</h1>` (unbounded user text) had
+  no `break-words` — added, matching an existing pattern already used
+  elsewhere in this app (`grep -rl truncate\|break-words src/` returns 9
+  files).
+- **`OnboardingStepIcon` repeated the same `<svg>` shell four times.**
+  Deduplicated into one shell with a per-status color/glyph lookup —
+  identical rendered output, verified by the unchanged E2E suite.
+
+Considered and deliberately left unchanged, to avoid regressing
+consistency with the rest of the app:
+
+- **No shared `useTransition`+toast hook for Skip/Dismiss.** The
+  duplication is real (2 call sites) but extracting a hook used only by
+  onboarding, while `ResetPreferencesButton`/`NotificationDropdown`
+  elsewhere in the app keep hand-rolling the identical pattern, would
+  make onboarding *less* consistent with the rest of the codebase, not
+  more.
+- **No `prefers-reduced-motion` handling.** Zero precedent anywhere in
+  this app (`grep -rn prefers-reduced-motion src/` returns nothing) —
+  adding it only for onboarding's own `transition-colors`/`transition-
+  [width]` would be a new, isolated pattern, not a fix to a regression.
+- **`OnboardingActionResult` (actions.ts) is exported but never
+  explicitly imported by name.** Every call site relies on TS inference
+  instead — the same shape every other Server Action's own result type
+  takes in this codebase. Not dead code; left as-is.

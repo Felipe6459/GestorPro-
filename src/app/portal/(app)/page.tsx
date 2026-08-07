@@ -25,7 +25,7 @@ export default async function PortalOverviewPage() {
         <h1
           id={OVERVIEW_HEADING_ID}
           tabIndex={-1}
-          className="text-2xl font-semibold tracking-tight text-gray-900 focus:outline-none"
+          className="text-2xl font-semibold tracking-tight text-gray-900 focus:outline-none break-words"
         >
           {client.name}
         </h1>
