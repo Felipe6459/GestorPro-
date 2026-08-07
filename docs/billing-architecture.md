@@ -1483,7 +1483,7 @@ being written.** `docs/notifications-architecture.md`-style staged
 added "in Stage 2's migration alongside the billing models themselves" —
 Stage 2 did not actually do this. Stage 4 needed real Notification rows
 for billing events, so it added a second, purely-additive migration
-(`prisma/migrations/20260907090000_add_billing_notification_types/`) for
+(`prisma/migrations/20260907100000_add_billing_notification_types/`) for
 exactly `SUBSCRIPTION_ACTIVATED`, `PAYMENT_FAILED`, `SUBSCRIPTION_CANCELED`,
 `PLAN_CHANGED` — nothing removed or renamed, generated and verified only
 against a disposable local PGlite instance, never applied to any shared/

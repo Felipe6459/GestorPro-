@@ -115,7 +115,7 @@ already has.
 - Two billing-related migrations exist —
   `prisma/migrations/20260830090000_add_billing_foundation/` (Stage 2:
   the `Subscription`/`WebhookEvent` schema) and
-  `prisma/migrations/20260907090000_add_billing_notification_types/`
+  `prisma/migrations/20260907100000_add_billing_notification_types/`
   (Stage 4: four additive `NotificationType` enum values). **Neither has
   been applied to any shared or production database** — both were
   generated and verified only against a disposable local test database.
