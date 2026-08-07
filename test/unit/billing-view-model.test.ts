@@ -1,4 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// src/lib/billing/view-model.ts transitively imports src/lib/billing/
+// provider-availability.ts, which imports the real "server-only" marker
+// package — see test/unit/cron-auth.test.ts's own header comment. vi.mock
+// calls are hoisted above these imports automatically, so a normal static
+// import below still resolves against the mocked module.
+vi.mock("server-only", () => ({}));
+
 import { buildBillingPageViewModel } from "@/lib/billing/view-model";
 import type { OrganizationEntitlements } from "@/lib/billing/entitlements";
 

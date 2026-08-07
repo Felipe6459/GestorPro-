@@ -12,8 +12,10 @@ from your own provider account.
 ## Billing
 
 See [`docs/billing-architecture.md`](billing-architecture.md) for the full
-design. This section is the practical "what do I still need to do"
-checklist for an operator, not a repeat of that design document.
+design and [`docs/billing-provider-adapter.md`](billing-provider-adapter.md)
+for the adapter contract, mock behavior, and the exact test-mode → live
+checklist. This section is the practical "what do I still need to do"
+summary for an operator, not a repeat of either document.
 
 ### What's already implemented
 
@@ -23,12 +25,35 @@ checklist for an operator, not a repeat of that design document.
   staff invites, Client/Project creation, and Attachment uploads.
 - A staff-only Billing page (`/settings/billing`) showing current plan,
   status, usage, and Starter/Pro plan cards — all sourced from the local
-  database, never from a payment provider (there isn't one connected).
-- Placeholder "Upgrade"/"Downgrade"/"Manage subscription" actions that run
-  the full authorization/validation path (owner-only, plan-key allowlist)
-  and return a controlled "Billing provider is not configured." result.
-  They have **zero side effects** — no Subscription row is written, no
-  webhook event is created, no email is sent.
+  database.
+- A **provider-neutral adapter contract** (`src/lib/billing/provider/*`)
+  that a real Paddle/Stripe integration implements against, plus a
+  registry (`getBillingProviderAdapter()`) that resolves to it — see
+  `docs/billing-provider-adapter.md`.
+- A **real checkout flow** (`requestPlanChangeAction`) and **real
+  Customer Portal flow** (`manageSubscriptionAction`) — owner-only,
+  server-resolved organization, allowlisted plan keys, safe return URLs,
+  reused provider customer ids. Both redirect to whatever the resolved
+  adapter's session URL is; neither ever writes to `Subscription` itself.
+- A **real, provider-neutral webhook route**
+  (`POST /api/billing/webhook`) — signature verification, idempotency,
+  event-ordering guard, cross-org id-conflict protection, and atomic
+  `Subscription`/`Notification` updates. Fully built and tested, but
+  currently only ever reachable by the TEST_MODE-only mock provider —
+  there is no real provider webhook configuration to point at yet.
+- A **full, deterministic mock provider**, active only when
+  `TEST_MODE=1` (a flag this app already only ever sets for its own E2E
+  test runs — never in a real deployment). Makes zero network calls,
+  collects zero payment data, and exercises the entire checkout →
+  webhook → Subscription-update → Notification pipeline for real. Two
+  TEST_MODE-only pages (`/billing/mock/checkout`, `/billing/mock/portal`)
+  simulate what a provider's hosted pages would do; both 404
+  unconditionally in any real deployment.
+- Billing events (subscription activated, payment failed, subscription
+  canceled, plan changed) notify the organization's OWNER through the
+  existing in-app Notification Center and email, with the same
+  graceful-degradation behavior every other notification type already
+  has (see "Notifications" below).
 - Every organization created so far — including ones created before
   billing existed — resolves to a safe access mode (`FULL_ACCESS` for a
   pre-billing/legacy org, a real trial/paid state for a new one). Nothing
@@ -36,49 +61,66 @@ checklist for an operator, not a repeat of that design document.
 
 ### What's still pending — connecting a real payment provider
 
-None of the following exists yet. Building them is future work, not a
-configuration flag to flip:
+The *shell* is built; the *provider* is not. None of the following
+exists yet:
 
 1. **Provider account and mode selection.** The architecture doc
    recommends Paddle (Merchant of Record) over Stripe, but this is flagged
    there as an *unverified, pre-implementation* recommendation — confirm
    product/country eligibility and review with an accountant before
    committing (see `docs/billing-architecture.md` §2/§16).
-2. **A provider adapter.** No Paddle/Stripe SDK is installed. This needs a
-   thin, provider-specific module implementing the same interface
-   `getBillingProviderAvailability()` currently stubs out
-   (`src/lib/billing/provider-availability.ts`) — swap that one function's
-   body for a real config check, and the rest of the Billing UI needs no
-   changes.
-3. **Checkout route.** No `/api/billing/checkout` (or equivalent) route
-   exists. `requestPlanChangeAction` (`src/app/(dashboard)/settings/billing/actions.ts`)
-   has exactly one clearly-marked insertion point for creating a real
-   checkout session once a provider is connected.
-4. **Webhook route.** No webhook endpoint exists yet. The `WebhookEvent`
-   table (idempotency key, processing status, attempt count — no raw
-   payload column, by design) is ready to receive events once a route is
-   built to write to it and process them.
-5. **Customer portal / subscription management.** No redirect to a
-   provider-hosted billing portal exists yet. `manageSubscriptionAction`
-   has the equivalent single insertion point for that redirect.
-6. **Real price IDs.** No price/product IDs are hardcoded anywhere in this
+2. **A real adapter implementation.** No Paddle/Stripe SDK is installed.
+   `docs/billing-provider-adapter.md` has the exact interface
+   (`BillingProviderAdapter`) and a step-by-step checklist for
+   implementing and wiring one in as a third branch in
+   `getBillingProviderAdapter()` — no changes needed to entitlements, the
+   Billing UI, or the webhook route's own logic.
+3. **Real price IDs.** No price/product IDs are hardcoded anywhere in this
    codebase. They must come from environment variables added at the time a
-   provider is actually connected — never committed to source.
-7. **New environment variables.** None have been added for billing yet.
-   When they are, they must never use a `NEXT_PUBLIC_` prefix unless the
-   value is genuinely safe to expose to the browser (a publishable
-   checkout key may qualify; a secret/API key never does) — see
-   `scripts/security-checks/check-billing-security.mjs`, which already
-   guards against a `NEXT_PUBLIC_*` billing/provider variable being
-   introduced by mistake.
+   provider is actually connected — never committed to source (see the
+   `BILLING_*_PRICE_ID` placeholders in `.env.example`).
+4. **New environment variables — placeholders only today.**
+   `BILLING_PROVIDER`, `BILLING_API_KEY`, `BILLING_WEBHOOK_SECRET`,
+   `BILLING_STARTER_PRICE_ID`, `BILLING_PRO_PRICE_ID` are listed, empty,
+   in `.env.example` — no code reads any of them yet. When they're set
+   for real, they must stay server-only; never give any of them a
+   `NEXT_PUBLIC_` prefix (`scripts/security-checks/check-billing-security.mjs`
+   already guards against that mistake).
+5. **The provider's own webhook configuration.** Once a real adapter and
+   `BILLING_WEBHOOK_SECRET` exist, point the provider's webhook settings
+   at `POST /api/billing/webhook` — the route itself needs no change.
+6. **Trial-ending reminders (`TRIAL_ENDING`).** Deferred — needs a daily
+   cron job (see `docs/billing-architecture.md` §17/§18) this stage
+   doesn't build. The other four billing notification types
+   (activated/payment-failed/canceled/plan-changed) are already live,
+   webhook-triggered.
+7. **Reconciliation cron.** `docs/billing-architecture.md` §18 designs a
+   daily "re-fetch from the provider and correct drift" job as a
+   webhook-delivery backstop — not built yet. Not required for webhooks
+   to work correctly; only for the (rare) case one is missed entirely.
+
+### Notifications
+
+Billing events already flow through the existing Notification Center —
+no separate email pipeline. In production with no email provider
+configured (`RESEND_API_KEY`/`INVITATION_FROM_EMAIL` unset), the
+in-app `Notification` row is still created; email delivery is recorded as
+`SKIPPED`/`not_configured` rather than failing, and webhook processing
+itself always succeeds regardless of email configuration — the same
+graceful-degradation behavior every other notification type in this app
+already has.
 
 ### Migration and backfill
 
-- The billing schema migration (`prisma/migrations/20260830090000_add_billing_foundation/`)
-  has **not** been applied to any shared or production database as part of
-  this work — it was generated and verified only against a disposable
-  local test database. Review it and apply it deliberately, the same as
-  any other migration, before this code is deployed anywhere it matters.
+- Two billing-related migrations exist —
+  `prisma/migrations/20260830090000_add_billing_foundation/` (Stage 2:
+  the `Subscription`/`WebhookEvent` schema) and
+  `prisma/migrations/20260907090000_add_billing_notification_types/`
+  (Stage 4: four additive `NotificationType` enum values). **Neither has
+  been applied to any shared or production database** — both were
+  generated and verified only against a disposable local test database.
+  Review and apply them deliberately, the same as any other migration,
+  before this code is deployed anywhere it matters.
 - `prisma/backfill-subscriptions.ts` (idempotent, dry-run by default) gives
   every pre-existing organization an explicit `LEGACY` Subscription row
   instead of relying indefinitely on the "no row = legacy access" fallback.
@@ -88,5 +130,7 @@ configuration flag to flip:
 ### Live payments
 
 Live billing is disabled by construction — there is no code path in this
-repository that can currently charge a real customer. It stays that way
-until all of the above is built and deliberately turned on.
+repository that can currently charge a real customer or reach a real
+payment provider. It stays that way until a real adapter is implemented
+and connected per `docs/billing-provider-adapter.md`'s own checklist, and
+is deliberately turned on.

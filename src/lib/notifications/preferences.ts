@@ -22,6 +22,14 @@ export const NOTIFICATION_TYPES = [
   // consequence of preferences genuinely applying to MENTIONED — not new
   // UI work of this stage's own.
   "MENTIONED",
+  // Billing & Subscriptions Stage 4 (docs/billing-architecture.md §17) —
+  // real fan-out now exists (src/lib/billing/notify.ts, wired into the
+  // webhook handler), so these belong here from day one, unlike MENTIONED's
+  // own schema-first staged rollout above.
+  "SUBSCRIPTION_ACTIVATED",
+  "PAYMENT_FAILED",
+  "SUBSCRIPTION_CANCELED",
+  "PLAN_CHANGED",
 ] as const satisfies readonly NotificationType[];
 
 export type NotificationPreferenceValue = {

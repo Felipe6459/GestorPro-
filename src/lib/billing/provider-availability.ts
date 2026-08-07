@@ -1,19 +1,18 @@
+import "server-only";
 import type { BillingProvider } from "@/generated/prisma/enums";
+import { getBillingProviderAdapter } from "./provider/provider";
 
 /**
- * Billing & Subscriptions Stage 3 (docs/billing-architecture.md's Stage 3
- * note, this stage's own §9). No payment provider is connected yet — this
- * always reports `configured: false`. Deliberately reads no env var and
- * detects nothing real: Stage 3 explicitly forbids "attempt to detect a
- * real Paddle config," since there isn't one, and a function that tried
- * would just be dead code exercising nothing until Stage 4 actually wires
- * a provider adapter in.
- *
- * The one seam Stage 4 needs: every caller (the billing page's view-model
- * builder, the placeholder Server Actions) already goes through this
- * function instead of hardcoding `false` inline, so swapping this body for
- * a real provider-config check later is a one-file change, not a grep-and-
- * replace across the UI.
+ * Billing & Subscriptions Stage 4 (docs/billing-architecture.md's Stage 4
+ * note, this stage's own §9/§15). Stage 3 introduced this as an
+ * always-`false` stub with one documented seam for later; Stage 4 is that
+ * seam being filled in — this now delegates to the provider registry
+ * (`src/lib/billing/provider/provider.ts`) instead of hardcoding a value,
+ * so it reports `configured: true` whenever TEST_MODE resolves to the mock
+ * adapter, and `configured: false` in any real deployment until a real
+ * provider is actually connected (Stage 5+). Every caller (the billing
+ * page's view-model builder, the checkout/portal Server Actions) is
+ * unchanged by this — they already only ever branch on `.configured`.
  */
 export type BillingProviderAvailability = {
   configured: boolean;
@@ -23,10 +22,12 @@ export type BillingProviderAvailability = {
 };
 
 export async function getBillingProviderAvailability(): Promise<BillingProviderAvailability> {
+  const adapter = getBillingProviderAdapter();
+  const configured = adapter.kind !== "unconfigured";
   return {
-    configured: false,
-    provider: "PADDLE",
-    checkoutAvailable: false,
-    portalAvailable: false,
+    configured,
+    provider: adapter.name,
+    checkoutAvailable: configured,
+    portalAvailable: configured,
   };
 }

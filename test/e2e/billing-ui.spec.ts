@@ -105,27 +105,31 @@ test.describe("OWNER", () => {
     await expect(page.getByRole("heading", { name: "Pro", level: 3 })).toBeVisible();
   });
 
-  test("Upgrade action shows a controlled 'not configured' toast, never navigates away, and leaves the Subscription row unchanged", async ({ page }) => {
+  // Billing & Subscriptions Stage 4: TEST_MODE (set for this whole E2E
+  // run — see playwright.config.ts's webServer.env) now resolves the
+  // provider registry to the real MockBillingProvider, so Upgrade/Manage
+  // navigate to a real mock checkout/portal session instead of showing
+  // Stage 3's "not configured" toast. The full mock checkout → webhook →
+  // updated-plan flow, and the "not configured" copy for a genuinely
+  // unconfigured provider, are covered in test/e2e/billing-mock-flow.spec.ts.
+  test("Upgrade action navigates to the mock checkout page for the selected plan", async ({ page }) => {
     await setSubscription(fixtures.orgA.id, { planKey: "STARTER", status: "ACTIVE" });
     await page.goto("/settings/billing");
 
-    const before = await dbQuery("subscription", "findUnique", { where: { organizationId: fixtures.orgA.id } });
-
     await page.getByRole("button", { name: "Upgrade" }).click();
 
-    await expect(page.getByText("Billing provider is not configured.")).toBeVisible();
-    await expect(page).toHaveURL(/\/settings\/billing/);
-
-    const after = await dbQuery("subscription", "findUnique", { where: { organizationId: fixtures.orgA.id } });
-    expect(after).toEqual(before);
+    await expect(page).toHaveURL(/\/billing\/mock\/checkout/);
+    await expect(page.getByText("Mock checkout — TEST_MODE only")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Subscribe to Pro" })).toBeVisible();
   });
 
-  test("Manage subscription action shows the same controlled toast", async ({ page }) => {
+  test("Manage subscription with no billing account yet shows a controlled message", async ({ page }) => {
     await setSubscription(fixtures.orgA.id, { planKey: "STARTER", status: "ACTIVE" });
     await page.goto("/settings/billing");
 
     await page.getByRole("button", { name: "Manage subscription" }).click();
-    await expect(page.getByText("Billing provider is not configured.")).toBeVisible();
+    await expect(page.getByText("There's no billing account to manage yet")).toBeVisible();
+    await expect(page).toHaveURL(/\/settings\/billing/);
   });
 });
 

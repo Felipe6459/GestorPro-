@@ -1,4 +1,10 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+// src/app/(dashboard)/settings/billing/actions.ts imports src/lib/billing/
+// provider/provider.ts, which imports the real "server-only" marker
+// package — see test/unit/cron-auth.test.ts's own header comment.
+vi.mock("server-only", () => ({}));
+
 import { prisma } from "@/lib/prisma";
 import { requestPlanChangeAction, manageSubscriptionAction } from "@/app/(dashboard)/settings/billing/actions";
 import { seedTestData, cleanupTestData, type TestFixtures } from "../../fixtures/seed";

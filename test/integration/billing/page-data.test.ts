@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+// src/lib/billing/view-model.ts transitively imports src/lib/billing/
+// provider/provider.ts, which imports the real "server-only" marker
+// package — see test/unit/cron-auth.test.ts's own header comment.
+vi.mock("server-only", () => ({}));
+
 import { prisma } from "@/lib/prisma";
 import { getBillingPageData } from "@/lib/billing/view-model";
 import { seedTestData, cleanupTestData, type TestFixtures } from "../../fixtures/seed";

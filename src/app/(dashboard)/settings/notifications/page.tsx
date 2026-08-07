@@ -39,6 +39,22 @@ const NOTIFICATION_TYPE_LABELS: Record<NotificationType, { title: string; descri
     title: "Mentioned in a comment",
     description: "When someone @mentions you in a comment.",
   },
+  SUBSCRIPTION_ACTIVATED: {
+    title: "Subscription activated",
+    description: "When your organization's subscription becomes active (Owners only).",
+  },
+  PAYMENT_FAILED: {
+    title: "Payment failed",
+    description: "When a billing payment fails (Owners only).",
+  },
+  SUBSCRIPTION_CANCELED: {
+    title: "Subscription canceled",
+    description: "When your organization's subscription is canceled (Owners only).",
+  },
+  PLAN_CHANGED: {
+    title: "Plan changed",
+    description: "When your organization's billing plan changes (Owners only).",
+  },
 };
 
 export default async function NotificationPreferencesPage() {

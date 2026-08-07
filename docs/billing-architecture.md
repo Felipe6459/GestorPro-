@@ -1462,3 +1462,65 @@ the only place writes are actually blocked.
 - Live billing is not enabled, and cannot be from this stage's code alone.
 - See `docs/operator-setup.md` for what a future operator must still
   connect before any of this becomes live billing.
+
+---
+
+## Stage 4 implementation note
+
+Stage 4 built the provider-neutral integration shell this document always
+intended §12/§8 to sit behind — a typed adapter contract, a registry, a
+full deterministic mock, and the real webhook route — without connecting
+any real payment provider. Full detail (adapter contract, mock behavior,
+webhook sequence, environment variables, and the test-mode → live
+checklist) now lives in its own document:
+**[`docs/billing-provider-adapter.md`](billing-provider-adapter.md)** —
+this note only records what changed relative to this document's own
+original design and Stage 2/3's contracts.
+
+**One additive migration, confirmed necessary and user-approved before
+being written.** `docs/notifications-architecture.md`-style staged
+`NotificationType` rollout (§17 above) said these four values would be
+added "in Stage 2's migration alongside the billing models themselves" —
+Stage 2 did not actually do this. Stage 4 needed real Notification rows
+for billing events, so it added a second, purely-additive migration
+(`prisma/migrations/20260907090000_add_billing_notification_types/`) for
+exactly `SUBSCRIPTION_ACTIVATED`, `PAYMENT_FAILED`, `SUBSCRIPTION_CANCELED`,
+`PLAN_CHANGED` — nothing removed or renamed, generated and verified only
+against a disposable local PGlite instance, never applied to any shared/
+production database. `TRIAL_ENDING` (§17's fifth value) is still deferred
+— it needs a daily cron job this stage doesn't build (see
+`docs/operator-setup.md`).
+
+**Billing notifications bypass the Activity-driven fan-out pipeline.**
+§17 above described billing notifications as "built entirely on the
+existing Activity/Notification system." In practice, `createActivity()`/
+`dispatchNotificationsForActivity()` are keyed by
+`(ActivityEntityType, ActivityAction)` — a webhook event has no human
+actor and no existing `ActivityEntityType` fits "a Subscription changed."
+Rather than add a second, unconfirmed enum surface (a new
+`ActivityEntityType`/`ActivityAction` pair) purely to shoehorn a
+system-triggered event into an actor-shaped audit log, Stage 4 writes
+`Notification` rows directly (`src/lib/billing/notify.ts`), with
+`activityId`/`entityType`/`entityId` all left `null` — precisely the
+"system-triggered notification, no Activity behind it" shape
+`Notification.activityId`'s own schema comment already anticipated for
+exactly this situation. No Activity row is created for any billing event;
+`Notification` alone is the owner-visible surface that matters here.
+
+**Status as of Stage 4: provider-neutral integration shell, still no live
+payments.**
+- No real Paddle/Stripe SDK, no real API keys, no real webhook secret, no
+  real price IDs — `BILLING_PROVIDER`/`BILLING_API_KEY`/
+  `BILLING_WEBHOOK_SECRET`/`BILLING_STARTER_PRICE_ID`/`BILLING_PRO_PRICE_ID`
+  exist only as empty placeholders in `.env.example`, read by no code.
+- A full TEST_MODE-only mock provider makes the entire checkout →
+  webhook → Subscription-update → Notification pipeline exercisable
+  end-to-end in tests, with zero network calls and zero payment data
+  collected — see `docs/billing-provider-adapter.md`.
+- Outside TEST_MODE, every checkout/portal action and the webhook route
+  fail closed with a controlled, generic response — the exact same
+  "Billing provider is not configured." UI state Stage 3 already shipped.
+- Live billing is still not enabled, and still cannot be from this
+  stage's code alone — see `docs/billing-provider-adapter.md`'s own
+  test-mode → live checklist for what a real provider connection
+  actually requires.

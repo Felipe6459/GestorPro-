@@ -187,6 +187,23 @@ enum NotificationType {
   // exist; no NotificationRule references it yet (see notification-
   // rules.ts, untouched by this stage) and no Server Action creates one.
   MENTIONED
+
+  // Billing & Subscriptions Stage 4 (docs/billing-architecture.md §17).
+  // Every one of these notifies the org's OWNER only, created directly by
+  // the webhook handler (src/lib/billing/notify.ts) rather than through
+  // dispatchNotificationsForActivity/createActivity — a webhook event has
+  // no human actor and no ActivityEntityType/ActivityAction fits a
+  // Subscription row, so these Notification rows are written with
+  // activityId/entityType/entityId all null, the same "system-triggered,
+  // no Activity behind it" shape this schema's own Notification.activityId
+  // comment already anticipated. TRIAL_ENDING is deferred to a future cron
+  // stage (needs a daily reminder job, not this stage's webhook path) and
+  // is deliberately not added here yet — adding it later is a pure
+  // additive enum value, not a breaking change.
+  SUBSCRIPTION_ACTIVATED
+  PAYMENT_FAILED
+  SUBSCRIPTION_CANCELED
+  PLAN_CHANGED
 }
 
 // Only channel implemented so far (Stage 6) — SMS/webhook/etc. are future

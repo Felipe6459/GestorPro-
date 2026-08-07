@@ -171,35 +171,197 @@ ok = report(
   clientFilesImportingBillingLib.join(", "),
 ) && ok;
 
-// 11. The placeholder billing actions resolve organization/role server-side
-// only — they must never reference organizationId/userId as a real code
-// identifier (doc comments are allowed to discuss the rule in prose; this
-// strips /** */ and // comments first so only actual code is checked).
-const actionsSource = existsSync(BILLING_ACTIONS_FILE) ? readFileSync(BILLING_ACTIONS_FILE, "utf8") : "";
-const actionsCodeOnly = actionsSource.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-const referencesClientSuppliedIds = /\borganizationId\b|\buserId\b/.test(actionsCodeOnly);
+// 11. Every checkout/portal Server Action — the real ones (this stage's
+// own actions.ts) and the TEST_MODE-only mock ones (src/app/billing/mock/
+// */actions.ts) — resolves organization/role/provider ids server-side
+// only. Scoped to each EXPORTED FUNCTION'S OWN PARAMETER LIST specifically
+// (not the whole file — Stage 4's real actions legitimately reference
+// `organizationId`/`providerCustomerId` in their *bodies*, resolved from
+// getCurrentMembership()/a DB read, never accepted as input). A function
+// signature containing one of these identifiers as a parameter would mean
+// a caller could supply it directly instead.
+function exportedFunctionParamLists(content) {
+  const regex = /export\s+async\s+function\s+\w+\s*\(([^)]*)\)/g;
+  const lists = [];
+  let match;
+  while ((match = regex.exec(content))) {
+    lists.push(match[1]);
+  }
+  return lists;
+}
+const CLIENT_SUPPLIED_ID_ACTION_FILES = [
+  BILLING_ACTIONS_FILE,
+  "src/app/billing/mock/checkout/actions.ts",
+  "src/app/billing/mock/portal/actions.ts",
+];
+const FORBIDDEN_PARAM_NAMES = /\b(organizationId|userId|providerCustomerId|providerSubscriptionId)\b/;
+const filesWithClientSuppliedIdParams = CLIENT_SUPPLIED_ID_ACTION_FILES.filter((file) => {
+  if (!existsSync(file)) return true;
+  const content = readFileSync(file, "utf8");
+  return exportedFunctionParamLists(content).some((params) => FORBIDDEN_PARAM_NAMES.test(params));
+});
 ok = report(
-  "billing placeholder actions never reference organizationId/userId (always server-resolved via getCurrentMembership)",
-  existsSync(BILLING_ACTIONS_FILE) && !referencesClientSuppliedIds,
-  referencesClientSuppliedIds ? BILLING_ACTIONS_FILE : "actions file not found",
+  "checkout/portal actions (real and mock) never accept organizationId/userId/providerCustomerId/providerSubscriptionId as a parameter",
+  filesWithClientSuppliedIdParams.length === 0,
+  filesWithClientSuppliedIdParams.join(", "),
 ) && ok;
 
-// 12. The placeholder actions have zero side effects — never write a
-// Subscription or WebhookEvent row. A regression here would mean a
-// "not configured" UI action silently started mutating billing state.
+// 12. The checkout/portal actions have no side effect on Subscription/
+// WebhookEvent themselves — only the webhook route ever writes either
+// table (this stage's own §5/§6: "no DB mutation until webhook"). A
+// regression here would mean an action started mutating billing state
+// directly instead of only ever redirecting the browser.
+const actionsSource = existsSync(BILLING_ACTIONS_FILE) ? readFileSync(BILLING_ACTIONS_FILE, "utf8") : "";
+const actionsCodeOnly = actionsSource.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 const mutatesSubscriptionOrWebhook = /\.subscription\.(update|create|upsert|delete)|\.webhookEvent\.(update|create|upsert|delete)/.test(
   actionsCodeOnly,
 );
 ok = report(
-  "billing placeholder actions never mutate Subscription or WebhookEvent",
+  "checkout/portal actions never mutate Subscription or WebhookEvent directly",
   existsSync(BILLING_ACTIONS_FILE) && !mutatesSubscriptionOrWebhook,
   mutatesSubscriptionOrWebhook ? BILLING_ACTIONS_FILE : "actions file not found",
 ) && ok;
 
-// 13. The Client Portal never imports the Billing UI — same staff-only
-// boundary as check 4 (which covers src/lib/billing), verified here for the
-// UI layer this stage adds.
-const billingUiImportInPortal = grep('from "@/components/billing|from "@/app/\\(dashboard\\)/settings/billing', PORTAL_APP_DIR);
+// 13. The Client Portal never imports any part of the Billing UI —
+// same staff-only boundary as check 4 (which covers src/lib/billing),
+// extended to also cover the TEST_MODE-only mock checkout/portal pages
+// this stage adds.
+const billingUiImportInPortal = grep(
+  'from "@/components/billing|from "@/app/\\(dashboard\\)/settings/billing|from "@/app/billing',
+  PORTAL_APP_DIR,
+);
 ok = report("the Client Portal never imports the Billing UI", billingUiImportInPortal === "", billingUiImportInPortal) && ok;
+
+// Billing & Subscriptions Stage 4 (this stage's own §16) — 10 additional
+// checks, appended rather than replacing anything above.
+
+const PROVIDER_DIR = "src/lib/billing/provider";
+const WEBHOOK_ROUTE_FILE = "src/app/api/billing/webhook/route.ts";
+const MOCK_PROVIDER_FILE = "src/lib/billing/provider/mock-provider.ts";
+const EVENT_MAPPER_FILE = "src/lib/billing/event-mapper.ts";
+const MOCK_CHECKOUT_PAGE = "src/app/billing/mock/checkout/page.tsx";
+const MOCK_PORTAL_PAGE = "src/app/billing/mock/portal/page.tsx";
+
+// 14. Every provider adapter file is server-only.
+function listFilesRecursive(dir) {
+  if (!existsSync(dir)) return [];
+  const out = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...listFilesRecursive(full));
+    else if (full.endsWith(".ts")) out.push(full);
+  }
+  return out;
+}
+const providerFiles = listFilesRecursive(PROVIDER_DIR);
+const providerFilesMissingServerOnly = providerFiles.filter(
+  (file) => !readFileSync(file, "utf8").includes('import "server-only"'),
+);
+ok = report(
+  "every file under src/lib/billing/provider/ imports \"server-only\"",
+  providerFiles.length > 0 && providerFilesMissingServerOnly.length === 0,
+  providerFilesMissingServerOnly.join(", "),
+) && ok;
+
+// 15. No console logging in the webhook route or the provider adapter
+// directory — a raw payload, signature, or provider secret must never
+// reach a log line, even accidentally via a generic console.log(event)
+// during debugging that was left in.
+const consoleInWebhookPath = [WEBHOOK_ROUTE_FILE, PROVIDER_DIR]
+  .filter(existsSync)
+  .map((target) => grep("console\\.(log|error|warn|info|debug)", target))
+  .join("");
+ok = report(
+  "no console logging in the billing webhook route or provider adapter directory",
+  consoleInWebhookPath === "",
+  consoleInWebhookPath,
+) && ok;
+
+// 16. The webhook route verifies the signature unconditionally, before
+// ever parsing the payload, and has no TEST_MODE-gated bypass of its own
+// (TEST_MODE only ever changes which *adapter* the registry resolves to —
+// see src/lib/billing/provider/provider.ts — never the route's own logic).
+const webhookRouteSource = existsSync(WEBHOOK_ROUTE_FILE) ? readFileSync(WEBHOOK_ROUTE_FILE, "utf8") : "";
+const verifyIndex = webhookRouteSource.indexOf("verifyWebhook(");
+const parseIndex = webhookRouteSource.indexOf("parseWebhookEvent(");
+const verifiesBeforeParsing = verifyIndex !== -1 && parseIndex !== -1 && verifyIndex < parseIndex;
+const webhookRouteReferencesTestMode = /\bTEST_MODE\b/.test(webhookRouteSource);
+ok = report(
+  "the webhook route verifies the signature before parsing, with no TEST_MODE bypass of its own",
+  verifiesBeforeParsing && !webhookRouteReferencesTestMode,
+  !verifiesBeforeParsing ? "verifyWebhook does not run before parseWebhookEvent" : "route references TEST_MODE directly",
+) && ok;
+
+// 17. Idempotency relies on the database's own unique constraint (a real
+// P2002 catch), not a check-then-insert race — see this file's own §7
+// requirement and the route's own header comment for why.
+const webhookHasP2002Dedup = /P2002/.test(webhookRouteSource) && /providerEventId/.test(webhookRouteSource);
+ok = report(
+  "the webhook route dedupes via a P2002 unique-constraint catch on providerEventId",
+  webhookHasP2002Dedup,
+  webhookRouteSource ? "" : "webhook route not found",
+) && ok;
+
+// 18. The event mapper implements an explicit old-event/ordering guard —
+// an event whose own providerUpdatedAt doesn't advance the row's last-
+// applied one must never overwrite newer state.
+const mapperSource = existsSync(EVENT_MAPPER_FILE) ? readFileSync(EVENT_MAPPER_FILE, "utf8") : "";
+const mapperHasOrderingGuard = /providerUpdatedAt/.test(mapperSource) && /IGNORE_OLDER_EVENT/.test(mapperSource);
+ok = report(
+  "the event mapper implements an explicit providerUpdatedAt ordering guard",
+  mapperHasOrderingGuard,
+  mapperSource ? "" : "event mapper not found",
+) && ok;
+
+// 19. Checkout/portal actions are OWNER-only — every exported action in
+// the real actions file checks membership.role against Role.OWNER.
+const ownerCheckCount = (actionsSource.match(/membership\.role\s*!==\s*Role\.OWNER/g) ?? []).length;
+ok = report(
+  "requestPlanChangeAction and manageSubscriptionAction both check OWNER role",
+  ownerCheckCount >= 2,
+  `found ${ownerCheckCount} OWNER check(s), expected at least 2`,
+) && ok;
+
+// 20. Checkout/portal return/cancel URLs are only ever built through
+// sanitizeRedirectPath — never a raw, unvalidated string handed to an
+// adapter or a redirect() call.
+const actionsUseSafeRedirect = /sanitizeRedirectPath/.test(actionsSource);
+ok = report("checkout/portal return URLs are built via sanitizeRedirectPath", actionsUseSafeRedirect, actionsSource ? "" : "actions file not found") && ok;
+
+// 21. The mock provider is unreachable outside TEST_MODE (throws at
+// construction), and both mock UI pages 404 outside TEST_MODE before
+// doing anything else — the same "fail closed, checked first" shape
+// src/app/api/e2e-test-storage/[...path]/route.ts already established.
+const mockProviderSource = existsSync(MOCK_PROVIDER_FILE) ? readFileSync(MOCK_PROVIDER_FILE, "utf8") : "";
+const mockProviderGatesOnTestMode = /if\s*\(\s*!TEST_MODE\s*\)/.test(mockProviderSource);
+const mockPagesGateOnTestMode = [MOCK_CHECKOUT_PAGE, MOCK_PORTAL_PAGE].every((file) => {
+  if (!existsSync(file)) return false;
+  const content = readFileSync(file, "utf8");
+  return /if\s*\(\s*!TEST_MODE\s*\)/.test(content) && /notFound\(\)/.test(content);
+});
+ok = report(
+  "the mock provider and both mock UI pages are unreachable outside TEST_MODE",
+  mockProviderGatesOnTestMode && mockPagesGateOnTestMode,
+  `mock-provider.ts gate: ${mockProviderGatesOnTestMode}, mock pages gate: ${mockPagesGateOnTestMode}`,
+) && ok;
+
+// 22. No real-looking provider price/product id literal hardcoded
+// anywhere in src/ — this stage never reads a real price id from
+// anywhere (see .env.example's own placeholder-only BILLING_*_PRICE_ID
+// entries), so a literal matching a real Paddle/Stripe id shape appearing
+// in source would mean one was pasted in by mistake.
+const hardcodedPriceIds = grep('"(pri_|price_)[A-Za-z0-9]', "src");
+ok = report("no hardcoded provider price/product id literal anywhere in src/", hardcodedPriceIds === "", hardcodedPriceIds) && ok;
+
+// 23. Organization/provider-id trust validation is present in the webhook
+// route — an unknown organization or a provider id already bound to a
+// different org must be rejected, never silently applied.
+const webhookHasTrustChecks =
+  /unknown_organization/.test(webhookRouteSource) && /provider_id_conflict/.test(webhookRouteSource);
+ok = report(
+  "the webhook route validates organization existence and rejects cross-org provider id reuse",
+  webhookHasTrustChecks,
+  webhookRouteSource ? "" : "webhook route not found",
+) && ok;
 
 process.exit(ok ? 0 : 1);
