@@ -62,6 +62,49 @@ enum InvitationStatus {
   EXPIRED
 }
 
+// Billing & Subscriptions Stage 2 (docs/billing-architecture.md §2/§5). One
+// value today, on purpose — this app connects no provider at runtime in
+// this stage (no SDK, no API client, no webhook route). A real Prisma enum
+// rather than a free string so a second provider later is an additive enum
+// value (Postgres supports ALTER TYPE ... ADD VALUE without a destructive
+// migration), and so TypeScript can exhaustively check every place that
+// ever branches on provider, the same reasoning this schema already uses
+// for every other status-like enum.
+enum BillingProvider {
+  PADDLE
+}
+
+// Billing & Subscriptions Stage 2 (docs/billing-architecture.md §5/§13).
+// This app's own local access-tier vocabulary — deliberately not a 1:1
+// copy of every status a payment provider's API can report (PAUSED is
+// omitted: docs/billing-architecture.md §13 marks it provider-conditional
+// and nothing in this stage's v1 scope needs it yet; adding it later is a
+// pure additive enum value, not a breaking change). See
+// src/lib/billing/access-mode.ts for the full state -> access mapping.
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+  UNPAID
+}
+
+// Billing & Subscriptions Stage 2 — the WebhookEvent processing lifecycle.
+// Nothing writes or reads this column yet (no webhook route exists in this
+// stage); the enum is fixed now so the ledger's shape never needs an
+// ALTER-in-place once Stage 4 actually adds a handler. IGNORED is for an
+// event type this app deliberately never acts on (still recorded for
+// idempotency/audit, never processed) — distinct from FAILED, which means
+// processing was attempted and did not succeed.
+enum WebhookProcessingStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
 enum ActivityEntityType {
   CLIENT
   PROJECT
@@ -144,6 +187,23 @@ enum NotificationType {
   // exist; no NotificationRule references it yet (see notification-
   // rules.ts, untouched by this stage) and no Server Action creates one.
   MENTIONED
+
+  // Billing & Subscriptions Stage 4 (docs/billing-architecture.md §17).
+  // Every one of these notifies the org's OWNER only, created directly by
+  // the webhook handler (src/lib/billing/notify.ts) rather than through
+  // dispatchNotificationsForActivity/createActivity — a webhook event has
+  // no human actor and no ActivityEntityType/ActivityAction fits a
+  // Subscription row, so these Notification rows are written with
+  // activityId/entityType/entityId all null, the same "system-triggered,
+  // no Activity behind it" shape this schema's own Notification.activityId
+  // comment already anticipated. TRIAL_ENDING is deferred to a future cron
+  // stage (needs a daily reminder job, not this stage's webhook path) and
+  // is deliberately not added here yet — adding it later is a pure
+  // additive enum value, not a breaking change.
+  SUBSCRIPTION_ACTIVATED
+  PAYMENT_FAILED
+  SUBSCRIPTION_CANCELED
+  PLAN_CHANGED
 }
 
 // Only channel implemented so far (Stage 6) — SMS/webhook/etc. are future
@@ -243,6 +303,12 @@ model Organization {
   invoices    Invoice[]
   attachments Attachment[]
   comments    Comment[]
+
+  // Billing & Subscriptions Stage 2. Optional on this side because an
+  // Organization created before this stage shipped has none — see
+  // Subscription's own doc comment for the full "legacy" fallback story.
+  subscription  Subscription?
+  webhookEvents WebhookEvent[]
 
   onboardingSteps OrganizationOnboardingStep[]
 }
@@ -817,6 +883,142 @@ model ClientInvitation {
   @@unique([clientId, email])
   @@index([clientId])
   @@index([email])
+}
+
+// Billing & Subscriptions Stage 2 (docs/billing-architecture.md §5, refined
+// by this stage's own exact field list). One row per Organization — the
+// local, provider-independent record of what that org is entitled to.
+// Never the source of truth for money; once a provider is actually
+// connected (Stage 3+) that provider is, and this table only ever mirrors
+// it. This table IS the source of truth for feature access, and is safe
+// to read on every request with no network call — see
+// src/lib/billing/entitlements.ts.
+//
+// Created automatically and atomically alongside a brand-new Organization
+// (src/lib/billing/provisioning.ts, wired into getOrCreateOrganizationId
+// in src/lib/current-user.ts) — every Organization created from this
+// stage onward gets exactly one Subscription row, starting TRIALING.
+// Organizations that predate this stage have none at all by design: no
+// destructive backfill runs automatically as part of this migration (see
+// the migration's own header comment and prisma/backfill-subscriptions.ts,
+// which is optional and not run against any shared database in this
+// stage) — getOrganizationEntitlements() treats a missing row as "legacy,
+// full access" (src/lib/billing/access-mode.ts), never as an error, so
+// merging this stage can never degrade an existing organization's access.
+//
+// No BillingCustomer model: evaluated per docs/billing-architecture.md §5
+// and this stage's own instructions, and rejected — a provider customer id
+// has no independent lifecycle from this row (one Subscription per
+// Organization already, via the unique constraint below), so a separate
+// table would only add a join with no real benefit at this schema's
+// current shape. providerCustomerId/providerSubscriptionId live directly
+// here instead.
+model Subscription {
+  id String @id @default(uuid()) @db.Uuid
+
+  organizationId String       @unique @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  provider BillingProvider @default(PADDLE)
+
+  // Both nullable: unset for a TRIAL row (or any LEGACY-backfilled row)
+  // that has never gone through a real checkout with a real provider.
+  providerCustomerId     String? @unique
+  providerSubscriptionId String? @unique
+
+  // A stable, code-defined key (src/lib/billing/plans.ts) — never the
+  // provider's own price/product id. Deliberately a String, not a Prisma
+  // enum: adding a plan, renaming a display name, or changing a limit must
+  // never require a migration (docs/billing-architecture.md §6). Validated
+  // against the catalog in application code (isPlanKey()), not by the
+  // database.
+  planKey String
+
+  status SubscriptionStatus @default(TRIALING)
+
+  // Always set together, at row-creation time (see provisioning.ts) — a
+  // Subscription row is never created without knowing when its trial (if
+  // any) started/ends, even for a LEGACY-backfilled row (see
+  // prisma/backfill-subscriptions.ts, which backdates both to the backfill
+  // moment since a LEGACY row's ACTIVE status never consults them — see
+  // src/lib/billing/access-mode.ts).
+  trialStartedAt DateTime
+  trialEndsAt    DateTime
+
+  // Nullable: unset until a real billing period exists (i.e. until a real
+  // provider subscription has actually started — Stage 3+).
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+
+  cancelAtPeriodEnd Boolean   @default(false)
+  canceledAt        DateTime?
+
+  // Computed and stored, not recomputed ad hoc, the moment status enters
+  // PAST_DUE — see src/lib/billing/access-mode.ts's own grace-period logic.
+  gracePeriodEndsAt DateTime?
+
+  // Set by whatever last wrote real provider data to this row (a future
+  // webhook handler, Stage 4+) — null for a Stage-2-only TRIAL/LEGACY row
+  // no webhook has ever touched. Not read by anything in this stage;
+  // exists now so webhooks don't need a second migration just to add it.
+  providerUpdatedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Billing & Subscriptions Stage 2 — schema foundation only. No route, no
+// processing logic exists yet, and nothing writes to this table in this
+// stage (Stage 4 adds the actual webhook Route Handler) — the same
+// "schema first, handler second" staged rollout this codebase's own
+// Notification model already used (docs/notifications-architecture.md §9).
+//
+// Deliberately never stores the raw webhook payload (docs/billing-
+// architecture.md §5's own "what this schema must never store") — Stage 1
+// proposed an allowlisted payloadSummary column for debugging; Stage 2
+// omits even that until a real handler exists to decide what's actually
+// worth summarizing, rather than guessing a shape now a later stage would
+// likely have to change anyway.
+model WebhookEvent {
+  id String @id @default(uuid()) @db.Uuid
+
+  provider BillingProvider
+
+  // The actual idempotency key — a duplicate delivery's insert attempt
+  // hits this constraint, the same "one row, checked before mutating"
+  // discipline NotificationDelivery's own
+  // @@unique([notificationId, channel]) already models in this schema.
+  providerEventId String @unique
+  eventType       String
+
+  // The provider's own "when this happened" timestamp — distinct from
+  // createdAt (when this app first saw it) so a future handler can detect
+  // out-of-order delivery (an event whose eventCreatedAt is older than the
+  // Subscription row's own last-applied change is a no-op, never a
+  // regression).
+  eventCreatedAt DateTime
+
+  // Nullable + SetNull, same reasoning as Activity.actorId: this row is a
+  // historical/audit record that must survive independently of the org it
+  // was about, should an org ever become deletable in the future (no
+  // action deletes an Organization anywhere in this app today).
+  organizationId String?       @db.Uuid
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  processedAt      DateTime?
+  processingStatus WebhookProcessingStatus @default(PENDING)
+  failureCode      String?
+  attempts         Int                     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // A future retry/reconciliation job's own candidate-discovery query
+  // shape ("every eligible PENDING/FAILED row, oldest first") — the same
+  // shape NotificationDelivery's own @@index([status, createdAt]) already
+  // serves for an analogous purpose. Unused by anything in this stage.
+  @@index([processingStatus, createdAt])
+  @@index([organizationId])
 }
 
 // Onboarding Stage 2 (docs/onboarding-architecture.md §9, Decision:

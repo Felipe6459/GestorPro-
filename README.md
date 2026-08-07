@@ -281,6 +281,40 @@ Ideas for future iterations. None of these are implemented yet:
 - **File attachments** on clients, projects, or invoices (e.g. contracts, deliverables) — no file storage is wired up yet.
 - **Invoice PDF export / email delivery** — invoices currently exist only as database records with a status field; there's no PDF generation or send-by-email flow.
 
+## Billing (provider-neutral integration shell, no real provider connected)
+
+A provider-neutral billing foundation exists in code — see
+[`docs/billing-architecture.md`](docs/billing-architecture.md): a
+`Subscription`/`WebhookEvent` schema, a typed plan catalog, organization
+entitlements, and server-side limit enforcement on a small set of write
+paths (staff invites, Client/Project creation, Attachment uploads). A
+staff-only **Billing page** (`/settings/billing`) renders on top of that
+foundation — current plan, status, usage, and Starter/Pro plan cards, all
+sourced from local data.
+
+On top of that, a full **provider-neutral integration shell** now exists
+— see [`docs/billing-provider-adapter.md`](docs/billing-provider-adapter.md):
+a typed adapter contract (`src/lib/billing/provider/*`), a real checkout
+flow and Customer Portal flow, and a real, signature-verified,
+idempotent webhook route (`POST /api/billing/webhook`) that updates
+`Subscription` and notifies the org's OWNER. A full **deterministic mock
+provider** — active only when `TEST_MODE=1` (never set in a real
+deployment) — exercises that entire pipeline end to end with zero
+network calls and zero payment data collected, including two TEST_MODE-
+only pages that simulate a provider's hosted checkout/portal (both 404
+outside TEST_MODE).
+
+**No real payment provider is connected** (no SDK, no real API keys, no
+real webhook secret, no real price IDs), and **live billing is
+disabled** — nothing in this repository can charge a real customer. A
+future operator must implement and connect a real adapter before any of
+this becomes live billing — see
+[`docs/billing-provider-adapter.md`](docs/billing-provider-adapter.md)'s
+own test-mode → live checklist and
+[`docs/operator-setup.md`](docs/operator-setup.md). Provider eligibility
+(Paddle vs. Stripe) for this project is still an open, unverified item
+pending legal/provider review (see the architecture doc's own §16/§2).
+
 ## Onboarding
 
 A provider-neutral onboarding checklist — see

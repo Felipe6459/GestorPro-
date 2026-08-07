@@ -85,6 +85,42 @@ describe("formatNotificationEmail — one happy path per deliverable type", () =
     const result = email("MENTIONED", { actorName: "Jane Doe", commentPreview: "hi" });
     expect(result.subject).toBe("New notification");
   });
+
+  it("SUBSCRIPTION_ACTIVATED", () => {
+    const result = email("SUBSCRIPTION_ACTIVATED", { planName: "Pro" });
+    expect(result.subject).toBe("Your Pro plan is active");
+    expect(result.text).toContain("Your Pro plan for Acme Corp is now active.");
+  });
+
+  it("PAYMENT_FAILED", () => {
+    const result = email("PAYMENT_FAILED", { planName: "Pro" });
+    expect(result.subject).toBe("Payment failed for Acme Corp");
+    expect(result.text).toContain("A payment failed for Acme Corp (Pro plan). Update your payment method to avoid losing access.");
+  });
+
+  it("SUBSCRIPTION_CANCELED", () => {
+    const result = email("SUBSCRIPTION_CANCELED", { planName: "Starter" });
+    expect(result.subject).toBe("Your subscription was canceled");
+    expect(result.text).toContain("The subscription for Acme Corp (Starter plan) was canceled.");
+  });
+
+  it("PLAN_CHANGED", () => {
+    const result = email("PLAN_CHANGED", { planName: "Pro", previousPlanName: "Starter" });
+    expect(result.subject).toBe("Your plan changed to Pro");
+    expect(result.text).toContain("Acme Corp's plan changed from Starter to Pro.");
+  });
+});
+
+describe("formatNotificationEmail — billing types degrade safely with no planName", () => {
+  it("SUBSCRIPTION_ACTIVATED with no planName falls back to the generic subject/body", () => {
+    const result = email("SUBSCRIPTION_ACTIVATED", {});
+    expect(result.subject).toBe("New notification");
+  });
+
+  it("PLAN_CHANGED with no planName falls back to the generic subject/body", () => {
+    const result = email("PLAN_CHANGED", {});
+    expect(result.subject).toBe("New notification");
+  });
 });
 
 describe("formatNotificationEmail — INVITATION_ACCEPTED (never sent, but must still degrade safely)", () => {

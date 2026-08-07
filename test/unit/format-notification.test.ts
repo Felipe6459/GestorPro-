@@ -102,6 +102,34 @@ describe("formatNotification — one happy path per type", () => {
     expect(result.detail).toBe("Can you take a look at this?");
     expect(result.link).toBeNull();
   });
+
+  it("SUBSCRIPTION_ACTIVATED", () => {
+    const result = notification("SUBSCRIPTION_ACTIVATED", { planName: "Pro" });
+    expect(result.title).toBe("Your Pro plan is now active");
+    expect(result.detail).toBeNull();
+    expect(result.link).toBe("/settings/billing");
+  });
+
+  it("PAYMENT_FAILED", () => {
+    const result = notification("PAYMENT_FAILED", { planName: "Pro" });
+    expect(result.title).toBe("A payment failed");
+    expect(result.detail).toBe("Pro plan — update your payment method to avoid losing access.");
+    expect(result.link).toBe("/settings/billing");
+  });
+
+  it("SUBSCRIPTION_CANCELED", () => {
+    const result = notification("SUBSCRIPTION_CANCELED", { planName: "Starter" });
+    expect(result.title).toBe("Your subscription was canceled");
+    expect(result.detail).toBe("Starter plan");
+    expect(result.link).toBe("/settings/billing");
+  });
+
+  it("PLAN_CHANGED", () => {
+    const result = notification("PLAN_CHANGED", { planName: "Pro", previousPlanName: "Starter" });
+    expect(result.title).toBe("Your plan changed to Pro");
+    expect(result.detail).toBe("Starter → Pro");
+    expect(result.link).toBe("/settings/billing");
+  });
 });
 
 describe("formatNotification — actor/name fallback when actorName is missing", () => {

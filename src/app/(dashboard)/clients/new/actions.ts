@@ -8,6 +8,7 @@ import { parseClientForm } from "@/lib/validation/client";
 import { withToast } from "@/lib/toast-url";
 import { createActivity } from "@/lib/activity/create-activity";
 import { buildClientActivityMetadata } from "@/lib/activity/client-metadata";
+import { assertCanCreateClient, BillingLimitError } from "@/lib/billing/enforcement";
 import type { ClientFormState } from "@/types";
 
 export async function createClientAction(
@@ -27,6 +28,11 @@ export async function createClientAction(
     // Activity insert fails for any reason, the Client create rolls back
     // with it rather than leaving an unlogged row behind.
     await prisma.$transaction(async (tx) => {
+      // Billing & Subscriptions Stage 2 — re-checked from inside this same
+      // transaction (docs/billing-architecture.md §7's race handling),
+      // immediately before the Client write it guards.
+      await assertCanCreateClient(organizationId, tx);
+
       const client = await tx.client.create({
         data: { ...values, userId: user.id, organizationId },
       });
@@ -41,6 +47,9 @@ export async function createClientAction(
       });
     });
   } catch (err) {
+    if (err instanceof BillingLimitError) {
+      return { error: err.message };
+    }
     if (
       err instanceof Prisma.PrismaClientKnownRequestError &&
       err.code === "P2002"

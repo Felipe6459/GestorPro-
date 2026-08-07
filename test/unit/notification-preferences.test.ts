@@ -8,7 +8,7 @@ import {
 } from "@/lib/notifications/preferences";
 
 describe("NOTIFICATION_TYPES", () => {
-  it("lists exactly the 7 approved NotificationType values", () => {
+  it("lists exactly the 11 approved NotificationType values", () => {
     expect([...NOTIFICATION_TYPES].sort()).toEqual(
       [
         "ROLE_CHANGED",
@@ -18,6 +18,10 @@ describe("NOTIFICATION_TYPES", () => {
         "PORTAL_INVITATION_ACCEPTED",
         "INVOICE_STATUS_CHANGED",
         "MENTIONED",
+        "SUBSCRIPTION_ACTIVATED",
+        "PAYMENT_FAILED",
+        "SUBSCRIPTION_CANCELED",
+        "PLAN_CHANGED",
       ].sort(),
     );
   });

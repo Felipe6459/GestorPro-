@@ -23,6 +23,7 @@ import {
   buildOwnershipTransferredMetadata,
 } from "@/lib/activity/team-metadata";
 import { checkRateLimit, INVITE_MEMBER_LIMIT, RESEND_MEMBER_INVITE_LIMIT } from "@/lib/rate-limit";
+import { assertCanInviteMember, BillingLimitError } from "@/lib/billing/enforcement";
 import type { InvitationFormState, MembershipActionState } from "@/types";
 
 const CHANGEABLE_ROLES = [Role.MEMBER, Role.ADMIN, Role.OWNER];
@@ -76,6 +77,11 @@ export async function inviteMemberAction(
     // "update" branch because a previous invitation to this address was
     // revoked or expired.
     await prisma.$transaction(async (tx) => {
+      // Billing & Subscriptions Stage 2 — re-checked from inside this same
+      // transaction (docs/billing-architecture.md §7's race handling),
+      // immediately before the Invitation write it guards.
+      await assertCanInviteMember(organizationId, tx);
+
       const invitation = await tx.invitation.upsert({
         where: { organizationId_email: { organizationId, email: values.email } },
         create: {
@@ -106,6 +112,9 @@ export async function inviteMemberAction(
       });
     });
   } catch (err) {
+    if (err instanceof BillingLimitError) {
+      return { error: err.message };
+    }
     // Two concurrent invites for the same email can still race the upsert's
     // own read-then-write; ask the submitter to retry rather than surface
     // a raw constraint violation.

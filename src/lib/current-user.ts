@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { Role } from "@/generated/prisma/enums";
+import { createTrialSubscription } from "@/lib/billing/provisioning";
 
 const ACTIVE_ORG_COOKIE = "active_organization_id";
 const ACTIVE_ORG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
@@ -146,6 +147,11 @@ export async function getOrCreateOrganizationId(user: {
       await tx.membership.create({
         data: { userId: user.id, organizationId: organization.id, role: Role.OWNER },
       });
+      // Billing & Subscriptions Stage 2 (docs/billing-architecture.md §9):
+      // every brand-new Organization gets a local TRIALING Subscription
+      // row atomically alongside it — same transaction, so either both
+      // exist or neither does.
+      await createTrialSubscription(tx, organization.id, new Date());
       return organization.id;
     });
   } catch (err) {

@@ -121,3 +121,21 @@ export const COMMENT_DELETE_LIMIT: RateLimitConfig = { scope: "comment-delete", 
 // window), while still bounding a scripted enumeration attempt against
 // the search endpoint.
 export const SEARCH_LIMIT: RateLimitConfig = { scope: "search", limit: 200, windowMs: 15 * MINUTE_MS };
+
+// Billing & Subscriptions Stage 4 — per OWNER user id. Checkout/portal
+// session creation now calls a real adapter (mock today, a real provider
+// API in Stage 5+) rather than Stage 3's zero-side-effect placeholder, so
+// unlike that stage's own "nothing here is worth abuse-limiting" note,
+// this is worth bounding — generous enough for a legitimate owner
+// comparing plans or opening the portal repeatedly, tight enough to stop
+// a compromised/malicious OWNER session from hammering a real provider's
+// API once one is connected.
+export const BILLING_CHECKOUT_LIMIT: RateLimitConfig = { scope: "billing-checkout", limit: 20, windowMs: HOUR_MS };
+export const BILLING_PORTAL_LIMIT: RateLimitConfig = { scope: "billing-portal", limit: 20, windowMs: HOUR_MS };
+
+// Billing & Subscriptions Stage 4 — the webhook route (src/app/api/billing/
+// webhook/route.ts). Defense in depth only, the same reasoning as
+// CRON_JOB_LIMIT above: signature verification is the real barrier, not
+// this. Bucketed by the route's own fixed name, not by caller (a webhook
+// sender has no stable per-caller identity this app could key on anyway).
+export const BILLING_WEBHOOK_LIMIT: RateLimitConfig = { scope: "billing-webhook", limit: 120, windowMs: HOUR_MS };

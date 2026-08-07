@@ -131,6 +131,44 @@ function buildInvoiceStatusChanged(metadata: Record<string, unknown>): PartialCo
   };
 }
 
+/** Billing & Subscriptions Stage 4 (docs/billing-architecture.md §17). Same allowlisted metadata.planName field format-notification.ts's own builders read — never a providerCustomerId/providerSubscriptionId. */
+function buildSubscriptionActivated(metadata: Record<string, unknown>, organizationName: string): PartialContent | null {
+  const planName = str(metadata.planName);
+  if (!planName) return null;
+  return {
+    subject: `Your ${planName} plan is active`,
+    text: `Your ${planName} plan for ${organizationName} is now active.`,
+  };
+}
+
+function buildPaymentFailed(metadata: Record<string, unknown>, organizationName: string): PartialContent {
+  const planName = str(metadata.planName);
+  return {
+    subject: `Payment failed for ${organizationName}`,
+    text: `A payment failed for ${organizationName}${
+      planName ? ` (${planName} plan)` : ""
+    }. Update your payment method to avoid losing access.`,
+  };
+}
+
+function buildSubscriptionCanceled(metadata: Record<string, unknown>, organizationName: string): PartialContent {
+  const planName = str(metadata.planName);
+  return {
+    subject: `Your subscription was canceled`,
+    text: `The subscription for ${organizationName}${planName ? ` (${planName} plan)` : ""} was canceled.`,
+  };
+}
+
+function buildPlanChanged(metadata: Record<string, unknown>, organizationName: string): PartialContent | null {
+  const planName = str(metadata.planName);
+  if (!planName) return null;
+  const previousPlanName = str(metadata.previousPlanName);
+  return {
+    subject: `Your plan changed to ${planName}`,
+    text: `${organizationName}'s plan changed${previousPlanName ? ` from ${previousPlanName}` : ""} to ${planName}.`,
+  };
+}
+
 function buildContent(
   type: NotificationType,
   metadata: Record<string, unknown>,
@@ -149,6 +187,14 @@ function buildContent(
       return buildInvoiceStatusChanged(metadata);
     case "MENTIONED":
       return buildMentioned(metadata);
+    case "SUBSCRIPTION_ACTIVATED":
+      return buildSubscriptionActivated(metadata, organizationName);
+    case "PAYMENT_FAILED":
+      return buildPaymentFailed(metadata, organizationName);
+    case "SUBSCRIPTION_CANCELED":
+      return buildSubscriptionCanceled(metadata, organizationName);
+    case "PLAN_CHANGED":
+      return buildPlanChanged(metadata, organizationName);
     // INVITATION_ACCEPTED is a deliberate email non-send (see deliver-
     // notification-email.ts's EMAIL_ALLOWLIST) — never reached in
     // practice, but a safe generic fallback either way, never a throw.

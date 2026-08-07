@@ -112,6 +112,45 @@ function buildMentioned(metadata: Record<string, unknown>): PartialModel {
   };
 }
 
+/**
+ * Billing & Subscriptions Stage 4 (docs/billing-architecture.md §17).
+ * metadata.planName is the one field every billing notification always
+ * carries (src/lib/billing/notify.ts's own BillingNotificationMetadata) —
+ * never a providerCustomerId/providerSubscriptionId, matching this
+ * module's own "never render raw metadata" discipline.
+ */
+function buildSubscriptionActivated(metadata: Record<string, unknown>): PartialModel | null {
+  const planName = str(metadata.planName);
+  if (!planName) return null;
+  return { title: `Your ${planName} plan is now active`, detail: null };
+}
+
+function buildPaymentFailed(metadata: Record<string, unknown>): PartialModel {
+  const planName = str(metadata.planName);
+  return {
+    title: "A payment failed",
+    detail: planName ? `${planName} plan — update your payment method to avoid losing access.` : null,
+  };
+}
+
+function buildSubscriptionCanceled(metadata: Record<string, unknown>): PartialModel {
+  const planName = str(metadata.planName);
+  return {
+    title: "Your subscription was canceled",
+    detail: planName ? `${planName} plan` : null,
+  };
+}
+
+function buildPlanChanged(metadata: Record<string, unknown>): PartialModel | null {
+  const planName = str(metadata.planName);
+  if (!planName) return null;
+  const previousPlanName = str(metadata.previousPlanName);
+  return {
+    title: `Your plan changed to ${planName}`,
+    detail: previousPlanName ? `${previousPlanName} → ${planName}` : null,
+  };
+}
+
 function buildModel(type: NotificationType, metadata: Record<string, unknown>): PartialModel | null {
   switch (type) {
     case "ROLE_CHANGED":
@@ -128,10 +167,17 @@ function buildModel(type: NotificationType, metadata: Record<string, unknown>): 
       return buildInvoiceStatusChanged(metadata);
     case "MENTIONED":
       return buildMentioned(metadata);
+    case "SUBSCRIPTION_ACTIVATED":
+      return buildSubscriptionActivated(metadata);
+    case "PAYMENT_FAILED":
+      return buildPaymentFailed(metadata);
+    case "SUBSCRIPTION_CANCELED":
+      return buildSubscriptionCanceled(metadata);
+    case "PLAN_CHANGED":
+      return buildPlanChanged(metadata);
     default:
-      // Defensive only — NotificationType has no other value today, but a
-      // future enum addition without a matching case here must degrade to
-      // the generic fallback, never throw.
+      // Defensive only — a future enum addition without a matching case
+      // here must degrade to the generic fallback, never throw.
       return null;
   }
 }
@@ -206,6 +252,15 @@ export function resolveNotificationLinkPath(
       return entityId ? `/invoices/${entityId}/edit` : null;
     case "MENTIONED":
       return resolveMentionedLinkPath(entityId, metadata);
+    // Billing & Subscriptions Stage 4 — every billing notification links
+    // to the one page that shows current plan/status/usage; there is no
+    // per-id entity to deep-link into (a Subscription has no its own
+    // page).
+    case "SUBSCRIPTION_ACTIVATED":
+    case "PAYMENT_FAILED":
+    case "SUBSCRIPTION_CANCELED":
+    case "PLAN_CHANGED":
+      return "/settings/billing";
     case "PORTAL_INVITATION_ACCEPTED":
     default:
       return null;

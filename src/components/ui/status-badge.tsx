@@ -51,6 +51,15 @@ export const STATUS_TONES: Record<string, StatusTone> = {
   REVOKED: "danger",
   EXPIRED: "muted",
 
+  // Billing & Subscriptions (Subscription.status / OrganizationEntitlements
+  // .subscriptionStatus) — ACTIVE above is already shared with these.
+  TRIALING: "info",
+  PAST_DUE: "warning",
+  CANCELED: "danger",
+  INCOMPLETE: "warning",
+  UNPAID: "danger",
+  LEGACY: "neutral",
+
   // Onboarding checklist step statuses (src/lib/onboarding/progress.ts).
   // COMPLETE/SKIPPED share tone with the equivalent-meaning values above
   // (DONE/EXPIRED); NOT_STARTED/NOT_APPLICABLE are new, onboarding-only

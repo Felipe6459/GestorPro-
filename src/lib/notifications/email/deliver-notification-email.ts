@@ -28,6 +28,10 @@ import { formatNotificationEmail } from "./format-notification-email";
 //                                      §5). A bare comment with no @mention never reaches
 //                                      this allowlist at all — it never produces a
 //                                      Notification in the first place.
+//   SUBSCRIPTION_ACTIVATED       yes — docs/billing-architecture.md §17's own table:
+//   PAYMENT_FAILED                     every billing event notifies the OWNER by both
+//   SUBSCRIPTION_CANCELED              channels — these are consequential, low-volume,
+//   PLAN_CHANGED                       OWNER-only events an email is clearly worth for.
 const EMAIL_ALLOWLIST: ReadonlySet<NotificationType> = new Set([
   "ROLE_CHANGED",
   "OWNERSHIP_TRANSFERRED",
@@ -35,6 +39,10 @@ const EMAIL_ALLOWLIST: ReadonlySet<NotificationType> = new Set([
   "PORTAL_INVITATION_ACCEPTED",
   "INVOICE_STATUS_CHANGED",
   "MENTIONED",
+  "SUBSCRIPTION_ACTIVATED",
+  "PAYMENT_FAILED",
+  "SUBSCRIPTION_CANCELED",
+  "PLAN_CHANGED",
 ]);
 
 /**
