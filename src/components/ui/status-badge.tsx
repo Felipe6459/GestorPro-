@@ -59,6 +59,15 @@ export const STATUS_TONES: Record<string, StatusTone> = {
   INCOMPLETE: "warning",
   UNPAID: "danger",
   LEGACY: "neutral",
+
+  // Onboarding checklist step statuses (src/lib/onboarding/progress.ts).
+  // COMPLETE/SKIPPED share tone with the equivalent-meaning values above
+  // (DONE/EXPIRED); NOT_STARTED/NOT_APPLICABLE are new, onboarding-only
+  // values not shared with any other model's status set.
+  NOT_STARTED: "neutral",
+  COMPLETE: "success",
+  SKIPPED: "muted",
+  NOT_APPLICABLE: "muted",
 };
 
 export function StatusBadge({ status }: { status: string }) {

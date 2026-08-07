@@ -231,6 +231,32 @@ enum NotificationDeliveryStatus {
   SKIPPED
 }
 
+// Onboarding Stage 2 (docs/onboarding-architecture.md §9 Option C). Every
+// value this app's onboarding checklist can ever track — deliberately the
+// same fixed, small, closed set docs/onboarding-architecture.md §5 already
+// settled on, not a general-purpose "step" concept. Most of these
+// (CREATE_CLIENT, CREATE_PROJECT, CREATE_TASK, INVITE_TEAMMATE,
+// INVITE_PORTAL_USER) never actually produce an
+// OrganizationOnboardingStep row at all — their "done" state is always
+// computed live from real Client/Project/Task/Membership/PortalUser data
+// (src/lib/onboarding/progress.ts), never persisted here. Only WELCOME,
+// FINISH, and an explicitly-skipped step ever get a row (see that model's
+// own comment). REVIEW_BILLING exists in this enum today purely as an
+// inert, zero-risk placeholder — no code on this branch reads or writes
+// it, since `feature/billing-subscriptions` is not merged into `main` as
+// of this stage (see docs/onboarding-architecture.md §16); the seam is
+// ready, nothing depends on it yet.
+enum OnboardingStepKey {
+  WELCOME
+  CREATE_CLIENT
+  CREATE_PROJECT
+  CREATE_TASK
+  INVITE_TEAMMATE
+  INVITE_PORTAL_USER
+  REVIEW_BILLING
+  FINISH
+}
+
 // id is intended to match Supabase auth.users.id once auth is wired up.
 model User {
   id        String   @id @default(uuid()) @db.Uuid
@@ -283,6 +309,8 @@ model Organization {
   // Subscription's own doc comment for the full "legacy" fallback story.
   subscription  Subscription?
   webhookEvents WebhookEvent[]
+
+  onboardingSteps OrganizationOnboardingStep[]
 }
 
 model Membership {
@@ -990,5 +1018,69 @@ model WebhookEvent {
   // shape NotificationDelivery's own @@index([status, createdAt]) already
   // serves for an analogous purpose. Unused by anything in this stage.
   @@index([processingStatus, createdAt])
+  @@index([organizationId])
+}
+
+// Onboarding Stage 2 (docs/onboarding-architecture.md §9, Decision:
+// "Hybrid — computed by default... plus one small, additive table... for
+// the two things computation structurally cannot represent: an explicit
+// skip, and an explicit dismiss."). One row = "a member of this
+// organization explicitly skipped this step, or explicitly acknowledged a
+// step with no business-data equivalent (WELCOME, FINISH)." No row = still
+// following the natural, computed default — mirrors
+// NotificationPreference's own lazy-row/no-row-means-default model
+// exactly, right down to never needing a backfill: a brand-new
+// organization simply has zero rows here on day one, the same way a
+// brand-new user has zero NotificationPreference rows.
+//
+// "Dismiss the whole checklist" is deliberately NOT a separate column —
+// it's represented by the exact same mechanism as every other
+// acknowledgment: a row with step = FINISH. Modeling it as a second,
+// parallel flag (e.g. an `Organization.onboardingDismissedAt` column)
+// would say the same fact two different ways; this table's own
+// `@@unique([organizationId, step])` already guarantees at most one
+// FINISH row per organization, which is exactly the "one dismiss fact,
+// organization-scoped" property a separate column would otherwise exist
+// only to re-assert.
+//
+// Deliberately no `actedById`/User relation (a deviation from Stage 1's
+// own illustrative snippet, which included one purely as an optional
+// "who acted" audit field described there as "informational only, never
+// part of the authorization boundary"): this stage's own explicit
+// requirement is additive-minimal, no User FK, and nothing in the design
+// doc's actual feature set (§1–§20) ever reads who skipped/dismissed a
+// step — only whether the organization did. Adding it back later, if a
+// real need shows up, is a compatible, additive nullable column.
+//
+// Deliberately no `skippedAt`/`dismissedAt`/`status` columns: row
+// existence alone is the entire signal needed (mirrors Mention's own
+// "exists = mentioned, full stop" shape, docs/comments-architecture.md
+// §2) — `createdAt` already answers "when," and every step key that can
+// ever produce a row here (§6 of the design doc: only skippable steps,
+// plus WELCOME/FINISH) only ever means one thing when a row exists, so a
+// separate status column would only ever hold one possible value.
+// Deliberately no `updatedAt` either — rows here are write-once and never
+// updated in place (an "un-skip" is never a row UPDATE; it's the computed
+// check in src/lib/onboarding/progress.ts simply taking priority over a
+// now-stale row — see that module's own header comment), the same
+// immutable-row shape `Activity` already uses.
+model OrganizationOnboardingStep {
+  id String @id @default(uuid()) @db.Uuid
+
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  step OnboardingStepKey
+
+  createdAt DateTime @default(now())
+
+  // The actual idempotency/dedup guarantee — at most one row per
+  // (organization, step) ever exists, so re-skipping an already-skipped
+  // step, or re-acknowledging WELCOME/FINISH, is a database-enforced
+  // no-op path (an upsert with an empty `update`), never a duplicate row.
+  @@unique([organizationId, step])
+  // Onboarding is always read as "every row for this one organization" —
+  // never queried any other way (no cross-org listing, no per-step
+  // reporting across organizations exists in this design).
   @@index([organizationId])
 }

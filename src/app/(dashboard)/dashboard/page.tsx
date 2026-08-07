@@ -7,7 +7,9 @@ import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { BreakdownCard } from "@/components/dashboard/breakdown-card";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { OnboardingCard, ONBOARDING_DISMISS_RETURN_FOCUS_ID } from "@/components/onboarding/onboarding-card";
 import { parseDashboardPeriod, formatDashboardPeriodLabel } from "@/lib/dashboard/period";
+import { getOrganizationOnboardingProgress } from "@/lib/onboarding/progress";
 import { getDashboardAnalytics } from "./query";
 import type { RawSearchParams } from "@/lib/list-params";
 
@@ -29,13 +31,25 @@ export default async function DashboardPage({
   const period = parseDashboardPeriod(resolvedSearchParams.period);
   const now = new Date();
 
-  const analytics = await getDashboardAnalytics({ organizationId, period, now });
+  const [analytics, onboardingProgress] = await Promise.all([
+    getDashboardAnalytics({ organizationId, period, now }),
+    getOrganizationOnboardingProgress(organizationId),
+  ]);
 
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+          {/* Stage 6 audit fix: focus-return target for
+              DismissOnboardingButton — see onboarding-step-row.tsx's own
+              comment on why this uses plain `focus:` rather than
+              `focus-visible:` (never in the tab order, only ever
+              programmatically focused). */}
+          <h1
+            id={ONBOARDING_DISMISS_RETURN_FOCUS_ID}
+            tabIndex={-1}
+            className="rounded text-2xl font-semibold tracking-tight text-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+          >
             Dashboard
           </h1>
           <p className="mt-1 text-sm text-gray-600">
@@ -44,6 +58,8 @@ export default async function DashboardPage({
         </div>
         <PeriodSelector period={period} />
       </div>
+
+      <OnboardingCard progress={onboardingProgress} />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
         <MetricCard label="Total clients" value={analytics.kpis.totalClients} href="/clients" />

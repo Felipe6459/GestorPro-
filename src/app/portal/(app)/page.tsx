@@ -3,7 +3,11 @@ import { getCurrentPortalUser } from "@/lib/current-portal-user";
 import { getPortalOverview } from "@/lib/client-portal/queries";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { PortalWelcomeBanner } from "@/components/portal/portal-welcome-banner";
+import { isPortalWelcomeEligible } from "@/components/portal/portal-welcome-eligibility";
 import { formatCurrency } from "@/lib/format";
+
+const OVERVIEW_HEADING_ID = "portal-overview-heading";
 
 const itemLinkClass =
   "rounded text-sm font-medium text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2";
@@ -11,19 +15,30 @@ const viewAllClass =
   "rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2";
 
 export default async function PortalOverviewPage() {
-  const { client, clientId } = await getCurrentPortalUser();
+  const { client, clientId, portalUser } = await getCurrentPortalUser();
   const overview = await getPortalOverview(clientId);
+  const welcomeEligible = isPortalWelcomeEligible(portalUser.createdAt, new Date());
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+        {/* Stage 6 audit fix: focus-return target for PortalWelcomeBanner's
+            "Got it" dismiss — see onboarding-step-row.tsx's own comment on
+            why this uses plain `focus:` rather than `focus-visible:`
+            (never in the tab order, only ever programmatically focused). */}
+        <h1
+          id={OVERVIEW_HEADING_ID}
+          tabIndex={-1}
+          className="rounded text-2xl font-semibold tracking-tight text-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 break-words"
+        >
           {client.name}
         </h1>
         <p className="mt-1 text-sm text-gray-600">
           An overview of your projects and invoices.
         </p>
       </div>
+
+      <PortalWelcomeBanner eligible={welcomeEligible} returnFocusId={OVERVIEW_HEADING_ID} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <MetricCard
