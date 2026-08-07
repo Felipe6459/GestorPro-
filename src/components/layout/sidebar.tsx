@@ -11,6 +11,7 @@ const links = [
   { href: "/invoices", label: "Invoices" },
   { href: "/team", label: "Team" },
   { href: "/activity", label: "Activity" },
+  { href: "/analytics", label: "Analytics" },
   { href: "/settings/notifications", label: "Settings" },
   { href: "/settings/billing", label: "Billing" },
 ];
