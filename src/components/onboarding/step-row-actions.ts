@@ -6,6 +6,18 @@ export type OnboardingStepRowActions = {
   showGoTo: boolean;
   showSkip: boolean;
   description: string;
+  /**
+   * Stage 6 audit fix: applied ONLY to the row's own decorative icon
+   * (aria-hidden, already redundant with the status badge + description
+   * text) — never to the label or description. The original Blocked
+   * treatment dimmed a wrapper containing the explanatory text too, which
+   * measured at ~2.3:1 contrast for the description (text-gray-500 at 60%
+   * opacity), well under WCAG AA's 4.5:1 minimum for normal text. Blocked
+   * is still visually distinct without it: a different (dimmed) icon, the
+   * blocked-reason copy itself, and the absent "Go to" button are already
+   * three non-color signals together (never color-only).
+   */
+  iconWrapperClassName: string;
 };
 
 /**
@@ -22,6 +34,7 @@ export function getOnboardingStepRowActions(step: OnboardingStepResult): Onboard
   const showGoTo = step.status === "NOT_STARTED" && step.actionable && step.targetHref !== null;
   const showSkip = step.status === "NOT_STARTED" && step.skippable;
   const description = isBlocked && step.blockedReason ? step.blockedReason : ONBOARDING_STEP_DESCRIPTIONS[step.key];
+  const iconWrapperClassName = isBlocked ? "opacity-60" : "";
 
-  return { isBlocked, showGoTo, showSkip, description };
+  return { isBlocked, showGoTo, showSkip, description, iconWrapperClassName };
 }

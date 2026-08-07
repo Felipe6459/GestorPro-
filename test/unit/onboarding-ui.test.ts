@@ -99,6 +99,42 @@ describe("getOnboardingStepRowActions", () => {
       expect(actions.showSkip).toBe(false);
     }
   });
+
+  describe("iconWrapperClassName (Stage 6 audit fix — dimming scoped to the icon only)", () => {
+    it("a blocked step (CREATE_PROJECT, dependency not yet met) dims only the icon wrapper", () => {
+      const progress = buildOnboardingProgress(signals());
+      const actions = getOnboardingStepRowActions(stepOf(progress, "CREATE_PROJECT"));
+      expect(actions.isBlocked).toBe(true);
+      expect(actions.iconWrapperClassName).toContain("opacity-60");
+    });
+
+    it("an unblocked, actionable step applies no opacity to the icon wrapper", () => {
+      const progress = buildOnboardingProgress(signals());
+      const actions = getOnboardingStepRowActions(stepOf(progress, "CREATE_CLIENT"));
+      expect(actions.isBlocked).toBe(false);
+      expect(actions.iconWrapperClassName).not.toContain("opacity");
+    });
+
+    it("a COMPLETE step applies no opacity to the icon wrapper", () => {
+      const progress = buildOnboardingProgress(signals({ hasClient: true }));
+      const actions = getOnboardingStepRowActions(stepOf(progress, "CREATE_CLIENT"));
+      expect(actions.iconWrapperClassName).not.toContain("opacity");
+    });
+
+    it("the returned className never targets description/label text — only ever describes the icon wrapper's own class string", () => {
+      // A structural guard against the exact Stage 6 regression: the old
+      // implementation applied opacity-60 to a wrapper that ALSO contained
+      // the label/description, dropping the description's own text-gray-500
+      // to ~2.3:1 contrast (below WCAG AA's 4.5:1). This field is the only
+      // place dimming is decided — proving it stays a single, narrowly-typed
+      // string (never an object with separate description/label keys) is a
+      // cheap guard against someone widening its scope again later.
+      const progress = buildOnboardingProgress(signals());
+      const actions = getOnboardingStepRowActions(stepOf(progress, "CREATE_PROJECT"));
+      expect(typeof actions.iconWrapperClassName).toBe("string");
+      expect(Object.keys(actions)).toEqual(["isBlocked", "showGoTo", "showSkip", "description", "iconWrapperClassName"]);
+    });
+  });
 });
 
 describe("shouldRenderOnboardingCard", () => {

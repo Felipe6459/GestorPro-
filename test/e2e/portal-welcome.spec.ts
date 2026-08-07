@@ -37,6 +37,22 @@ function welcomeBanner(page: Page) {
   return page.getByRole("region", { name: "Welcome to your client portal" });
 }
 
+/**
+ * Stage 6 audit fix regression guard. `:focus-visible` matching for a
+ * *programmatic* `.focus()` call is a browser/automation heuristic that
+ * isn't guaranteed consistent — this checks the actual rendered effect
+ * instead (a real box-shadow or outline), deterministic regardless of
+ * which pseudo-class ends up matching.
+ */
+async function hasVisibleFocusIndicator(locator: ReturnType<Page["locator"]>): Promise<boolean> {
+  return locator.evaluate((el) => {
+    const style = getComputedStyle(el);
+    const hasShadow = style.boxShadow !== "none" && style.boxShadow !== "";
+    const hasOutline = style.outlineStyle !== "none" && parseFloat(style.outlineWidth || "0") > 0;
+    return hasShadow || hasOutline;
+  });
+}
+
 type FreshPortalIdentity = { client: { id: string }; portalUser: { id: string; email: string } };
 
 /** A brand-new Client with zero Projects/Invoices and a fresh (eligible) PortalUser — for proving the welcome banner never displaces the existing empty states. */
@@ -128,12 +144,20 @@ test.describe("CTA and dismiss", () => {
     await expect(page).toHaveURL(/\/portal$/);
   });
 
-  test("focus moves to the page heading after dismiss", async ({ context, baseURL, page }) => {
+  test("focus moves to the page heading after dismiss, with a real visible focus indicator (Stage 6 audit fix)", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
     await actAsPortal(context, baseURL!, fixtures.portalUser);
     await gotoAndSettle(page, `${baseURL}/portal`);
 
+    const heading = page.getByRole("heading", { name: fixtures.clientA.name });
+    expect(await hasVisibleFocusIndicator(heading)).toBe(false);
+
     await page.getByRole("button", { name: "Dismiss welcome message" }).click();
-    await expect(page.getByRole("heading", { name: fixtures.clientA.name })).toBeFocused();
+    await expect(heading).toBeFocused();
+    expect(await hasVisibleFocusIndicator(heading)).toBe(true);
   });
 });
 

@@ -22,10 +22,14 @@ export default async function PortalOverviewPage() {
   return (
     <div className="space-y-8">
       <div>
+        {/* Stage 6 audit fix: focus-return target for PortalWelcomeBanner's
+            "Got it" dismiss — see onboarding-step-row.tsx's own comment on
+            why this uses plain `focus:` rather than `focus-visible:`
+            (never in the tab order, only ever programmatically focused). */}
         <h1
           id={OVERVIEW_HEADING_ID}
           tabIndex={-1}
-          className="text-2xl font-semibold tracking-tight text-gray-900 focus:outline-none break-words"
+          className="rounded text-2xl font-semibold tracking-tight text-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 break-words"
         >
           {client.name}
         </h1>

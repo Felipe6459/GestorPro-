@@ -40,10 +40,15 @@ export default async function DashboardPage({
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
+          {/* Stage 6 audit fix: focus-return target for
+              DismissOnboardingButton — see onboarding-step-row.tsx's own
+              comment on why this uses plain `focus:` rather than
+              `focus-visible:` (never in the tab order, only ever
+              programmatically focused). */}
           <h1
             id={ONBOARDING_DISMISS_RETURN_FOCUS_ID}
             tabIndex={-1}
-            className="text-2xl font-semibold tracking-tight text-gray-900 focus:outline-none"
+            className="rounded text-2xl font-semibold tracking-tight text-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
           >
             Dashboard
           </h1>

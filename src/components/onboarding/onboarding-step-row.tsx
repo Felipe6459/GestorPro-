@@ -28,19 +28,42 @@ function stepLabelId(key: string): string {
 }
 
 export function OnboardingStepRow({ step }: { step: OnboardingStepResult }) {
-  const { isBlocked, showGoTo, showSkip, description } = getOnboardingStepRowActions(step);
+  const { showGoTo, showSkip, description, iconWrapperClassName } = getOnboardingStepRowActions(step);
   const labelId = stepLabelId(step.key);
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
       {/* Blocked rows are visually dimmed (docs/onboarding-architecture.md
-          §10's own "Blocked — grayed" state) — never the only signal
-          (the description text and the absent action buttons already
-          convey the same fact), just a supporting visual cue. */}
-      <div className={`flex items-start gap-3 ${isBlocked ? "opacity-60" : ""}`}>
-        <OnboardingStepIcon status={step.status} />
+          §10's own "Blocked — grayed" state) — but ONLY the decorative
+          icon (Stage 6 audit fix). Dimming used to also cover the label
+          and blocked-reason text, which pushed the description
+          (text-gray-500) to ~2.3:1 contrast, under WCAG AA's 4.5:1
+          minimum for normal text — see step-row-actions.ts's own comment.
+          Label/description stay full-strength; the icon + the copy itself
+          + the absent "Go to" button remain three non-color signals for
+          Blocked, so nothing about "distinct without color alone" is lost. */}
+      <div className="flex items-start gap-3">
+        <div className={iconWrapperClassName}>
+          <OnboardingStepIcon status={step.status} />
+        </div>
         <div>
-          <p id={labelId} tabIndex={-1} className="text-sm font-medium text-gray-900 focus:outline-none">
+          {/* Stage 6 audit fix: this label is a focus-return target after a
+              successful Skip (SkipStepButton below) — previously
+              `focus:outline-none` with no replacement, so a sighted
+              keyboard user lost all visual track of where focus landed.
+              Plain `focus:` (not `focus-visible:`) is deliberate: this
+              element is never part of the natural tab order (tabIndex=-1,
+              only ever focused programmatically), so there's no "ring
+              after a mouse click" case to avoid — using `:focus-visible`
+              here would depend on browser/automation heuristics for
+              programmatic focus that aren't guaranteed consistent, where
+              plain `:focus` always matches deterministically whenever
+              `.focus()` is called. */}
+          <p
+            id={labelId}
+            tabIndex={-1}
+            className="rounded text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+          >
             {step.label}
           </p>
           <p className="mt-0.5 text-sm text-gray-500">{description}</p>

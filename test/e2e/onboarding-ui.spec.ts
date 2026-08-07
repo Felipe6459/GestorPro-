@@ -77,6 +77,45 @@ function rowFor(page: Page, label: string) {
   return onboardingCard(page).getByRole("listitem").filter({ hasText: label });
 }
 
+/**
+ * Stage 6 audit fix regression guard. `:focus-visible` matching for a
+ * *programmatic* `.focus()` call is a browser/automation heuristic that
+ * isn't guaranteed consistent (the exact concern this stage's own task
+ * raised) — this checks the actual rendered effect instead (a real
+ * box-shadow or outline), which is deterministic regardless of which
+ * pseudo-class ends up matching. True for either mechanism so it doesn't
+ * assume Tailwind's own ring implementation detail.
+ */
+async function hasVisibleFocusIndicator(locator: ReturnType<Page["locator"]>): Promise<boolean> {
+  return locator.evaluate((el) => {
+    const style = getComputedStyle(el);
+    const hasShadow = style.boxShadow !== "none" && style.boxShadow !== "";
+    const hasOutline = style.outlineStyle !== "none" && parseFloat(style.outlineWidth || "0") > 0;
+    return hasShadow || hasOutline;
+  });
+}
+
+/**
+ * Stage 6 audit fix regression guard for the blocked-row contrast bug.
+ * `getComputedStyle(el).opacity` only reflects an element's OWN specified
+ * opacity, never an ancestor's — so a naive check on the description text
+ * itself would read "1" even under the old, buggy implementation (where
+ * an ANCESTOR div carried opacity-60). This walks up from the target to
+ * (not including) `stopSelector` and composites every opacity found along
+ * the way, the same way the browser actually renders it.
+ */
+async function effectiveOpacity(locator: ReturnType<Page["locator"]>, stopSelector: string): Promise<number> {
+  return locator.evaluate((el, stop) => {
+    let node: Element | null = el;
+    let opacity = 1;
+    while (node && !node.matches(stop)) {
+      opacity *= parseFloat(getComputedStyle(node).opacity || "1");
+      node = node.parentElement;
+    }
+    return opacity;
+  }, stopSelector);
+}
+
 let fixtures: TestFixtures;
 
 test.beforeAll(async () => {
@@ -152,6 +191,51 @@ test.describe("Dependency-blocked and billing placeholder", () => {
     await expect(taskRow.getByText("Tasks must belong to a project. Add one before creating a task.")).toBeVisible();
     await expect(taskRow.getByRole("link", { name: /Go to/ })).toHaveCount(0);
     await expect(taskRow.getByRole("button", { name: /Skip/ })).toBeVisible();
+  });
+
+  test("Stage 6 audit fix: a blocked row's explanatory text renders at full opacity — only the decorative icon dims", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
+    // A fresh, fully empty org: CREATE_PROJECT is blocked behind
+    // CREATE_CLIENT (not yet done) and CREATE_TASK is blocked behind
+    // CREATE_PROJECT — orgB (used elsewhere in this file) already has a
+    // Client, which would make CREATE_PROJECT actionable, not blocked, so
+    // it can't prove this specific case.
+    const fresh = await createFreshOrg(fixtures.runId, "blocked-contrast");
+    await actAsMember(context, baseURL!, fresh.owner, fresh.org.id);
+    await gotoAndSettle(page, `${baseURL}/dashboard`);
+
+    for (const [rowLabel, blockedReason] of [
+      ["Create your first project", "Projects must belong to a client. Add one before creating a project."],
+      ["Create your first task", "Tasks must belong to a project. Add one before creating a task."],
+    ] as const) {
+      const row = rowFor(page, rowLabel);
+      const label = row.getByText(rowLabel, { exact: true });
+      const description = row.getByText(blockedReason, { exact: true });
+      const icon = row.locator("svg").first();
+
+      // The old implementation applied opacity-60 to an ancestor that
+      // contained the label and description too — this would read < 1 for
+      // either under that implementation. Stopping at "li" (the row's own
+      // OnboardingCard-rendered wrapper) so this only measures the row's
+      // own styling, never something coincidentally set higher up the page.
+      expect(await effectiveOpacity(label, "li")).toBe(1);
+      expect(await effectiveOpacity(description, "li")).toBe(1);
+      // The icon is the one element still allowed to dim — proves the fix
+      // didn't just remove dimming altogether (Blocked must stay visually
+      // distinct), only narrowed its scope.
+      expect(await effectiveOpacity(icon, "li")).toBeLessThan(1);
+
+      // Status/icon/absence-of-Go-to still correctly reflect Blocked —
+      // unaffected by the contrast fix, re-verified here specifically in
+      // the same test as the opacity assertions above.
+      await expect(row.getByText("Not Started", { exact: true })).toBeVisible();
+      await expect(row.getByRole("link", { name: /Go to/ })).toHaveCount(0);
+    }
+
+    await cleanupFreshOrg(fresh);
   });
 
   test("the billing placeholder step shows Not Applicable with no button at all", async ({ context, baseURL, page }) => {
@@ -268,7 +352,7 @@ test.describe("Accessibility", () => {
     await expect(bar).toHaveAttribute("aria-valuetext", /^\d+ of \d+ complete$/);
   });
 
-  test("Stage 5: skipping a step moves focus to that row's own label, never silently dropped to <body>", async ({
+  test("Stage 5/6: skipping a step moves focus to that row's own label, with a real visible focus indicator (never silently dropped to <body>, never invisibly focused)", async ({
     context,
     baseURL,
     page,
@@ -281,12 +365,14 @@ test.describe("Accessibility", () => {
     await teammateRow.getByRole("button", { name: /Skip/ }).click();
 
     await expect(teammateRow.getByText("Skipped", { exact: true })).toBeVisible();
-    await expect(page.getByText("Invite a teammate", { exact: true })).toBeFocused();
+    const focusedLabel = page.getByText("Invite a teammate", { exact: true });
+    await expect(focusedLabel).toBeFocused();
+    expect(await hasVisibleFocusIndicator(focusedLabel)).toBe(true);
 
     await cleanupFreshOrg(fresh);
   });
 
-  test("Stage 5: dismissing moves focus to the Dashboard's own heading, never silently dropped to <body>", async ({
+  test("Stage 5/6: dismissing moves focus to the Dashboard's own heading, with a real visible focus indicator (never silently dropped to <body>, never invisibly focused)", async ({
     context,
     baseURL,
     page,
@@ -298,9 +384,23 @@ test.describe("Accessibility", () => {
     await page.getByRole("button", { name: "Dismiss onboarding" }).click();
 
     await expect(onboardingCard(page)).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeFocused();
+    const focusedHeading = page.getByRole("heading", { name: "Dashboard", exact: true });
+    await expect(focusedHeading).toBeFocused();
+    expect(await hasVisibleFocusIndicator(focusedHeading)).toBe(true);
 
     await cleanupFreshOrg(fresh);
+  });
+
+  test("a not-yet-focused row label and the Dashboard heading show no focus indicator at rest (proves the check above is meaningful, not a false positive)", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
+    await actAsMember(context, baseURL!, fixtures.orgBOwner, fixtures.orgB.id);
+    await gotoAndSettle(page, `${baseURL}/dashboard`);
+
+    const heading = page.getByRole("heading", { name: "Dashboard", exact: true });
+    expect(await hasVisibleFocusIndicator(heading)).toBe(false);
   });
 });
 
