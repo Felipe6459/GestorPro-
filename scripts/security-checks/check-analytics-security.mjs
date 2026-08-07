@@ -33,12 +33,14 @@ ok = report(
   authSource ? "" : "authorization file not found",
 ) && ok;
 
-// 3. The Analytics page hard-blocks unauthorized roles with notFound(),
-// not a redirect or a disabled-but-visible state.
+// 3. The Analytics page never re-implements the authorization decision
+// itself — it only catches the service's own AnalyticsAccessError
+// (server-side instanceof check, never a redirect or a disabled-but-
+// visible state) and renders a dedicated denied state.
 const pageSource = existsSync(PAGE_FILE) ? readFileSync(PAGE_FILE, "utf8") : "";
 ok = report(
-  "the Analytics page calls notFound() when canViewAnalytics is false",
-  /canViewAnalytics\(/.test(pageSource) && /notFound\(\)/.test(pageSource),
+  "the Analytics page catches AnalyticsAccessError and renders a denied state, rather than re-checking the role itself",
+  /instanceof AnalyticsAccessError/.test(pageSource) && !/canViewAnalytics\(/.test(pageSource),
   pageSource ? "" : "page file not found",
 ) && ok;
 

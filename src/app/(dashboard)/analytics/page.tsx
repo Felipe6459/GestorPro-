@@ -1,57 +1,90 @@
-import { notFound } from "next/navigation";
 import { getCurrentMembership } from "@/lib/current-user";
 import { getOrganizationAnalytics } from "@/lib/analytics/services/analytics-service";
-import { canViewAnalytics } from "@/lib/analytics/authorization";
-import { TIME_RANGE_LABELS, DEFAULT_TIME_RANGE } from "@/lib/analytics/constants";
-import { formatStatusLabel } from "@/lib/format";
-import { MetricsSection } from "@/components/analytics/metrics-section";
-import { GrowthSection } from "@/components/analytics/growth-section";
+import { AnalyticsAccessError } from "@/lib/analytics/authorization";
+import { parseTimeRangeParam } from "@/lib/analytics/constants";
+import { getPlan } from "@/lib/billing/plans";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { AnalyticsHeader } from "@/components/analytics/analytics-header";
+import { AnalyticsGrid } from "@/components/analytics/analytics-grid";
+import { AnalyticsEmptyState } from "@/components/analytics/analytics-empty-state";
+import { AnalyticsAccessDenied } from "@/components/analytics/analytics-access-denied";
+import { GrowthIndicator } from "@/components/analytics/growth-indicator";
 
 /**
- * Analytics Stage 1 (docs/analytics-architecture.md §9). Foundation-only
- * page — plain numbers in a grid, no charts, no range selector UI yet
- * (always renders `DEFAULT_TIME_RANGE`; the service layer already accepts
- * any `TimeRange`, so wiring a real selector in a later stage is additive,
- * not a rework). `notFound()` for MEMBER — a hard block, not a
- * read-only/disabled view like Billing's own page, matching this stage's
- * explicit "OWNER/ADMIN only" security requirement. Client Portal
- * identities never reach this at all: this route lives under
- * `(dashboard)`, whose layout already redirects any Portal-only identity
- * to `/portal` before this page ever renders.
+ * Analytics Stage 2 (docs/analytics-architecture.md §9). Authorization is
+ * enforced entirely server-side by `getOrganizationAnalytics()` itself
+ * (it calls `assertCanViewAnalytics()` before running any query) — this
+ * page never re-implements that check, it only decides how to *render*
+ * the already-server-made decision. `AnalyticsAccessError` is caught
+ * here, server-side, via `instanceof` (safe: this catch runs in the same
+ * process as the throw, never crosses a serialization boundary) and
+ * rendered as a dedicated "Access denied" state — deliberately NOT
+ * delegated to this route's `error.tsx`, since Next.js redacts Server
+ * Component error messages by default in production before they'd ever
+ * reach a client-side error boundary, which would make it impossible to
+ * reliably distinguish "access denied" from "something else broke" once
+ * deployed. Every other thrown error (a real "unavailable data" failure)
+ * still propagates to `error.tsx` normally. Client Portal identities
+ * never reach this page at all: it lives under `(dashboard)`, whose
+ * layout already redirects any Portal-only identity to `/portal` first.
+ *
+ * `range` is read from the URL (`?range=`), never a cookie — the task's
+ * own explicit "survive refreshes via URL search params, not a cookie"
+ * requirement; `parseTimeRangeParam` never trusts the raw value, falling
+ * back to `DEFAULT_TIME_RANGE` for anything unrecognized.
  */
-export default async function AnalyticsPage() {
+export default async function AnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { organizationId, membership } = await getCurrentMembership();
+  const { range: rawRange } = await searchParams;
+  const timeRange = parseTimeRangeParam(rawRange);
 
-  if (!canViewAnalytics(membership.role)) {
-    notFound();
+  let data;
+  try {
+    data = await getOrganizationAnalytics(organizationId, membership.role, timeRange);
+  } catch (err) {
+    if (err instanceof AnalyticsAccessError) {
+      return <AnalyticsAccessDenied />;
+    }
+    throw err;
   }
 
-  const data = await getOrganizationAnalytics(organizationId, membership.role, DEFAULT_TIME_RANGE);
+  const isOverviewEmpty =
+    data.organization.totalClients === 0 &&
+    data.organization.totalProjects === 0 &&
+    data.organization.totalTasks === 0 &&
+    data.organization.totalInvoices === 0 &&
+    data.organization.totalAttachments === 0;
+
+  const plan = getPlan(data.billing.planKey);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Analytics</h1>
-      <p className="mt-1 text-sm text-gray-500">
-        {TIME_RANGE_LABELS[data.timeRange]} · derived entirely from your organization&apos;s own data.
-      </p>
+      <AnalyticsHeader selected={data.timeRange} />
 
       <div className="mt-6 space-y-6">
-        <MetricsSection
-          id="analytics-overview"
-          title="Overview"
-          metrics={[
-            { label: "Clients", value: data.organization.totalClients },
-            { label: "Projects", value: data.organization.totalProjects },
-            { label: "Tasks", value: data.organization.totalTasks },
-            { label: "Completed tasks", value: data.organization.completedTasks },
-            { label: "Open tasks", value: data.organization.openTasks },
-            { label: "Invoices", value: data.organization.totalInvoices },
-            { label: "Members", value: data.organization.totalMembers },
-            { label: "Attachments", value: data.organization.totalAttachments },
-          ]}
-        />
+        {isOverviewEmpty ? (
+          <AnalyticsEmptyState />
+        ) : (
+          <AnalyticsGrid
+            id="analytics-overview"
+            title="Overview"
+            metrics={[
+              { label: "Clients", value: data.organization.totalClients },
+              { label: "Projects", value: data.organization.totalProjects },
+              { label: "Tasks", value: data.organization.totalTasks },
+              { label: "Completed tasks", value: data.organization.completedTasks },
+              { label: "Invoices", value: data.organization.totalInvoices },
+              { label: "Members", value: data.organization.totalMembers },
+              { label: "Attachments", value: data.organization.totalAttachments },
+            ]}
+          />
+        )}
 
-        <MetricsSection
+        <AnalyticsGrid
           id="analytics-activity"
           title="Activity"
           metrics={[
@@ -61,7 +94,7 @@ export default async function AnalyticsPage() {
           ]}
         />
 
-        <MetricsSection
+        <AnalyticsGrid
           id="analytics-completion"
           title="Completion"
           metrics={[
@@ -70,18 +103,34 @@ export default async function AnalyticsPage() {
           ]}
         />
 
-        <GrowthSection
-          clientGrowth={data.growth.clientGrowth}
-          projectGrowth={data.growth.projectGrowth}
-          taskGrowth={data.growth.taskGrowth}
+        <AnalyticsGrid
+          id="analytics-growth"
+          title="Growth"
+          metrics={[
+            {
+              label: "Clients",
+              value: data.growth.clientGrowth.currentPeriodCount,
+              indicator: <GrowthIndicator metric={data.growth.clientGrowth} label="Client growth" />,
+            },
+            {
+              label: "Projects",
+              value: data.growth.projectGrowth.currentPeriodCount,
+              indicator: <GrowthIndicator metric={data.growth.projectGrowth} label="Project growth" />,
+            },
+            {
+              label: "Tasks",
+              value: data.growth.taskGrowth.currentPeriodCount,
+              indicator: <GrowthIndicator metric={data.growth.taskGrowth} label="Task growth" />,
+            },
+          ]}
         />
 
-        <MetricsSection
+        <AnalyticsGrid
           id="analytics-status"
           title="Status"
           metrics={[
-            { label: "Plan", value: formatStatusLabel(data.billing.planKey) },
-            { label: "Subscription status", value: formatStatusLabel(data.billing.subscriptionStatus) },
+            { label: "Plan", value: plan.displayName },
+            { label: "Subscription status", value: <StatusBadge status={data.billing.subscriptionStatus} /> },
             { label: "Onboarding progress", value: `${data.onboarding.percent}%` },
           ]}
         />

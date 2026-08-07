@@ -1,4 +1,4 @@
-import type { TimeRange } from "./types";
+import { ALL_TIME_RANGES, type TimeRange } from "./types";
 
 /** Display labels for the (future) range selector — Stage 1 defines these alongside the type so UI/service never invent their own copy independently. */
 export const TIME_RANGE_LABELS: Readonly<Record<TimeRange, string>> = {
@@ -28,3 +28,18 @@ export const TIME_RANGE_DAYS: Readonly<Partial<Record<TimeRange, number>>> = {
   last30Days: 30,
   last90Days: 90,
 };
+
+/**
+ * Analytics Stage 2 (docs/analytics-architecture.md §4's own "the URL is
+ * the one source of truth for the selected range — never a cookie"
+ * decision). Pure — a single, safe way to turn a raw `?range=` query
+ * value (or its absence, or an unrecognized string, or the `string[]`
+ * shape Next.js gives a repeated query key) into a real `TimeRange`,
+ * never throwing and never trusting the input. `page.tsx` is the only
+ * caller; every other analytics entry point still takes a real
+ * `TimeRange`, never a raw string.
+ */
+export function parseTimeRangeParam(value: string | string[] | undefined): TimeRange {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  return (ALL_TIME_RANGES as readonly string[]).includes(candidate ?? "") ? (candidate as TimeRange) : DEFAULT_TIME_RANGE;
+}
