@@ -281,6 +281,30 @@ Ideas for future iterations. None of these are implemented yet:
 - **File attachments** on clients, projects, or invoices (e.g. contracts, deliverables) — no file storage is wired up yet.
 - **Invoice PDF export / email delivery** — invoices currently exist only as database records with a status field; there's no PDF generation or send-by-email flow.
 
+## Onboarding
+
+A provider-neutral onboarding checklist — see
+[`docs/onboarding-architecture.md`](docs/onboarding-architecture.md): a
+minimal `OrganizationOnboardingStep` table (only for the two things that
+can't be derived from real data — an explicit skip and an explicit
+dismiss), a pure progress-computation engine that reads live
+Client/Project/Task/Membership/PortalUser data, and skip/acknowledge/
+finish Server Actions. A dismissible "Getting started" card renders at
+the top of `/dashboard` (never a wizard, modal, or blocking overlay)
+showing a progress bar and a per-step checklist with "Go to"/"Skip"
+actions; it disappears once every substantive step is done or skipped,
+or once explicitly dismissed. No settings entry point or resume
+mechanism exists yet (deliberately deferred). Independent of the
+not-yet-merged Billing branch: the "Review billing" step is a fully
+inert placeholder on `main` today.
+
+The Client Portal side is deliberately separate and much thinner: a
+one-time "Welcome to your client portal" banner on `/portal` for a
+newly-accepted `PortalUser` (eligibility inferred from `createdAt`, no
+new table or column), with a non-persisted "Got it" dismiss and two
+CTAs (View projects / View invoices). No checklist, no steps, no shared
+state with the staff onboarding system above.
+
 ## License
 
 Portfolio project — no license specified.
