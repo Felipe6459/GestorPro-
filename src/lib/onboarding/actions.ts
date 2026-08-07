@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import type { OnboardingStepKey } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUserOrganization } from "@/lib/current-user";
@@ -76,6 +77,10 @@ export async function skipOnboardingStepAction(stepKey: string): Promise<Onboard
 
   const { organizationId } = await getCurrentUserOrganization();
   await recordOnboardingStep(organizationId, stepKey);
+  // The checklist card only ever renders on /dashboard (Stage 3) — same
+  // single-route revalidation shape markNotificationReadAction already
+  // uses for the bell it affects.
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -87,6 +92,7 @@ export async function skipOnboardingStepAction(stepKey: string): Promise<Onboard
 export async function acknowledgeOnboardingWelcomeAction(): Promise<OnboardingActionResult> {
   const { organizationId } = await getCurrentUserOrganization();
   await recordOnboardingStep(organizationId, "WELCOME");
+  revalidatePath("/dashboard");
   return { ok: true };
 }
 
@@ -103,5 +109,6 @@ export async function acknowledgeOnboardingWelcomeAction(): Promise<OnboardingAc
 export async function finishOnboardingAction(): Promise<OnboardingActionResult> {
   const { organizationId } = await getCurrentUserOrganization();
   await recordOnboardingStep(organizationId, "FINISH");
+  revalidatePath("/dashboard");
   return { ok: true };
 }

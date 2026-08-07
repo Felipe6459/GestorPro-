@@ -7,7 +7,9 @@ import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { BreakdownCard } from "@/components/dashboard/breakdown-card";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { OnboardingCard } from "@/components/onboarding/onboarding-card";
 import { parseDashboardPeriod, formatDashboardPeriodLabel } from "@/lib/dashboard/period";
+import { getOrganizationOnboardingProgress } from "@/lib/onboarding/progress";
 import { getDashboardAnalytics } from "./query";
 import type { RawSearchParams } from "@/lib/list-params";
 
@@ -29,7 +31,10 @@ export default async function DashboardPage({
   const period = parseDashboardPeriod(resolvedSearchParams.period);
   const now = new Date();
 
-  const analytics = await getDashboardAnalytics({ organizationId, period, now });
+  const [analytics, onboardingProgress] = await Promise.all([
+    getDashboardAnalytics({ organizationId, period, now }),
+    getOrganizationOnboardingProgress(organizationId),
+  ]);
 
   return (
     <div className="space-y-8">
@@ -44,6 +49,8 @@ export default async function DashboardPage({
         </div>
         <PeriodSelector period={period} />
       </div>
+
+      <OnboardingCard progress={onboardingProgress} />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
         <MetricCard label="Total clients" value={analytics.kpis.totalClients} href="/clients" />

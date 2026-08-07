@@ -281,18 +281,22 @@ Ideas for future iterations. None of these are implemented yet:
 - **File attachments** on clients, projects, or invoices (e.g. contracts, deliverables) — no file storage is wired up yet.
 - **Invoice PDF export / email delivery** — invoices currently exist only as database records with a status field; there's no PDF generation or send-by-email flow.
 
-## Onboarding (backend foundation only, no UI yet)
+## Onboarding
 
-A provider-neutral onboarding progress engine exists in code — see
+A provider-neutral onboarding checklist — see
 [`docs/onboarding-architecture.md`](docs/onboarding-architecture.md): a
 minimal `OrganizationOnboardingStep` table (only for the two things that
 can't be derived from real data — an explicit skip and an explicit
 dismiss), a pure progress-computation engine that reads live
 Client/Project/Task/Membership/PortalUser data, and skip/acknowledge/
-finish Server Actions. **No UI exists yet** — no dashboard checklist card,
-no settings entry point, no new route — and nothing in the app calls any
-of this yet. Independent of the not-yet-merged Billing branch: the
-"Review billing" step is a fully inert placeholder on `main` today.
+finish Server Actions. A dismissible "Getting started" card renders at
+the top of `/dashboard` (never a wizard, modal, or blocking overlay)
+showing a progress bar and a per-step checklist with "Go to"/"Skip"
+actions; it disappears once every substantive step is done or skipped,
+or once explicitly dismissed. No settings entry point or resume
+mechanism exists yet (deliberately deferred). Independent of the
+not-yet-merged Billing branch: the "Review billing" step is a fully
+inert placeholder on `main` today.
 
 ## License
 

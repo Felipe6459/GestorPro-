@@ -8,7 +8,8 @@
 
 export type NavigationCall =
   | { type: "redirect"; url: string }
-  | { type: "notFound" };
+  | { type: "notFound" }
+  | { type: "revalidatePath"; path: string };
 
 let calls: NavigationCall[] = [];
 
@@ -25,8 +26,13 @@ export function mockNotFound(): never {
   throw new NotFoundSignal();
 }
 
-export function mockRevalidatePath(): void {
-  // No-op: this app has no cache to invalidate in tests.
+export function mockRevalidatePath(path: string): void {
+  // Recorded (unlike a true no-op) so a test can assert a Server Action
+  // actually asked to revalidate the right path — this app has no real
+  // cache to invalidate in tests, but a missing/wrong revalidatePath call
+  // is exactly the kind of silent regression only this call log can catch
+  // at the integration layer, before it ever reaches E2E.
+  calls.push({ type: "revalidatePath", path });
 }
 
 export class RedirectSignal extends Error {

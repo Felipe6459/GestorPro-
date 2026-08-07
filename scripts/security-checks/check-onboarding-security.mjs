@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { grep, report } from "./lib.mjs";
 
 // Onboarding Stage 2 (docs/onboarding-architecture.md, this stage's own
@@ -162,6 +162,33 @@ ok = report(
   "every href in the onboarding step catalog's allowlist resolves to a real route directory",
   allowlistedHrefs.length > 0 && missingRoutes.length === 0,
   missingRoutes.join(", "),
+) && ok;
+
+// 13. Stage 3: no "use client" component under src/components/onboarding/
+// ever imports prisma or the DB-backed progress reader directly. The
+// checklist card is a Server Component (onboarding-card.tsx) that receives
+// an already-fetched OnboardingProgressSummary as a prop
+// ((dashboard)/dashboard/page.tsx is the one call site for
+// getOrganizationOnboardingProgress) — only the two small "use client"
+// action buttons (skip/dismiss) exist, and both must reach the database
+// exclusively through the "use server" actions module, never directly,
+// the same server/client boundary discipline every other feature's own
+// client components already keep.
+const ONBOARDING_COMPONENTS_DIR = "src/components/onboarding";
+const clientComponentFiles = existsSync(ONBOARDING_COMPONENTS_DIR)
+  ? readdirSync(ONBOARDING_COMPONENTS_DIR)
+      .filter((f) => f.endsWith(".tsx"))
+      .map((f) => `${ONBOARDING_COMPONENTS_DIR}/${f}`)
+      .filter((f) => /^\s*"use client";/.test(readFileSync(f, "utf8")))
+  : [];
+const FORBIDDEN_DIRECT_IMPORTS = /from\s+"@\/lib\/(prisma|onboarding\/progress)"/;
+const clientComponentsWithDirectDbAccess = clientComponentFiles.filter((f) =>
+  FORBIDDEN_DIRECT_IMPORTS.test(readFileSync(f, "utf8")),
+);
+ok = report(
+  "no 'use client' onboarding component imports prisma or the progress reader directly",
+  clientComponentFiles.length > 0 && clientComponentsWithDirectDbAccess.length === 0,
+  clientComponentsWithDirectDbAccess.join(", "),
 ) && ok;
 
 process.exit(ok ? 0 : 1);
