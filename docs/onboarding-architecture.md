@@ -1077,3 +1077,51 @@ UI, independent of Billing.**
   total, rejected by the skip action, and carries no real `targetHref` —
   see §16 for the seam Stage 6 fills in once `feature/billing-subscriptions`
   (or its successor) actually merges.
+
+## Stage 4 implementation note
+
+Stage 4 (Client Portal welcome experience) settles the one decision §17
+explicitly left open — "a persisted flag ... or inferred from
+`PortalUser.createdAt`, left to Stage 2 to settle empirically" — which
+Stage 2 never actually touched (it scoped itself entirely to the staff
+side). Stage 4 settles it in favor of the **zero-migration option**:
+
+- **Eligibility is computed, not stored.** `isPortalWelcomeEligible(createdAt,
+  now)` (`src/components/portal/portal-welcome-eligibility.ts`) is `true`
+  while `now - createdAt` is under a 7-day window — no
+  `PortalUser.welcomedAt` column, no new table, no migration at all.
+  `PortalUser` is created exactly once, at `ClientInvitation`-accept time
+  (`src/app/portal/invite/[token]/actions.ts`), and that accept flow
+  redirects straight to `/portal` — so `createdAt` is a genuine "just
+  onboarded" signal, not a guess. Seven days mirrors this codebase's own
+  existing convention for `Invitation`/`ClientInvitation` validity
+  (`expiresAt: now + 7 days`) rather than an arbitrary new number.
+- **Dismiss is deliberately non-persistent.** Clicking "Got it"
+  (`src/components/portal/portal-welcome-banner.tsx`) hides the banner via
+  plain component state for the rest of that page instance only — no
+  cookie, no column, no write of any kind. Returning to `/portal` later
+  (a reload, a new tab, a new day within the 7-day window) shows it again.
+  This is the explicit, accepted tradeoff of not adding persistence for a
+  one-time nudge with no other feature-flag surface competing for the
+  same space — the same reasoning §17 itself already applied to `PortalUser`
+  when weighing a column against a new table.
+- **CTA: "View projects" (primary) and "View invoices" (secondary) only —
+  no "Complete profile."** `/portal/profile` is read-only by design ("a
+  portal contact can never edit their own record" — its own page
+  comment); a "Complete" CTA would imply an edit action that doesn't
+  exist. Naming it accurately (e.g. "View profile") was passed over in
+  favor of omitting a third CTA entirely, keeping to "real capabilities
+  only," the same rule §5's own copy already follows.
+- **No checklist, no steps, no progress — confirmed, not just carried
+  over.** The banner is one static region: a heading, four factual bullets
+  (view shared projects, review invoices, download files, manage your
+  portal profile — all real, existing `/portal` capabilities), and the two
+  CTAs above. It never reads `OrganizationOnboardingStep`, never imports
+  `src/lib/onboarding`, and creates no `Activity`/`Notification` row —
+  verified structurally by `scripts/security-checks/check-portal-welcome-security.mjs`,
+  not just asserted here.
+- **Placement: `/portal` (Portal home) only**, above the existing overview
+  content, the same "ordinary part of the page, never a modal" stance §11
+  already established for the staff Dashboard onboarding card. Every
+  other Portal page (Projects, Invoices, Profile, login, invite-accept)
+  is unaffected — no existing `EmptyState` usage was touched.

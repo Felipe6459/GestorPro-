@@ -298,6 +298,13 @@ mechanism exists yet (deliberately deferred). Independent of the
 not-yet-merged Billing branch: the "Review billing" step is a fully
 inert placeholder on `main` today.
 
+The Client Portal side is deliberately separate and much thinner: a
+one-time "Welcome to your client portal" banner on `/portal` for a
+newly-accepted `PortalUser` (eligibility inferred from `createdAt`, no
+new table or column), with a non-persisted "Got it" dismiss and two
+CTAs (View projects / View invoices). No checklist, no steps, no shared
+state with the staff onboarding system above.
+
 ## License
 
 Portfolio project — no license specified.
