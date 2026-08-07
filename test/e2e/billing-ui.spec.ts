@@ -214,7 +214,7 @@ test.describe("Plan/status states", () => {
     }
   });
 
-  test("an unrecognized plan key in the database is safely normalized (never a crash)", async ({ page }) => {
+  test("an unrecognized plan key in the database is safely normalized (never a crash), with a consistent Legacy status — not a stale 'Active' badge (Stage 5 audit fix)", async ({ page }) => {
     // buildOrganizationEntitlements (src/lib/billing/entitlements.ts, Stage
     // 2) already normalizes any Subscription.planKey it doesn't recognize
     // to LEGACY before the view-model ever sees it — so a real DB row like
@@ -222,12 +222,18 @@ test.describe("Plan/status states", () => {
     // "Custom plan" fallback (that fallback is defense-in-depth for a
     // hypothetical caller that bypasses entitlements entirely; see
     // test/unit/billing-view-model.test.ts's own "unknown plan key" case).
-    // Either way, the real, end-to-end guarantee this test exists to prove
-    // is the same: the page renders a safe label and never crashes.
+    // The real, end-to-end guarantee this test exists to prove: the page
+    // renders a safe label and never crashes — AND (Stage 5 audit fix)
+    // the status badge/message next to that label is internally
+    // consistent with it, never a leftover "Active" from the row's own
+    // real `status` field (this row's `status: "ACTIVE"` is exactly what
+    // prisma/backfill-subscriptions.ts itself writes for a legacy org).
     await setSubscription(fixtures.orgA.id, { planKey: "MYSTERY_PLAN", status: "ACTIVE" });
     await page.goto("/settings/billing");
     await expect(page.getByRole("heading", { name: "Legacy (pre-billing)", level: 2 })).toBeVisible();
     await expect(page.getByText(/internal server error/i)).toHaveCount(0);
+    await expect(page.getByText("This workspace uses legacy unrestricted access.")).toBeVisible();
+    await expect(page.getByText("Active", { exact: true })).toHaveCount(0);
   });
 });
 

@@ -37,7 +37,20 @@ export type SubscriptionStateForEntitlements = {
 
 export type OrganizationEntitlements = {
   planKey: PlanKey;
-  /** `"LEGACY"` only ever means "no Subscription row exists" — never a real provider-reported status. */
+  /**
+   * Stage 5 audit fix: `"LEGACY"` whenever the resolved `planKey` above is
+   * `LEGACY` — either because no Subscription row exists at all, or
+   * because a real row's own `planKey` resolved to Legacy (an explicit
+   * `LEGACY`-plan row from `prisma/backfill-subscriptions.ts`, or an
+   * unrecognized value normalized by the fallback below). Previously this
+   * only checked "no row exists," which meant a real row with an
+   * unrecognized/explicitly-Legacy `planKey` but a real `status` (e.g. the
+   * backfill script's own `status: "ACTIVE"`) rendered as plan "Legacy
+   * (pre-billing)" next to a green "Active" status badge and "Your
+   * subscription is active" message — internally contradictory for an
+   * organization that has never had a real, paid subscription. Never a
+   * real provider-reported status either way.
+   */
   subscriptionStatus: SubscriptionStatus | "LEGACY";
   accessMode: AccessMode;
 
@@ -89,6 +102,7 @@ export function buildOrganizationEntitlements({
   const planKey: PlanKey =
     subscription && isPlanKey(subscription.planKey) ? subscription.planKey : LEGACY_PLAN_KEY;
   const plan = getPlan(planKey);
+  const isLegacyPlan = planKey === LEGACY_PLAN_KEY;
 
   const accessMode: AccessMode = subscription
     ? computeAccessMode(subscription, now)
@@ -111,7 +125,7 @@ export function buildOrganizationEntitlements({
 
   return {
     planKey,
-    subscriptionStatus: subscription ? subscription.status : "LEGACY",
+    subscriptionStatus: subscription && !isLegacyPlan ? subscription.status : "LEGACY",
     accessMode,
 
     maxMembers: plan.limits.maxMembers,

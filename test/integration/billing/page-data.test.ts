@@ -75,6 +75,39 @@ describe("getBillingPageData", () => {
     await prisma.organization.delete({ where: { id: legacyOrg.id } });
   });
 
+  it("Stage 5 audit fix: a real, backfilled LEGACY-plan Subscription row (prisma/backfill-subscriptions.ts's own shape) also resolves to the LEGACY state, not a misleading 'Active' one", async () => {
+    const backfilledOrg = await prisma.organization.create({
+      data: { name: "Backfilled Legacy Org", slug: testSlug("billing-legacy-backfilled", fixtures.runId) },
+    });
+    // Exactly what prisma/backfill-subscriptions.ts writes: a real row,
+    // planKey LEGACY, status ACTIVE (there is no separate LEGACY
+    // SubscriptionStatus value — see that script's own header comment).
+    await prisma.subscription.create({
+      data: {
+        organizationId: backfilledOrg.id,
+        planKey: "LEGACY",
+        status: "ACTIVE",
+        trialStartedAt: new Date(),
+        trialEndsAt: new Date(),
+      },
+    });
+
+    const data = await getBillingPageData({ organizationId: backfilledOrg.id, role: "OWNER" });
+
+    // Before this fix: isLegacy was false and statusLabel was "ACTIVE" —
+    // the page would show plan "Legacy (pre-billing)" next to a green
+    // "Active" badge and "Your subscription is active," which is false
+    // for an organization that has never had a real subscription.
+    expect(data.isLegacy).toBe(true);
+    expect(data.statusLabel).toBe("LEGACY");
+    expect(data.statusNotice.message).toBe("This workspace uses legacy unrestricted access.");
+    expect(data.accessMode).toBe("FULL_ACCESS");
+    expect(data.accessModeBanner).toBeNull();
+
+    await prisma.subscription.deleteMany({ where: { organizationId: backfilledOrg.id } });
+    await prisma.organization.delete({ where: { id: backfilledOrg.id } });
+  });
+
   it("usage rows reflect real Membership/Client/Project/Attachment aggregates, not a separately-computed number", async () => {
     const data = await getBillingPageData({ organizationId: fixtures.orgA.id, role: "OWNER" });
 

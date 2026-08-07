@@ -193,6 +193,44 @@ describe("buildOrganizationEntitlements — legacy fallback (no Subscription row
     });
     expect(result.planKey).toBe("LEGACY");
   });
+
+  it("Stage 5 audit fix: a real row resolving to the LEGACY plan also reports subscriptionStatus LEGACY, not its own raw status", () => {
+    // Regression guard for the exact shape prisma/backfill-subscriptions.ts
+    // writes: a real Subscription row, status ACTIVE, planKey LEGACY.
+    // Before this fix, subscriptionStatus only ever became "LEGACY" when
+    // no row existed at all — a backfilled/corrupted-planKey row with a
+    // real `status: "ACTIVE"` rendered plan "Legacy (pre-billing)" next to
+    // a green "Active" badge and "Your subscription is active" message,
+    // which is false for an organization that has never had a real
+    // subscription.
+    const backfilled = buildOrganizationEntitlements({
+      subscription: activeSubscription({ planKey: "LEGACY", status: "ACTIVE" }),
+      usage: usage(),
+      now: NOW,
+    });
+    expect(backfilled.planKey).toBe("LEGACY");
+    expect(backfilled.subscriptionStatus).toBe("LEGACY");
+
+    // Same fix, via the "unrecognized planKey" path rather than the
+    // literal LEGACY key — both resolve `planKey` to LEGACY, so both must
+    // resolve `subscriptionStatus` to LEGACY too, for the same reason.
+    const unrecognized = buildOrganizationEntitlements({
+      subscription: activeSubscription({ planKey: "SOME_RETIRED_PLAN", status: "ACTIVE" }),
+      usage: usage(),
+      now: NOW,
+    });
+    expect(unrecognized.subscriptionStatus).toBe("LEGACY");
+  });
+
+  it("a real, recognized non-LEGACY plan is unaffected by this fix — its own real status still reports as-is", () => {
+    const result = buildOrganizationEntitlements({
+      subscription: activeSubscription({ planKey: "PRO", status: "PAST_DUE" }),
+      usage: usage(),
+      now: NOW,
+    });
+    expect(result.planKey).toBe("PRO");
+    expect(result.subscriptionStatus).toBe("PAST_DUE");
+  });
 });
 
 describe("buildOrganizationEntitlements — reason codes", () => {
