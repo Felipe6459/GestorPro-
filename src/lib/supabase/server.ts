@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
@@ -80,3 +81,43 @@ export async function createClient() {
     },
   );
 }
+
+/**
+ * Stage 6.2.1 (session-redirect / Server Action UX stabilization).
+ * Request-scoped memoized resolution of the currently authenticated
+ * Supabase user via a real auth.getUser() call — never trusts the
+ * cookie payload alone, exactly like every existing call site already
+ * didn't. A single dashboard request routinely resolves "who is the
+ * current user?" several times over — the root (dashboard) layout, then
+ * getOrCreateUser() (itself called from ~20 pages/actions, per that
+ * function's own doc comment), then the page being rendered, then any
+ * Server Action it invokes — and until now each of those created its
+ * own createClient() and made its own independent network round-trip to
+ * Supabase Auth. When the access token is near expiry, Supabase rotates
+ * the refresh token on every refresh call; several of these redundant,
+ * unmemoized calls landing within the same request could race each
+ * other, and every call after the first would present an
+ * already-rotated (now-invalid) refresh token and fail — surfacing as a
+ * `redirect("/login")` from a *later* call site, even though the very
+ * first call in that same request had already succeeded (the mutation
+ * itself, gated by that first call, would have already committed).
+ *
+ * React's cache() scopes this function's result to exactly one request
+ * (or one Server Action invocation) — no matter how many call sites ask
+ * this question during that one request, the real network validation
+ * now happens exactly once, and every caller shares the same answer.
+ * This changes nothing about *how* auth is verified (the same real
+ * getUser() call, against the same real Supabase Auth server, same
+ * cookies, same TEST_MODE branch) — only how many times it was
+ * redundantly repeated per request. getOrCreateUser() and
+ * (dashboard)/layout.tsx's own top-level check are this helper's first
+ * two callers; every other existing auth.getUser() call site (login/
+ * signup pages, the Client Portal side) is unchanged.
+ */
+export const getVerifiedAuthUser = cache(async (): Promise<User | null> => {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return user;
+});
