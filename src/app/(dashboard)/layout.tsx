@@ -88,7 +88,16 @@ export default async function DashboardLayout({
   return (
     <div className="flex min-h-screen flex-col bg-gray-50 md:flex-row">
       <Sidebar disablePrefetch={TEST_MODE} />
-      <div className="flex flex-1 flex-col">
+      {/*
+        min-w-0: at the md breakpoint this becomes a flex row item next to
+        the now-fixed-width Sidebar. Flex items default to `min-width:
+        auto`, so without this override the item refuses to shrink below
+        its content's intrinsic width — including a wide Table's own
+        `overflow-x-auto` wrapper, which can only actually clip/scroll
+        once its ancestor chain has somewhere to shrink to. Same root
+        cause class as header.tsx's own min-w-0 fix (see that file).
+      */}
+      <div className="flex min-w-0 flex-1 flex-col">
         <Header
           email={user.email ?? ""}
           organizations={organizations}
