@@ -9,6 +9,9 @@ import type { OnboardingStepKey } from "@/generated/prisma/enums";
  */
 export const ONBOARDING_STEP_DESCRIPTIONS: Record<OnboardingStepKey, string> = {
   WELCOME: "A quick checklist to help you get the most out of your workspace.",
+  COMPANY_PROFILE: "Add your legal name, country, currency, and time zone.",
+  PAYMENT_DETAILS: "Tell clients where to send your payments.",
+  DOMAIN_SETUP: "Review your workspace address and an optional custom domain.",
   CREATE_CLIENT: "Add the people or businesses you work with.",
   CREATE_PROJECT: "Organize your work into projects for each client.",
   CREATE_TASK: "Break a project down into tasks you can track.",

@@ -28,9 +28,12 @@ describe("ONBOARDING_STEP_ORDER / ONBOARDING_STEPS — catalog invariants", () =
     });
   });
 
-  it("adopts the exact order docs/onboarding-architecture.md §5 decided", () => {
+  it("adopts docs/onboarding-architecture.md §5's decided order, with the Customer Setup Wizard's three steps (Stage 6.2) inserted between WELCOME and CREATE_CLIENT", () => {
     expect(ONBOARDING_STEP_ORDER).toEqual([
       "WELCOME",
+      "COMPANY_PROFILE",
+      "PAYMENT_DETAILS",
+      "DOMAIN_SETUP",
       "CREATE_CLIENT",
       "CREATE_PROJECT",
       "CREATE_TASK",

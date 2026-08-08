@@ -165,4 +165,71 @@ describe("getOrganizationOnboardingProgress", () => {
 
     await prisma.user.delete({ where: { id: extraUser.id } });
   });
+
+  describe("Customer Setup Wizard steps (Stage 6.2)", () => {
+    afterAll(async () => {
+      await prisma.organizationProfile.deleteMany({ where: { organizationId: fixtures.orgA.id } });
+      await prisma.organizationPaymentDetails.deleteMany({ where: { organizationId: fixtures.orgA.id } });
+      await prisma.organizationDomainSettings.deleteMany({ where: { organizationId: fixtures.orgA.id } });
+    });
+
+    it("COMPANY_PROFILE/PAYMENT_DETAILS/DOMAIN_SETUP are NOT_STARTED for an org with none of the three rows", async () => {
+      const progress = await getOrganizationOnboardingProgress(fixtures.orgA.id);
+      const byKey = Object.fromEntries(progress.steps.map((s) => [s.key, s]));
+      expect(byKey.COMPANY_PROFILE.status).toBe("NOT_STARTED");
+      expect(byKey.PAYMENT_DETAILS.status).toBe("NOT_STARTED");
+      expect(byKey.DOMAIN_SETUP.status).toBe("NOT_STARTED");
+      // COMPANY_PROFILE is load-bearing like Client/Project (§1) — not
+      // actionable-only, it's required, feeding requiredCompleted/Total.
+      expect(byKey.COMPANY_PROFILE.required).toBe(true);
+      expect(byKey.PAYMENT_DETAILS.required).toBe(false);
+      expect(byKey.DOMAIN_SETUP.required).toBe(false);
+    });
+
+    it("a real OrganizationProfile row flips COMPANY_PROFILE to COMPLETE — no separate onboarding-specific write needed", async () => {
+      await prisma.organizationProfile.create({
+        data: { organizationId: fixtures.orgA.id, legalName: "Test Org A LLC", country: "United States", currency: "USD", timezone: "America/New_York" },
+      });
+      const progress = await getOrganizationOnboardingProgress(fixtures.orgA.id);
+      expect(progress.steps.find((s) => s.key === "COMPANY_PROFILE")!.status).toBe("COMPLETE");
+      expect(progress.requiredCompleted).toBe(3);
+    });
+
+    it("a real OrganizationPaymentDetails row flips PAYMENT_DETAILS to COMPLETE", async () => {
+      await prisma.organizationPaymentDetails.create({
+        data: { organizationId: fixtures.orgA.id, bankName: "Bank", accountHolder: "Test Org A", accountNumber: "123", swiftBic: "ABCDEF12" },
+      });
+      const progress = await getOrganizationOnboardingProgress(fixtures.orgA.id);
+      expect(progress.steps.find((s) => s.key === "PAYMENT_DETAILS")!.status).toBe("COMPLETE");
+    });
+
+    it("a real OrganizationDomainSettings row flips DOMAIN_SETUP to COMPLETE, even with no custom domain set", async () => {
+      await prisma.organizationDomainSettings.create({
+        data: { organizationId: fixtures.orgA.id, customDomain: null },
+      });
+      const progress = await getOrganizationOnboardingProgress(fixtures.orgA.id);
+      expect(progress.steps.find((s) => s.key === "DOMAIN_SETUP")!.status).toBe("COMPLETE");
+    });
+
+    it("PAYMENT_DETAILS/DOMAIN_SETUP can be explicitly skipped like any other skippable step, independent of COMPANY_PROFILE", async () => {
+      const org = await prisma.organization.create({ data: { name: "Skip Test Org", slug: testSlug("onboarding-setup-skip", fixtures.runId) } });
+      await prisma.organizationOnboardingStep.createMany({
+        data: [
+          { organizationId: org.id, step: "PAYMENT_DETAILS" },
+          { organizationId: org.id, step: "DOMAIN_SETUP" },
+        ],
+      });
+
+      const progress = await getOrganizationOnboardingProgress(org.id);
+      const byKey = Object.fromEntries(progress.steps.map((s) => [s.key, s]));
+      expect(byKey.PAYMENT_DETAILS.status).toBe("SKIPPED");
+      expect(byKey.DOMAIN_SETUP.status).toBe("SKIPPED");
+      // COMPANY_PROFILE has no row and no data — still NOT_STARTED, proving
+      // skip state is per-step, never shared.
+      expect(byKey.COMPANY_PROFILE.status).toBe("NOT_STARTED");
+
+      await prisma.organizationOnboardingStep.deleteMany({ where: { organizationId: org.id } });
+      await prisma.organization.delete({ where: { id: org.id } });
+    });
+  });
 });

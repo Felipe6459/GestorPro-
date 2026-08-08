@@ -9,6 +9,9 @@ function signals(overrides: Partial<OnboardingRawSignals> = {}): OnboardingRawSi
     hasTask: false,
     hasSecondMember: false,
     hasPortalUser: false,
+    hasCompanyProfile: false,
+    hasPaymentDetails: false,
+    hasDomainSettings: false,
     actedStepKeys: new Set<OnboardingStepKey>(),
     ...overrides,
   };
@@ -70,8 +73,8 @@ describe("buildOnboardingProgress — a fresh, fully empty organization", () => 
     expect(progress.isDismissed).toBe(false);
   });
 
-  it("requiredCompleted is 0 of 2 (Client, Project)", () => {
-    expect(progress.requiredTotal).toBe(2);
+  it("requiredCompleted is 0 of 3 (Company Profile, Client, Project — Stage 6.2 adds Company Profile as required)", () => {
+    expect(progress.requiredTotal).toBe(3);
     expect(progress.requiredCompleted).toBe(0);
   });
 });
@@ -182,12 +185,12 @@ describe("buildOnboardingProgress — skip semantics", () => {
 });
 
 describe("buildOnboardingProgress — percent semantics and boundaries", () => {
-  it("percent denominator is 6 on this branch (excludes WELCOME and the unavailable REVIEW_BILLING; includes FINISH)", () => {
+  it("percent denominator is 9 on this branch (excludes WELCOME and the unavailable REVIEW_BILLING; includes FINISH; includes the Customer Setup Wizard's three new steps — Stage 6.2)", () => {
     const progress = buildOnboardingProgress(signals());
-    expect(progress.totalCount).toBe(6);
+    expect(progress.totalCount).toBe(9);
   });
 
-  it("5 of 6 substantive-plus-finish steps done is 83%", () => {
+  it("5 of 9 substantive-plus-finish steps done is 56%", () => {
     const progress = buildOnboardingProgress(
       signals({
         hasClient: true,
@@ -195,12 +198,12 @@ describe("buildOnboardingProgress — percent semantics and boundaries", () => {
         hasTask: true,
         hasSecondMember: true,
         hasPortalUser: true,
-        // FINISH not yet acknowledged.
+        // COMPANY_PROFILE/PAYMENT_DETAILS/DOMAIN_SETUP and FINISH not yet done/acknowledged.
       }),
     );
     expect(progress.completedCount).toBe(5);
-    expect(progress.totalCount).toBe(6);
-    expect(progress.percent).toBe(83);
+    expect(progress.totalCount).toBe(9);
+    expect(progress.percent).toBe(56);
   });
 
   it("every substantive step done AND Finish acknowledged is 100%", () => {
@@ -211,6 +214,9 @@ describe("buildOnboardingProgress — percent semantics and boundaries", () => {
         hasTask: true,
         hasSecondMember: true,
         hasPortalUser: true,
+        hasCompanyProfile: true,
+        hasPaymentDetails: true,
+        hasDomainSettings: true,
         actedStepKeys: new Set(["FINISH"]),
       }),
     );
@@ -223,7 +229,8 @@ describe("buildOnboardingProgress — percent semantics and boundaries", () => {
       signals({
         hasClient: true,
         hasProject: true,
-        actedStepKeys: new Set(["CREATE_TASK", "INVITE_TEAMMATE", "INVITE_PORTAL_USER"]),
+        hasCompanyProfile: true,
+        actedStepKeys: new Set(["PAYMENT_DETAILS", "DOMAIN_SETUP", "CREATE_TASK", "INVITE_TEAMMATE", "INVITE_PORTAL_USER"]),
       }),
     );
     expect(progress.isComplete).toBe(true);

@@ -127,7 +127,7 @@ test.afterAll(async () => {
 });
 
 test.describe("Visibility per progress state", () => {
-  test("a fresh, empty organization shows the full checklist, 0 of 6 complete, Welcome first", async ({
+  test("a fresh, empty organization shows the full checklist, 0 of 9 complete, Welcome first", async ({
     context,
     baseURL,
     page,
@@ -137,13 +137,20 @@ test.describe("Visibility per progress state", () => {
     await gotoAndSettle(page, `${baseURL}/dashboard`);
 
     await expect(onboardingCard(page)).toBeVisible();
-    await expect(onboardingCard(page).getByText("0 of 6 complete")).toBeVisible();
+    // 9 = every ONBOARDING_STEP_ORDER key except WELCOME and the
+    // unavailable REVIEW_BILLING — includes the Customer Setup Wizard's
+    // three steps (Stage 6.2): Company Profile, Payment Details, Domain
+    // Setup.
+    await expect(onboardingCard(page).getByText("0 of 9 complete")).toBeVisible();
 
     const bar = onboardingCard(page).getByRole("progressbar", { name: "Onboarding progress" });
     await expect(bar).toHaveAttribute("aria-valuenow", "0");
 
+    // 11 = every key in ONBOARDING_STEP_ORDER, including the
+    // NOT_APPLICABLE REVIEW_BILLING row (never filtered out of the list,
+    // only excluded from the percent/count above).
     const rows = onboardingCard(page).getByRole("listitem");
-    await expect(rows).toHaveCount(8);
+    await expect(rows).toHaveCount(11);
     await expect(rows.first()).toContainText("Welcome");
 
     await cleanupFreshOrg(fresh);
@@ -172,9 +179,27 @@ test.describe("Visibility per progress state", () => {
     baseURL,
     page,
   }) => {
-    await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
-    await gotoAndSettle(page, `${baseURL}/dashboard`);
-    await expect(onboardingCard(page)).toHaveCount(0);
+    // fixtures.orgA already has real Client/Project/Task/second-Membership/
+    // PortalUser data (seedTestData()) — real Company Profile/Payment
+    // Details/Domain Settings rows (Customer Setup Wizard, Stage 6.2) are
+    // the one thing missing to make every substantive step COMPLETE.
+    await dbQuery("organizationProfile", "create", {
+      data: { organizationId: fixtures.orgA.id, legalName: "Test Org A LLC", country: "United States", currency: "USD", timezone: "America/New_York" },
+    });
+    await dbQuery("organizationPaymentDetails", "create", {
+      data: { organizationId: fixtures.orgA.id, bankName: "Bank", accountHolder: "Test Org A", accountNumber: "123", swiftBic: "ABCDEF12" },
+    });
+    await dbQuery("organizationDomainSettings", "create", { data: { organizationId: fixtures.orgA.id, customDomain: null } });
+
+    try {
+      await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+      await gotoAndSettle(page, `${baseURL}/dashboard`);
+      await expect(onboardingCard(page)).toHaveCount(0);
+    } finally {
+      await dbQuery("organizationProfile", "deleteMany", { where: { organizationId: fixtures.orgA.id } });
+      await dbQuery("organizationPaymentDetails", "deleteMany", { where: { organizationId: fixtures.orgA.id } });
+      await dbQuery("organizationDomainSettings", "deleteMany", { where: { organizationId: fixtures.orgA.id } });
+    }
   });
 });
 
