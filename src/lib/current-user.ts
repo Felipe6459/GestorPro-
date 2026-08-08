@@ -115,11 +115,23 @@ async function uniqueOrganizationSlug(
  * created afterwards need a personal org+membership created on the fly here,
  * so this stays idempotent and safe to call on every request.
  */
-export async function getOrCreateOrganizationId(user: {
-  id: string;
-  name: string;
-  email: string;
-}): Promise<string> {
+export async function getOrCreateOrganizationId(
+  user: {
+    id: string;
+    name: string;
+    email: string;
+  },
+  /**
+   * SaaS Signup Foundation (Stage 6.1): the company name a user typed on
+   * `/signup`, when this is their very first organization — takes priority
+   * over the generic "${user.name}'s Workspace" default below, both for the
+   * created Organization's display name and for the slug's own base text.
+   * Every other caller (the lazy first-dashboard-visit path, invited users,
+   * every existing test) omits this and gets byte-identical behavior to
+   * before — purely additive.
+   */
+  preferredName?: string,
+): Promise<string> {
   const ownerMembership = await prisma.membership.findFirst({
     where: { userId: user.id, role: Role.OWNER },
     select: { organizationId: true },
@@ -128,6 +140,8 @@ export async function getOrCreateOrganizationId(user: {
   if (ownerMembership) {
     return ownerMembership.organizationId;
   }
+
+  const trimmedPreferredName = preferredName?.trim();
 
   try {
     return await prisma.$transaction(async (tx) => {
@@ -139,10 +153,10 @@ export async function getOrCreateOrganizationId(user: {
         return existing.organizationId;
       }
 
-      const base = slugify(user.name) || slugify(user.email.split("@")[0]);
+      const base = slugify(trimmedPreferredName || user.name) || slugify(user.email.split("@")[0]);
       const slug = await uniqueOrganizationSlug(tx, `${base}-${user.id.slice(0, 8)}`);
       const organization = await tx.organization.create({
-        data: { name: `${user.name}'s Workspace`, slug },
+        data: { name: trimmedPreferredName || `${user.name}'s Workspace`, slug },
       });
       await tx.membership.create({
         data: { userId: user.id, organizationId: organization.id, role: Role.OWNER },

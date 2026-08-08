@@ -58,9 +58,48 @@ export function setMockActiveOrganization(organizationId: string): void {
   cookieStore.set(ACTIVE_ORG_COOKIE, organizationId);
 }
 
+/**
+ * SaaS Signup Foundation (Stage 6.1): what the mocked Supabase client's
+ * auth.signUp() should do next — configured explicitly per test, one-shot
+ * (consumed and cleared by consumeMockSignUpConfig()), the same "must be
+ * set before use" discipline as setMockAuthUser() already has for
+ * getUser(). "session" mirrors a project with email confirmation
+ * disabled (this app's own demo/seed accounts) — the caller is
+ * immediately authenticated, so it also sets this as the current mock
+ * auth user, exactly like the real SSR client persisting a session
+ * cookie that a subsequent getUser() call in the same request then
+ * reads back. "pending-confirmation" mirrors a project requiring email
+ * confirmation — a real auth user id exists but no session yet, so
+ * getUser() must NOT resolve to them. "error" mirrors Supabase rejecting
+ * the signup outright (e.g. a duplicate email).
+ */
+export type MockSignUpConfig =
+  | { kind: "session"; id?: string }
+  | { kind: "pending-confirmation"; id?: string }
+  | { kind: "error"; message: string };
+
+let mockSignUpConfig: MockSignUpConfig | null = null;
+
+export function setMockSignUpConfig(config: MockSignUpConfig): void {
+  mockSignUpConfig = config;
+}
+
+/** Reads and clears the configured response — throws if a test invoked signUp() without configuring one first, rather than silently guessing a default. */
+export function consumeMockSignUpConfig(): MockSignUpConfig {
+  if (!mockSignUpConfig) {
+    throw new Error(
+      "setMockSignUpConfig(...) must be called before invoking a Server Action that calls supabase.auth.signUp().",
+    );
+  }
+  const config = mockSignUpConfig;
+  mockSignUpConfig = null;
+  return config;
+}
+
 /** Call in afterEach — clears both the identity and the cookie jar so one test's "logged in as" state never leaks into the next. */
 export function resetAuthMock(): void {
   currentUser = null;
+  mockSignUpConfig = null;
   cookieStore.clear();
 }
 
