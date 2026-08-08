@@ -7,15 +7,29 @@ import { ChartEmptyState } from "./chart-empty-state";
 
 /**
  * Analytics Stage 3 ("stacked charts where appropriate" — Task/Invoice
- * activity). Each bucket is one bar, stacked into two segments:
- * "completed" (the darker segment) and "still open" (`created - completed`,
- * the lighter segment) — so the bar's total height is always exactly
- * `created` for that bucket, and the stacked split reads as "of what was
- * created, how much is already done" at a glance. "completed" here means
- * whatever the caller's own series defines it as (Task: `status = DONE`;
- * Invoice: `paidAt IS NOT NULL` — see queries/time-series.ts).
+ * activity), reused unchanged in shape by Stage 4 for the Portal
+ * invitation lifecycle (sent/accepted — see `portalInvitationSeries`'s
+ * own doc comment in types.ts). Each bucket is one bar, stacked into two
+ * segments: `completedLabel` (the darker segment) and `openLabel`
+ * (`created - completed`, the lighter segment) — so the bar's total
+ * height is always exactly `created` for that bucket. All three labels
+ * default to Stage 3's own "created"/"Completed"/"Still open" wording;
+ * Stage 4 overrides them to "sent"/"Accepted"/"Not yet accepted" so the
+ * legend and `aria-label` describe what the series actually measures.
  */
-export function ActivityStackedBarChart({ label, series }: { label: string; series: DualChartSeries }) {
+export function ActivityStackedBarChart({
+  label,
+  series,
+  createdWord = "created",
+  completedLabel = "Completed",
+  openLabel = "Still open",
+}: {
+  label: string;
+  series: DualChartSeries;
+  createdWord?: string;
+  completedLabel?: string;
+  openLabel?: string;
+}) {
   const totalCreated = series.points.reduce((sum, p) => sum + p.created, 0);
   const totalCompleted = series.points.reduce((sum, p) => sum + p.completed, 0);
   if (totalCreated === 0 && totalCompleted === 0) {
@@ -34,7 +48,7 @@ export function ActivityStackedBarChart({ label, series }: { label: string; seri
   }));
 
   return (
-    <div role="img" aria-label={`${label}: ${totalCreated} created, ${totalCompleted} completed`} className="h-48 w-full">
+    <div role="img" aria-label={`${label}: ${totalCreated} ${createdWord}, ${totalCompleted} ${completedLabel.toLowerCase()}`} className="h-48 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} accessibilityLayer margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
@@ -42,8 +56,8 @@ export function ActivityStackedBarChart({ label, series }: { label: string; seri
           <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#6b7280" }} tickLine={false} axisLine={false} width={28} />
           <Tooltip cursor={{ fill: "#f9fafb" }} contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }} />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Bar dataKey="completed" name="Completed" stackId="activity" fill="#111827" radius={[0, 0, 0, 0]} />
-          <Bar dataKey="open" name="Still open" stackId="activity" fill="#d1d5db" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="completed" name={completedLabel} stackId="activity" fill="#111827" radius={[0, 0, 0, 0]} />
+          <Bar dataKey="open" name={openLabel} stackId="activity" fill="#d1d5db" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

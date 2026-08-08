@@ -22,10 +22,16 @@ reasons.
   states, responsive layout, E2E + accessibility tests.
 - **Stage 3 (Charts)** — line/bar/stacked charts, sparklines, trend
   indicators, period-comparison charts — see §10/§11 below.
+- **Stage 4 (Portal analytics)** — aggregate Client Portal metrics
+  (portal users, adoption rate, document/invoice visibility, invitation
+  acceptance) — see §12/§13. Two of the metrics the Stage 4 task spec
+  requested (recent logins, document download count) are **not**
+  implemented — §12 explains exactly why, in detail, per that spec's own
+  "stop and document" instruction.
 
-Still explicitly **not** implemented (deferred — see §12): CSV/PDF
+Still explicitly **not** implemented (deferred — see §14): CSV/PDF
 export, scheduled/emailed reports, AI-generated summaries, configurable
-MEMBER access.
+MEMBER access, portal "recent logins," portal "document download count."
 
 ## 3. Directory layout
 
@@ -46,6 +52,8 @@ src/lib/analytics/
     billing-metrics.ts        Thin wrapper over billing's entitlements + subscription event count
     onboarding-metrics.ts     Thin wrapper over onboarding's progress
     time-series.ts            Bucketed chart series (raw, parameterized SQL — see §10)
+    portal-metrics.ts         Stage 4: portal user/adoption/document/invoice/invitation counts
+    portal-time-series.ts     Stage 4: portal user growth + invitation sent/accepted series
   services/
     analytics-service.ts      getOrganizationAnalytics() — the one public entry point
 
@@ -56,7 +64,7 @@ src/components/analytics/
   charts/
     growth-line-chart.tsx, activity-stacked-bar-chart.tsx, sparkline.tsx,
     comparison-bar-chart.tsx, charts-section.tsx, organization-activity-section.tsx,
-    chart-empty-state.tsx
+    chart-empty-state.tsx, portal-analytics-section.tsx (Stage 4)
 
 src/app/(dashboard)/analytics/
   page.tsx, loading.tsx, error.tsx
@@ -333,9 +341,116 @@ lower-level alternatives (Visx) and canvas-based ones (Chart.js):
   has no error path for this; the reused `OnboardingProgressBar` renders
   a real, correct percentage (never a crash or a "N/A").
 
-## 12. Deferred to a later stage
+## 12. Portal analytics (Stage 4) — what's implemented, and what deliberately isn't
+
+The Stage 4 task spec allowed exactly seven data sources — PortalUser,
+Client, Project, Attachment, Activity, Notification, Invoice — and
+required: *"Do not create new tracking tables unless absolutely
+necessary. If additional persistence becomes unavoidable: stop; document
+the reason; return CHANGES REQUIRED."* This section is that
+documentation.
+
+### 12.1 What the schema actually contains today
+
+- `PortalUser` has `id`, `clientId`, `email`, `name`, `createdAt`,
+  `updatedAt` — **no login/session timestamp of any kind**.
+- `Attachment`'s only timestamp is `createdAt` (upload time) — no
+  access/open/download event is ever recorded.
+- The Portal attachment download route
+  (`src/app/api/portal/attachments/[id]/download/route.ts`) issues a
+  short-lived signed URL and redirects — its own header comment states
+  the deliberate design: *"never log the signed URL, storagePath, or
+  bucket."* This is a pre-existing, intentional privacy decision made
+  before Stage 4 existed, not an oversight Stage 4 could work around.
+- `Activity.actorId` is a relation to `User` (staff) — never `PortalUser`.
+  A `PORTAL_INVITATION_ACCEPTED` Activity row genuinely exists
+  (`actorId: null`, written inside the same transaction as the
+  `PortalUser` upsert — `src/app/portal/invite/[token]/actions.ts`), but
+  no Activity row, of any kind, is ever authored *by* a portal identity
+  logging in or opening a page.
+- `Notification.recipientId` is also a relation to `User` — portal
+  identities never receive (or trigger) a Notification row either.
+
+### 12.2 What this means for the two requested metrics
+
+- **"Recent logins."** There is no login/session timestamp anywhere in
+  the allowed data sources (or anywhere in the schema at all). Portal
+  authentication is real Supabase Auth (`supabase.auth.getUser()` in
+  `src/lib/current-portal-user.ts`) — Supabase's own `auth.users.
+  last_sign_in_at` does technically exist, but it lives in a different
+  system/schema this app deliberately never queries for business data,
+  and it is not one of the seven allowed sources. Implementing this
+  honestly would require a new `PortalUser.lastLoginAt` (or equivalent)
+  column, written on every portal sign-in — new persistence, and new
+  write-path logic in the portal auth flow, neither of which this stage
+  added.
+- **"Document download count."** No download/access event is recorded
+  anywhere, and the one code path that could record one
+  (`/api/portal/attachments/[id]/download`) explicitly documents choosing
+  not to, as a privacy decision predating this stage. Implementing this
+  honestly would require a new counter column or a new download-event
+  log table, plus a write on every download — again, new persistence
+  this stage did not add.
+
+**Neither was implemented, faked, or approximated with a misleading
+proxy.** No `lastLoginAt` column, no download-count column, no download-
+log table exists anywhere in `prisma/schema.prisma` —
+`check-analytics-security.mjs` asserts this directly (check #13) so a
+future change can't silently reintroduce it without the check catching
+it.
+
+### 12.3 What was implemented instead, and why each is honest
+
+| Requested | Implemented as | Real source |
+|---|---|---|
+| Active portal users | **"Portal users"** — total count, not a recency-filtered "active" count (no recency signal exists) | `PortalUser` rows for the org |
+| Invitation acceptance count | Real, time-boundable count | `Activity` rows, `action = PORTAL_INVITATION_ACCEPTED` |
+| Recent logins | *(not implemented — §12.2)* | — |
+| Document access count | Folded into **"Documents available"** — content *reachable* by a portal identity, never an access event | `Attachment` rows (Client + Project level) scoped to Clients with a `PortalUser` |
+| Document download count | *(not implemented — §12.2)* | — |
+| Completed actions | **"Portal activity"** — count of portal-lifecycle Activity rows in the period | `Activity` rows, `entityType = PORTAL_USER` |
+| Recent activity count | Same as above (one real signal, not two) | `Activity` rows, `entityType = PORTAL_USER` |
+| Activity trend | **Portal trends** line chart | Same Activity rows, bucketed (§10's shape, reused) |
+| Activity frequency | Implicit in the trend chart's own bucketing — no separate "frequency" number was invented | — |
+| Document engagement | Same as "Documents available" — deliberately labeled as availability, never "engagement," since no open/view/download event exists to measure real engagement | `Attachment` |
+| Portal adoption indicators | **"Portal adoption"** — percent of Clients with ≥1 PortalUser | `Client` + `PortalUser` |
+
+`invoicesVisible` (Invoice rows belonging to a Client with portal access)
+was added beyond the requested list, using `Invoice` — the seventh
+allowed source — for the same "reachable, not accessed" reasoning as
+documents.
+
+## 13. Portal analytics: reuse and multi-tenancy
+
+Every chart/card in the Portal section (`portal-analytics-section.tsx`)
+is composed from Stage 2/3 components — `AnalyticsGrid`, `Sparkline`,
+`GrowthLineChart`, `ActivityStackedBarChart` (extended with optional
+`createdWord`/`completedLabel`/`openLabel` props so Stage 4 can relabel
+"sent"/"accepted" instead of "created"/"completed" without a new
+component), `ComparisonBarChart`, `ChartsSection`. No new chart-rendering
+code was written for Stage 4.
+
+`PortalUser` has no `organizationId` column of its own (only `clientId`)
+— every portal query scopes through `Client.organizationId`, either as a
+Prisma `where: { client: { organizationId } }` filter
+(`portal-metrics.ts`) or a `clientId IN (SELECT id FROM "Client" WHERE
+"organizationId" = ...)` subquery in the one raw-SQL query
+(`portal-time-series.ts`) — functionally identical scoping, verified by
+`check-analytics-security.mjs`'s check #12 and by dedicated
+cross-organization-isolation tests in
+`test/integration/analytics/portal-metrics.test.ts` and
+`portal-time-series.test.ts`.
+
+Portal-only identities are rejected the same way every other Analytics
+consumer is: this route lives under `(dashboard)`, whose layout redirects
+any Portal-only identity to `/portal` before the page (or any query)
+ever runs — never a portal-specific check, because the existing
+OWNER/ADMIN gate (§7) already covers it.
+
+## 14. Deferred to a later stage
 
 - CSV/PDF export.
 - Scheduled/emailed analytics reports.
 - AI-generated summaries.
 - Configurable MEMBER-level access (§7).
+- Portal "recent logins" and "document download count" — see §12.

@@ -56,7 +56,7 @@ test.describe("OWNER", () => {
   test("shows every KPI section with real, non-empty data", async ({ page }) => {
     await page.goto("/analytics");
 
-    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Completion" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Growth" })).toBeVisible();
@@ -70,14 +70,15 @@ test.describe("OWNER", () => {
   test("Stage 3: shows every chart section, and each chart actually renders (real SVG, not an empty container)", async ({ page }) => {
     await page.goto("/analytics");
 
-    for (const heading of ["Trends", "Task & invoice activity", "Period comparison", "Organization activity"]) {
+    await expect(page.getByRole("heading", { name: "Trends", exact: true })).toBeVisible();
+    for (const heading of ["Task & invoice activity", "Period comparison", "Organization activity"]) {
       await expect(page.getByRole("heading", { name: heading })).toBeVisible();
     }
 
     // Recharts renders a real <svg> per chart — this proves the chart
     // library actually mounted and drew something, not just that the
     // section heading text is present.
-    const trendsSection = page.locator("section", { has: page.getByRole("heading", { name: "Trends" }) });
+    const trendsSection = page.locator("section", { has: page.getByRole("heading", { name: "Trends", exact: true }) });
     await expect(trendsSection.locator("svg").first()).toBeVisible();
 
     const activitySection = page.locator("section", { has: page.getByRole("heading", { name: "Task & invoice activity" }) });
@@ -94,6 +95,47 @@ test.describe("OWNER", () => {
     await expect(clientChart).toBeVisible();
     const taskChart = page.getByRole("img", { name: /Tasks: \d+ created, \d+ completed/i });
     await expect(taskChart).toBeVisible();
+  });
+
+  test("Stage 4: shows the Portal section with real KPI cards and a chart, reusing Stage 2/3 components", async ({ page }) => {
+    await page.goto("/analytics");
+
+    const portalSection = page.locator("section", { has: page.getByRole("heading", { name: "Portal", exact: true }) });
+    await expect(portalSection).toBeVisible();
+    await expect(portalSection.getByText("Portal users", { exact: true })).toBeVisible();
+    await expect(portalSection.getByText("Portal adoption", { exact: true })).toBeVisible();
+    await expect(portalSection.getByText("Documents available", { exact: true })).toBeVisible();
+    await expect(portalSection.getByText("Invoices visible", { exact: true })).toBeVisible();
+
+    // orgA's fixtures seed one PortalUser + one attachment reachable by
+    // it — the section must render real KPI cards, not the empty state.
+    await expect(portalSection.getByText("No activity yet")).toHaveCount(0);
+    await expect(portalSection.locator("svg").first()).toBeVisible();
+  });
+
+  test("Stage 4: the Portal section never exposes a portal contact's email, name, or internal id as visible text", async ({ page }) => {
+    await page.goto("/analytics");
+    const portalSection = page.locator("section", { has: page.getByRole("heading", { name: "Portal", exact: true }) });
+    const sectionText = await portalSection.innerText();
+    expect(sectionText).not.toContain(fixtures.portalUser.email);
+    expect(sectionText).not.toContain(fixtures.portalUser.name);
+    expect(sectionText).not.toContain(fixtures.portalUser.id);
+    expect(sectionText).not.toContain(fixtures.clientA.id);
+  });
+
+  test("Stage 4: a brand-new organization with no portal users shows the Portal empty state, not a broken grid", async ({ page, context, baseURL }) => {
+    const empty = await dbQuery<{ id: string }>("organization", "create", { data: { name: `E2E Analytics Portal Empty ${fixtures.runId}`, slug: `e2e-analytics-portal-empty-${fixtures.runId}` } });
+    await dbQuery("membership", "create", { data: { userId: fixtures.owner.id, organizationId: empty.id, role: "OWNER" } });
+
+    try {
+      await actAsMember(context, baseURL!, fixtures.owner, empty.id);
+      await page.goto("/analytics");
+      const portalSection = page.locator("section", { has: page.getByRole("heading", { name: "Portal", exact: true }) });
+      await expect(portalSection.getByText("No activity yet")).toBeVisible();
+    } finally {
+      await dbQuery("membership", "deleteMany", { where: { organizationId: empty.id } });
+      await dbQuery("organization", "delete", { where: { id: empty.id } });
+    }
   });
 
   test("Status section never exposes a raw internal enum value or a provider/organization id as visible text", async ({ page }) => {
@@ -146,7 +188,10 @@ test.describe("OWNER", () => {
     try {
       await actAsMember(context, baseURL!, fixtures.owner, empty.id);
       await page.goto("/analytics");
-      await expect(page.getByText("No activity yet")).toBeVisible();
+      // Both the Overview and Portal sections are empty for a brand-new
+      // org — two independent "No activity yet" empty states, one per
+      // section, not a bug.
+      await expect(page.getByText("No activity yet")).toHaveCount(2);
       // Other sections still render normally alongside the empty Overview.
       await expect(page.getByRole("heading", { name: "Growth" })).toBeVisible();
       await expect(page.getByText("0%").first()).toBeVisible();
@@ -162,7 +207,7 @@ test.describe("ADMIN", () => {
     await actAsMember(context, baseURL!, fixtures.admin, fixtures.orgA.id);
     await page.goto("/analytics");
     await expect(page.getByRole("heading", { name: "Analytics", level: 1 })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
   });
 });
 
@@ -171,7 +216,7 @@ test.describe("MEMBER", () => {
     await actAsMember(context, baseURL!, fixtures.member, fixtures.orgA.id);
     await page.goto("/analytics");
     await expect(page.getByRole("heading", { name: "Access denied" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Overview" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Overview", exact: true })).toHaveCount(0);
   });
 });
 
@@ -197,12 +242,17 @@ test.describe("Accessibility", () => {
   test("every section is a labeled landmark reachable by heading structure", async ({ page }) => {
     await page.goto("/analytics");
     await expect(page.getByRole("heading", { level: 1, name: "Analytics" })).toBeVisible();
-    for (const name of ["Overview", "Completion", "Growth", "Status", "Trends", "Period comparison"]) {
+    for (const name of ["Completion", "Growth", "Status", "Period comparison"]) {
       await expect(page.getByRole("heading", { level: 2, name })).toBeVisible();
     }
+    await expect(page.getByRole("heading", { level: 2, name: "Overview", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { level: 2, name: "Activity", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Trends", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { level: 2, name: "Task & invoice activity" })).toBeVisible();
     await expect(page.getByRole("heading", { level: 2, name: "Organization activity" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Portal", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Portal overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Portal trends" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Time range" })).toBeVisible();
   });
 
@@ -221,7 +271,7 @@ test.describe("Mobile", () => {
     await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
     await page.goto("/analytics");
     await expect(page.getByRole("heading", { name: "Analytics", level: 1 })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
 
     const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
     expect(hasHorizontalOverflow).toBe(false);
@@ -235,7 +285,7 @@ test.describe("Tablet", () => {
     await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
     await page.goto("/analytics");
     await expect(page.getByRole("heading", { name: "Analytics", level: 1 })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
 
     const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
     expect(hasHorizontalOverflow).toBe(false);
@@ -249,7 +299,7 @@ test.describe("Desktop", () => {
     await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
     await page.goto("/analytics");
     await expect(page.getByRole("heading", { name: "Analytics", level: 1 })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
 
     const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
     expect(hasHorizontalOverflow).toBe(false);

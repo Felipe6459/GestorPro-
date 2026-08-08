@@ -15,6 +15,7 @@ import { ActivityStackedBarChart } from "@/components/analytics/charts/activity-
 import { ComparisonBarChart } from "@/components/analytics/charts/comparison-bar-chart";
 import { ChartsSection, ChartPanel } from "@/components/analytics/charts/charts-section";
 import { OrganizationActivitySection } from "@/components/analytics/charts/organization-activity-section";
+import { PortalAnalyticsSection } from "@/components/analytics/charts/portal-analytics-section";
 
 /**
  * Analytics Stage 3 (docs/analytics-architecture.md §10/§11). Authorization
@@ -162,6 +163,12 @@ export default async function AnalyticsPage({
           activityEventsSeries={data.charts.activityEventsSeries}
           onboarding={data.onboarding}
           subscriptionEventCount={data.billing.subscriptionEventCount}
+        />
+
+        <PortalAnalyticsSection
+          portal={data.portal}
+          portalUserGrowthSeries={data.charts.portalUserGrowthSeries}
+          portalInvitationSeries={data.charts.portalInvitationSeries}
         />
 
         <AnalyticsGrid

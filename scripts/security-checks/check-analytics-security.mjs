@@ -135,4 +135,48 @@ ok = report(
   webhookEventDetailRead,
 ) && ok;
 
+// 11. Analytics Stage 4 (Portal analytics) — no PortalUser PII (email,
+// name) is ever read anywhere in the analytics domain, in a query, a
+// component, or the page. `id`/`clientId` are the only PortalUser fields
+// this domain ever touches (bare counts and existence checks), and even
+// those never reach a component prop or the rendered page.
+const PORTAL_PII_PATTERN = '\\.email\\b|\\.name\\b|select:\\s*\\{[^}]*(email|name)';
+const portalPiiRead = [
+  grep(PORTAL_PII_PATTERN, "src/lib/analytics/queries/portal-metrics.ts"),
+  grep(PORTAL_PII_PATTERN, "src/lib/analytics/queries/portal-time-series.ts"),
+  grep(PORTAL_PII_PATTERN, "src/components/analytics/charts/portal-analytics-section.tsx"),
+].filter(Boolean).join("\n");
+ok = report(
+  "no analytics file reads a PortalUser's email or name — every portal metric is a bare count/rate",
+  portalPiiRead === "",
+  portalPiiRead,
+) && ok;
+
+// 12. Analytics Stage 4 — every portal query scopes PortalUser through
+// Client.organizationId (PortalUser itself has no organizationId column
+// — see portal-time-series.ts's own doc comment), never trusting a
+// clientId alone without that join back to the organization.
+const PORTAL_METRICS_FILE = "src/lib/analytics/queries/portal-metrics.ts";
+const PORTAL_TIME_SERIES_FILE = "src/lib/analytics/queries/portal-time-series.ts";
+const portalMetricsSource = existsSync(PORTAL_METRICS_FILE) ? readFileSync(PORTAL_METRICS_FILE, "utf8") : "";
+const portalTimeSeriesSource = existsSync(PORTAL_TIME_SERIES_FILE) ? readFileSync(PORTAL_TIME_SERIES_FILE, "utf8") : "";
+ok = report(
+  "every portal query scopes PortalUser through Client.organizationId, never clientId alone",
+  /client:\s*\{\s*organizationId\s*\}/.test(portalMetricsSource) && /WHERE\s+"organizationId"\s*=\s*\$\{organizationId\}/.test(portalTimeSeriesSource),
+  portalMetricsSource && portalTimeSeriesSource ? "" : "portal query file(s) not found",
+) && ok;
+
+// 13. Analytics Stage 4 — the two requested metrics that would require
+// new persistence (recent logins, document download count) are
+// deliberately absent from the codebase, not silently faked with a
+// placeholder value. No lastLoginAt/loginAt column, no download-count/
+// download-log table anywhere in the schema.
+const schemaSource = existsSync("prisma/schema.prisma") ? readFileSync("prisma/schema.prisma", "utf8") : "";
+const newTrackingColumns = /lastLoginAt|loginAt|downloadCount|downloadLog|AttachmentAccessLog|AttachmentDownload/.test(schemaSource);
+ok = report(
+  "no new login-timestamp or download-tracking column/table was added to the schema (Stage 4's 'stop and document' requirement)",
+  !newTrackingColumns,
+  newTrackingColumns ? "prisma/schema.prisma contains a tracking-shaped column/table that Stage 4 should not have added" : "",
+) && ok;
+
 process.exit(ok ? 0 : 1);

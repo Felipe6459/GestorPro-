@@ -153,6 +153,41 @@ export type AnalyticsChartData = {
   taskActivitySeries: DualChartSeries;
   invoiceActivitySeries: DualChartSeries;
   activityEventsSeries: ChartSeries;
+  /** Stage 4 — PortalUser.createdAt bucketed, same shape/adaptive unit as clientGrowthSeries. */
+  portalUserGrowthSeries: ChartSeries;
+  /**
+   * Stage 4 — reuses `DualChartSeries`'s `created`/`completed` field
+   * names to mean "sent" / "accepted" respectively, so this can feed the
+   * exact same `ActivityStackedBarChart` component Stage 3 already built
+   * for Task/Invoice activity (docs/analytics-architecture.md §14) —
+   * never a new chart component for what's structurally the identical
+   * shape.
+   */
+  portalInvitationSeries: DualChartSeries;
+};
+
+/**
+ * Analytics Stage 4 (docs/analytics-architecture.md §13). Every field
+ * here is derived exclusively from PortalUser/Client/Project/Attachment/
+ * Invoice/Activity rows this app already writes for other reasons — see
+ * queries/portal-metrics.ts's own doc comment for exactly which source
+ * backs which field, and §13's "what could not be honestly implemented"
+ * note for the two requested metrics (recent logins, document download
+ * count) this snapshot deliberately does NOT include.
+ */
+export type PortalMetrics = {
+  /** Total PortalUser rows for the organization — see §13 for why this is labeled "Portal users," not "active portal users" (no login/session data exists to define "active"). */
+  totalPortalUsers: number;
+  /** 0–100, integer: percent of the organization's Clients that have at least one PortalUser. `0` when the organization has no Clients at all (never NaN). */
+  portalAdoptionRate: number;
+  /** Attachment rows reachable by at least one of this organization's portal identities (Client-level + Project-level, scoped to Clients that have a PortalUser) — content *availability*, never an access/open/download event (none of those are tracked — see §13). */
+  documentsAvailable: number;
+  /** Invoice rows belonging to a Client that has a PortalUser — same "reachable, not accessed" caveat as documentsAvailable. */
+  invoicesVisible: number;
+  /** Count of Activity rows with action = PORTAL_INVITATION_ACCEPTED, within the selected TimeRange. */
+  invitationsAccepted: GrowthMetric;
+  /** Count of Activity rows scoped to the portal domain (entityType = PORTAL_USER, or a PORTAL_-prefixed action), within the selected TimeRange — "completed actions" / "recent activity count" combined into one real, time-boundable signal. */
+  portalRelatedActivity: number;
 };
 
 /** The full snapshot — one call, one consistent `computedAt` instant, every dimension this and every prior stage defines. */
@@ -166,5 +201,6 @@ export type AnalyticsSnapshot = {
   growth: GrowthMetrics;
   billing: BillingMetrics;
   onboarding: OnboardingMetrics;
+  portal: PortalMetrics;
   charts: AnalyticsChartData;
 };

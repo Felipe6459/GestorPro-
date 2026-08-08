@@ -107,6 +107,25 @@ describe("getOrganizationAnalytics", () => {
     const snapshot = await getOrganizationAnalytics(org.org.id, "OWNER", "last30Days", NOW);
     expect(snapshot.billing.subscriptionEventCount).toBe(0);
   });
+
+  it("Stage 4: portal metrics and portal chart series are present, adaptive, and never leak PII", async () => {
+    const snapshot = await getOrganizationAnalytics(org.org.id, "OWNER", "last7Days", NOW);
+
+    expect(snapshot.portal.totalPortalUsers).toBe(0);
+    expect(snapshot.portal.portalAdoptionRate).toBe(0); // org has a Client but no PortalUser
+    expect(snapshot.portal.documentsAvailable).toBe(0);
+    expect(snapshot.portal.invoicesVisible).toBe(0);
+    expect(snapshot.portal.invitationsAccepted).toEqual({ currentPeriodCount: 0, previousPeriodCount: 0, changePercent: null });
+    expect(snapshot.portal.portalRelatedActivity).toBe(0);
+
+    expect(snapshot.charts.portalUserGrowthSeries.unit).toBe("day");
+    expect(snapshot.charts.portalInvitationSeries.unit).toBe("day");
+
+    // No PortalUser email/name/id anywhere in the serialized snapshot —
+    // every portal field is a plain count/rate/GrowthMetric.
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).not.toMatch(/@test\.local/); // the fixture's own email domain
+  });
 });
 
 describe("getOrganizationAnalytics — Stage 3 empty-state scenarios", () => {
@@ -140,6 +159,24 @@ describe("getOrganizationAnalytics — Stage 3 empty-state scenarios", () => {
 
     await prisma.client.deleteMany({ where: { organizationId: legacyOrg.id } });
     await prisma.organization.delete({ where: { id: legacyOrg.id } });
+    await prisma.user.delete({ where: { id: owner.id } });
+  });
+
+  it("Stage 4: a brand-new organization (zero Clients, zero PortalUsers) returns zero-filled portal metrics, never an error", async () => {
+    const { owner, org: emptyOrg } = await createOrgWithOwner("portal-empty");
+    const snapshot = await getOrganizationAnalytics(emptyOrg.id, "OWNER", "last30Days", NOW);
+
+    expect(snapshot.portal).toEqual({
+      totalPortalUsers: 0,
+      portalAdoptionRate: 0,
+      documentsAvailable: 0,
+      invoicesVisible: 0,
+      invitationsAccepted: { currentPeriodCount: 0, previousPeriodCount: 0, changePercent: null },
+      portalRelatedActivity: 0,
+    });
+    expect(snapshot.charts.portalUserGrowthSeries.points.every((p) => p.count === 0)).toBe(true);
+
+    await prisma.organization.delete({ where: { id: emptyOrg.id } });
     await prisma.user.delete({ where: { id: owner.id } });
   });
 });
