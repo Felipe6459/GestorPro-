@@ -43,3 +43,15 @@ export function parseTimeRangeParam(value: string | string[] | undefined): TimeR
   const candidate = Array.isArray(value) ? value[0] : value;
   return (ALL_TIME_RANGES as readonly string[]).includes(candidate ?? "") ? (candidate as TimeRange) : DEFAULT_TIME_RANGE;
 }
+
+/**
+ * Analytics Stage 3 (docs/analytics-architecture.md §10). `allTime`'s
+ * chart series is deliberately NOT literal all-time — an organization
+ * several years old would otherwise produce hundreds of weekly buckets
+ * (and the single aggregate query behind it would scan that whole
+ * history every request). Capped to the last year of weekly buckets;
+ * `allTime`'s own *total* counts (types.ts's `OrganizationMetrics`, not
+ * this) are still computed over the organization's entire real history,
+ * unaffected by this cap — only the chart's x-axis window is bounded.
+ */
+export const MAX_CHART_WEEKS = 52;

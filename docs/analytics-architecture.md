@@ -1,4 +1,4 @@
-# Analytics — Architecture (Stage 1: Foundation)
+# Analytics — Architecture
 
 ## 1. Purpose
 
@@ -14,43 +14,56 @@ reasons.
 
 ## 2. Stage scope
 
-Stage 1 is the **foundation layer only**:
+- **Stage 1 (Foundation)** — typed metric calculations, queries, and one
+  service entry point; a plain, numbers-only page; OWNER/ADMIN
+  authorization; unit + integration tests.
+- **Stage 2 (Metrics UI)** — KPI cards, growth indicators, a URL-driven
+  range selector (`?range=`, never a cookie), loading/empty/access-denied
+  states, responsive layout, E2E + accessibility tests.
+- **Stage 3 (Charts)** — line/bar/stacked charts, sparklines, trend
+  indicators, period-comparison charts — see §10/§11 below.
 
-- Typed metric calculations, queries, and one service entry point.
-- A plain, numbers-only page at `/analytics`.
-- Authorization (OWNER/ADMIN only).
-- Unit + integration test coverage.
-
-Explicitly **not** in Stage 1 (deferred to a future stage — see §9):
-charts/sparklines, CSV/PDF export, scheduled/emailed reports, a live
-range-selector UI, and configurable MEMBER access.
+Still explicitly **not** implemented (deferred — see §12): CSV/PDF
+export, scheduled/emailed reports, AI-generated summaries, configurable
+MEMBER access.
 
 ## 3. Directory layout
 
 ```
 src/lib/analytics/
-  types.ts                    All Stage 1 types (TimeRange, metric groups, AnalyticsSnapshot)
-  constants.ts                Time-range labels/defaults
+  types.ts                    All types (TimeRange, BucketUnit, metric groups, chart series, AnalyticsSnapshot)
+  constants.ts                Time-range labels/defaults, parseTimeRangeParam, MAX_CHART_WEEKS
   authorization.ts            canViewAnalytics / assertCanViewAnalytics
   calculations/
-    date-ranges.ts            Pure: TimeRange -> UTC bounds; calendar boundaries
+    date-ranges.ts            Pure: TimeRange -> UTC bounds; calendar boundaries; bucket unit/interval
     rates.ts                  Pure: completion rate, growth rate
+    format-bucket-label.ts    Pure: chart x-axis label formatting
   queries/
     organization-metrics.ts   Live totals (clients/projects/tasks/invoices/members/attachments)
     activity-metrics.ts       Activity counts (today/this week/this month)
     completion-metrics.ts     Invoice paid/cancelled counts
     growth-metrics.ts         Current-vs-previous-period counts (client/project/task)
-    billing-metrics.ts        Thin wrapper over billing's entitlements
+    billing-metrics.ts        Thin wrapper over billing's entitlements + subscription event count
     onboarding-metrics.ts     Thin wrapper over onboarding's progress
+    time-series.ts            Bucketed chart series (raw, parameterized SQL — see §10)
   services/
     analytics-service.ts      getOrganizationAnalytics() — the one public entry point
 
-src/components/analytics/     MetricCard, MetricsSection, GrowthSection (no charts)
-src/app/(dashboard)/analytics/page.tsx
+src/components/analytics/
+  analytics-header.tsx, analytics-range-selector.tsx, analytics-grid.tsx,
+  analytics-card.tsx, analytics-empty-state.tsx, analytics-access-denied.tsx,
+  analytics-skeleton.tsx, growth-indicator.tsx
+  charts/
+    growth-line-chart.tsx, activity-stacked-bar-chart.tsx, sparkline.tsx,
+    comparison-bar-chart.tsx, charts-section.tsx, organization-activity-section.tsx,
+    chart-empty-state.tsx
+
+src/app/(dashboard)/analytics/
+  page.tsx, loading.tsx, error.tsx
 ```
 
 `queries/` never contains business rules — every query is a bounded,
-org-scoped Prisma `count`/`aggregate`/`groupBy` and nothing else.
+org-scoped Prisma `count`/`aggregate`/`$queryRaw` and nothing else.
 `calculations/` never touches Prisma — every function there is pure,
 takes its inputs as plain values (including `now`, never reading the
 system clock itself), and is unit-testable with no database. This mirrors
@@ -65,27 +78,21 @@ type TimeRange = "today" | "last7Days" | "last30Days" | "last90Days" | "allTime"
 
 A fixed, closed set — not an arbitrary date picker — so every downstream
 query has a small, enumerable set of shapes. All bounds are computed in
-UTC (`Date.UTC(...)`, `getUTCFullYear()`/etc. throughout `calculations/
-date-ranges.ts` — never a local-timezone `Date` method), so the result is
-identical regardless of which timezone the server process happens to run
-in.
+UTC. Selected via `?range=` on the URL (`parseTimeRangeParam` never
+trusts the raw value, falling back to `DEFAULT_TIME_RANGE` for anything
+unrecognized) — never a cookie, so the selection survives a refresh for
+free and needs no client-side state.
 
 Two distinct kinds of "time" exist in this subsystem, deliberately not
 unified into one:
 
 - **Rolling windows** (`getTimeRangeBounds`) — `now - N days` to `now`.
-  Used by growth metrics (§5.4), which need a genuine
-  "period vs. the equal-length period right before it" comparison.
-  `allTime` has `start: null` (no lower bound) and — since there is no
-  "period before all time" — growth metrics fall back to
-  `DEFAULT_GROWTH_TIME_RANGE` (`last30Days`) when `allTime` is requested;
-  every other metric group still honors `allTime` literally.
+  Used by growth metrics (§5.4) and, via `getSeriesBounds`, by chart
+  series (§10). `allTime` has `start: null` for KPI metrics (no lower
+  bound) but is capped for charts specifically — see §10.
 - **Calendar-aligned boundaries** (`getCalendarBoundaries`) — UTC
   midnight of today, Monday 00:00 UTC of this ISO week, the 1st of this
-  UTC month. Used by Activity metrics (§5.2) only, which ask a fixed
-  question ("how busy has this org been today/this week/this month")
-  independent of whatever `TimeRange` the caller separately selected for
-  growth.
+  UTC month. Used by Activity metrics (§5.2) only.
 
 ## 5. Metrics
 
@@ -116,30 +123,29 @@ cancels stale drafts as routine housekeeping.
 
 ### 5.4 Growth metrics
 
-For each of Client/Project/Task: `currentPeriodCount` (rows created in
-the resolved `TimeRange` window), `previousPeriodCount` (rows created in
-the equal-length window immediately before it), and `changePercent =
-round((current - previous) / previous * 100)` — **`null`**, never
-`Infinity`/`NaN`, when `previousPeriodCount` is `0` ("grew from zero" has
-no finite percentage; the UI renders this as an explicit "No prior-period
-data" state, not a misleading `0%` or `∞%`).
+For each of Client/Project/Task: `currentPeriodCount`, `previousPeriodCount`,
+and `changePercent = round((current - previous) / previous * 100)` —
+**`null`**, never `Infinity`/`NaN`, when `previousPeriodCount` is `0`. The
+same `GrowthMetric` values feed both the Growth KPI cards (Stage 2) and
+the Stage 3 comparison bar charts (§11) — one query, two presentations,
+never a second fetch.
 
 ### 5.5 Billing metrics
 
 `planKey` / `subscriptionStatus` — a **read-only pass-through** of
 `src/lib/billing/entitlements.ts`'s own `getOrganizationEntitlements()`.
-Analytics never re-derives LEGACY/unrecognized-`planKey` normalization
-itself; that logic already has one home (Billing Stage 5's audit fix), and
-duplicating it here would risk the two subsystems silently disagreeing on
-what an organization's plan "is." This is the only query file that reaches
-into another domain's module — every other query touches Prisma directly.
+`subscriptionEventCount` (Stage 3) — a single `count` of
+`WebhookEvent` rows with `processingStatus: "PROCESSED"` for this
+organization; never the events themselves, never `eventType`/
+`providerEventId`/any other column, and never a per-event timeline (the
+task's own "subscription status transitions — aggregate only"
+instruction). This is the only query file that reaches into another
+domain's module (Billing) — every other query touches Prisma directly.
 
 ### 5.6 Onboarding metrics
 
 `percent` / `completedCount` / `totalCount` — a read-only pass-through of
-`src/lib/onboarding/progress.ts`'s own `getOrganizationOnboardingProgress()`,
-for the identical reason as §5.5: one tested definition of "percent,"
-never a second one that can drift.
+`src/lib/onboarding/progress.ts`'s own `getOrganizationOnboardingProgress()`.
 
 ## 6. Multi-tenancy
 
@@ -147,49 +153,189 @@ Every query function takes `organizationId` as an explicit, required
 parameter and filters every read by it — there is no "all organizations"
 code path anywhere in this subsystem. `organizationId` is never accepted
 from the client (page/action layer always resolves it server-side via
-`getCurrentMembership()`, the same function every other dashboard route
-already uses — see `src/lib/current-user.ts`). Legacy rows with a `null`
-`organizationId` (pre-multi-tenant `Task`/`Invoice` rows — see
-`prisma/schema.prisma`'s own nullable `organizationId` on those two
-models) are simply excluded from every org-scoped count, by construction:
-an equality filter against a real `organizationId` value never matches a
-`null` column.
+`getCurrentMembership()`). Legacy rows with a `null` `organizationId`
+(pre-multi-tenant `Task`/`Invoice` rows) are simply excluded from every
+org-scoped count, by construction.
 
 ## 7. Security
 
 Analytics data is available only to **OWNER** and **ADMIN**
-(`src/lib/analytics/authorization.ts`). This is a hard block, not a
-reduced/read-only view like Billing's own page: `assertCanViewAnalytics()`
-is the one entry point every service call goes through
-(`getOrganizationAnalytics()` calls it first, before any query runs), and
-the page additionally calls `notFound()` for MEMBER rather than rendering
-a disabled state — matching this stage's explicit requirement. MEMBER
-access is intentionally not configurable yet; the single call site in
-`authorization.ts` is where a future stage would add that. Client Portal
-identities never reach this code at all — every call site lives under the
-`(dashboard)` route group, whose layout already redirects any Portal-only
-identity to `/portal` before any analytics function is ever called
-(same guarantee `settings/billing/page.tsx` already documents for itself).
+(`src/lib/analytics/authorization.ts`). `assertCanViewAnalytics()` is the
+one entry point `getOrganizationAnalytics()` calls first, before any
+query runs — a MEMBER role never triggers a single database read. The
+page catches the resulting `AnalyticsAccessError` server-side (via
+`instanceof`, safe — same process, never crosses a serialization
+boundary) and renders a dedicated "Access denied" state **inline**,
+deliberately NOT delegated to `error.tsx`: Next.js redacts Server
+Component error messages in production before they reach a client-side
+error boundary, which would make "access denied" indistinguishable from
+any other failure once deployed. `error.tsx` is reserved for genuine
+unexpected failures. MEMBER access is intentionally not configurable yet.
+Client Portal identities never reach this code at all — this route lives
+under `(dashboard)`, whose layout already redirects any Portal-only
+identity to `/portal` first.
 
 ## 8. Performance
 
-- Every query is a bounded, indexed `count`/`aggregate` — never a
+- Every KPI query is a bounded, indexed `count`/`aggregate` — never a
   `findMany` of full rows, never an unbounded scan.
+- Every chart series is exactly **one** aggregate query (§10) — never N
+  queries per bucket.
 - Every metric group's internal reads run concurrently (`Promise.all`),
-  and the five top-level metric groups in `getOrganizationAnalytics()`
-  also run concurrently — one snapshot costs a small, fixed number of
-  parallel round-trips, not a chain of sequential ones.
+  and every top-level group in `getOrganizationAnalytics()` — KPIs and
+  chart series alike — also runs concurrently in the same call. One page
+  load costs one service call and a fixed, small number of parallel
+  round-trips, never a chain of sequential ones and never a second
+  service call for chart data.
 - No N+1: nothing loops over a result set to issue a second query per row.
-- No client-side aggregation: every rate/count is computed in the
-  database or in a pure function server-side; the client only ever
-  receives already-computed numbers.
+- No client-side aggregation: every rate/count/bucket is computed in the
+  database or in a pure function server-side; chart components only ever
+  format and draw numbers they're given.
 
-## 9. Deferred to a later stage
+## 9. Accessibility
 
-- Charts/sparklines for growth and activity trends.
+- Every section is a real `<h2>` inside a `<section aria-labelledby>`
+  landmark; the range selector is a `<nav aria-label="Time range">` of
+  real `<a>` elements (keyboard-focusable, screen-reader-navigable, and
+  functional with JS disabled — no client-side router state).
+- Every chart (`role="img"` + a descriptive `aria-label`, e.g. "Clients
+  over time, 6 total") carries the same information a sighted user gets
+  from the drawn shape — direction/magnitude is never color-only
+  (`growth-indicator.tsx`'s glyph + `aria-label` says "up 12%", not just
+  green text). Recharts' `accessibilityLayer` prop is enabled on every
+  interactive chart, giving Tab-to-focus and arrow-key point navigation
+  with per-point screen-reader announcements for free.
+- Sparklines (`sparkline.tsx`) are deliberately `aria-hidden="true"` —
+  decorative only; the same series is already reachable, accessibly, via
+  the real chart below the fold and the KPI card's own numeric value.
+- Never relies on hover alone: every chart's data is in its `aria-label`
+  and in the adjacent KPI card's plain-text value, not only in a
+  mouse-triggered tooltip.
+
+## 10. Chart data: bucketing and adaptive axes
+
+Charts need a *series* (one count per time bucket), not a single total —
+a new query shape (`queries/time-series.ts`) alongside Stage 1's
+single-number aggregates.
+
+**Adaptive bucket size** (`getBucketUnit`) — chosen from the selected
+`TimeRange`, never fixed, so `today` isn't 24 empty-looking daily points
+and `last90Days` isn't ~2,160 unreadable hourly ones:
+
+| TimeRange | Bucket unit | Approx. points |
+|---|---|---|
+| `today` | hour | 24 |
+| `last7Days` | day | 7 |
+| `last30Days` | day | 30 |
+| `last90Days` | week | ~13 |
+| `allTime` | week | up to `MAX_CHART_WEEKS` (52) |
+
+**`allTime` is capped for charts** (`getSeriesBounds`): a multi-year-old
+organization would otherwise produce hundreds of weekly buckets, and the
+single aggregate query behind it would scan that entire history every
+request. Chart series for `allTime` show the last year; the `allTime`
+**totals** shown elsewhere on the page (Overview, Growth) are still
+computed over the organization's real, complete history — the cap only
+bounds the chart's own x-axis window.
+
+**One query per series, zero gaps.** Each function in `time-series.ts`
+runs `generate_series(start, end, interval)` to produce every bucket in
+the window up front, `LEFT JOIN`s the real rows, and groups with
+`date_trunc()` — so a day/hour/week with zero activity is a real `0`
+point a line chart draws correctly, never a gap it would silently skip.
+Every interpolated value (organizationId, bounds, unit strings) is a
+bound parameter via Prisma's tagged-template `$queryRaw` — never
+`$queryRawUnsafe`/string concatenation; only the table/column names are
+literal SQL text this file itself writes, never a runtime value. Task and
+Invoice activity need two independent counts per bucket ("created" and
+"completed"/"paid," bucketed on different columns, `Task.createdAt` vs.
+`Task.completedAt`) — both computed in the same query via two `LEFT
+JOIN`s against the same `generate_series` backbone, never two round-trips.
+
+## 11. Charts
+
+### Library selection: Recharts
+
+**Chosen: [Recharts](https://recharts.org) (v3).** Evaluated against
+lower-level alternatives (Visx) and canvas-based ones (Chart.js):
+
+- **Established, Next.js/TS-compatible.** The most widely used React
+  charting library for exactly this use case (dashboards fed by
+  server-computed data); first-class TypeScript types; no special
+  Next.js integration needed beyond marking chart components
+  `"use client"` (see below) — the server still computes and passes
+  already-aggregated data as plain props.
+- **Accessibility out of the box.** The `accessibilityLayer` prop
+  (enabled on every interactive chart in this codebase) gives real
+  keyboard navigation and screen-reader point announcements without
+  hand-building a parallel accessible data table — the reason it was
+  chosen over a lower-level primitive library (Visx) that would need
+  this built from scratch.
+- **SVG, not canvas.** Every chart is real DOM (`role="img"` +
+  `aria-label` on the container, real `<svg>`/`<path>` elements inside)
+  — inspectable, stylable with the app's existing Tailwind tokens, and
+  responsive via its own `ResponsiveContainer` (percentage-based, so a
+  chart reflows with its parent instead of needing manual breakpoint
+  logic).
+- **Bundle size caveat, and the mitigation.** Recharts is not the
+  smallest possible option (it bundles a D3 subset internally) — a
+  lower-level library like Visx would ship less code for a team willing
+  to write more of the chart logic by hand. Given this app's actual need
+  (a handful of line/bar/sparkline charts, not a general-purpose
+  visualization surface), the productivity and accessibility win was
+  judged worth it. The mitigation: every chart component is a Client
+  Component (`"use client"`), so Recharts' JS is code-split into the
+  `/analytics` route's own client bundle by Next.js's router-level
+  splitting — it never inflates any other page's bundle, and the
+  `/analytics` Server Component itself (data fetching, authorization)
+  ships zero extra client JS of its own.
+
+### Chart types
+
+- **Line charts** (`growth-line-chart.tsx`) — Client growth, Project
+  growth, and Activity events, each a single-series line over the
+  adaptive bucket window (§10).
+- **Stacked bar charts** (`activity-stacked-bar-chart.tsx`) — Task and
+  Invoice activity: each bucket's bar is `created` for that bucket,
+  stacked into "completed" (darker) and "still open" (`created -
+  completed`, clamped at `0`, lighter) segments.
+- **Sparklines** (`sparkline.tsx`) — minimal, decorative, `aria-hidden`
+  area charts embedded in the Clients/Projects/Tasks/Invoices Overview
+  cards, reusing the exact same series data as the full charts below
+  (no second fetch — see §8).
+- **Comparison bar charts** (`comparison-bar-chart.tsx`) — current vs.
+  previous period, one horizontal two-bar chart per dimension
+  (Clients/Projects/Tasks), reusing Stage 1's `GrowthMetric` (§5.4)
+  directly rather than a new query.
+- **Trend indicators** (`growth-indicator.tsx`, Stage 2, reused
+  unchanged) — the `+12%`/`−8%`/`±0%`/"No prior data" glyph shown next
+  to Growth KPI cards and comparison charts alike.
+
+### Empty states
+
+- **Whole-organization empty** (Stage 2's `analytics-empty-state.tsx`,
+  unchanged) — a brand-new org with zero clients/projects/tasks/invoices/
+  attachments shows one banner in place of the Overview grid; every
+  chart section still renders below it with its own zero-filled series
+  (never a crash, never a second empty-state banner per chart).
+- **Single-chart empty** (`chart-empty-state.tsx`, new in Stage 3) — an
+  individual series with zero activity across every bucket in the window
+  (e.g. Projects, when only Clients have recent activity) shows "Not
+  enough data yet for projects" in place of a flat, uninformative
+  zero-line chart.
+- **Legacy organizations** — no Subscription row at all: `planKey`/
+  `subscriptionStatus` resolve to `"LEGACY"` (§5.5, Billing's own Stage 5
+  normalization) and every chart renders exactly as it would for any
+  other organization — charts are independent of billing state by
+  construction (`queries/time-series.ts` never reads `Subscription`).
+- **No onboarding data** — zero `OrganizationOnboardingStep` rows (never
+  onboarded, or pre-Onboarding-stage): `getOrganizationOnboardingProgress()`
+  has no error path for this; the reused `OnboardingProgressBar` renders
+  a real, correct percentage (never a crash or a "N/A").
+
+## 12. Deferred to a later stage
+
 - CSV/PDF export.
 - Scheduled/emailed analytics reports.
-- A live range-selector control (the service layer already accepts any
-  `TimeRange`; the page currently always requests `DEFAULT_TIME_RANGE`
-  — wiring a selector is additive, not a rework).
+- AI-generated summaries.
 - Configurable MEMBER-level access (§7).

@@ -96,6 +96,15 @@ export type GrowthMetrics = {
 export type BillingMetrics = {
   planKey: PlanKey;
   subscriptionStatus: SubscriptionStatus | "LEGACY";
+  /**
+   * Analytics Stage 3 ("subscription status transitions — aggregate
+   * only"). The count of successfully-processed WebhookEvent rows for
+   * this organization, all-time — never the events themselves, never
+   * `eventType`/`providerEventId`/any other column, and never a
+   * per-event timeline (see queries/billing-metrics.ts's own
+   * `getSubscriptionEventCount`).
+   */
+  subscriptionEventCount: number;
 };
 
 /**
@@ -111,7 +120,42 @@ export type OnboardingMetrics = {
   totalCount: number;
 };
 
-/** The full Stage 1 foundation snapshot — one call, one consistent `computedAt` instant, every dimension this stage defines. */
+/**
+ * Analytics Stage 3 (docs/analytics-architecture.md §10). The bucket size
+ * a chart's x-axis uses — chosen from the selected `TimeRange` (see
+ * `calculations/date-ranges.ts`'s own `getBucketUnit`), never fixed,
+ * so a `today` chart isn't 24 empty-looking daily buckets and a
+ * `last90Days` chart isn't ~2,160 unreadable hourly ones ("adaptive
+ * axes").
+ */
+export type BucketUnit = "hour" | "day" | "week";
+
+/** One point on a time-series chart — `bucketStart` is always a real, aligned instant (never a label string); formatting for the x-axis happens client-side, in the chart component, from this real `Date`. */
+export type SeriesPoint = { bucketStart: Date; count: number };
+
+/** A two-series bucket (Task/Invoice activity: created vs completed) — same `bucketStart` alignment as `SeriesPoint`. */
+export type DualSeriesPoint = { bucketStart: Date; created: number; completed: number };
+
+export type ChartSeries = {
+  unit: BucketUnit;
+  points: SeriesPoint[];
+};
+
+export type DualChartSeries = {
+  unit: BucketUnit;
+  points: DualSeriesPoint[];
+};
+
+/** Stage 3's full chart payload — one call, alongside the Stage 1/2 snapshot, never duplicating any of its queries. */
+export type AnalyticsChartData = {
+  clientGrowthSeries: ChartSeries;
+  projectGrowthSeries: ChartSeries;
+  taskActivitySeries: DualChartSeries;
+  invoiceActivitySeries: DualChartSeries;
+  activityEventsSeries: ChartSeries;
+};
+
+/** The full snapshot — one call, one consistent `computedAt` instant, every dimension this and every prior stage defines. */
 export type AnalyticsSnapshot = {
   organizationId: string;
   timeRange: TimeRange;
@@ -122,4 +166,5 @@ export type AnalyticsSnapshot = {
   growth: GrowthMetrics;
   billing: BillingMetrics;
   onboarding: OnboardingMetrics;
+  charts: AnalyticsChartData;
 };

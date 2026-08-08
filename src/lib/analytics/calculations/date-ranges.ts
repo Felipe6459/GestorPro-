@@ -1,5 +1,5 @@
-import { MS_PER_DAY, TIME_RANGE_DAYS } from "../constants";
-import type { TimeRange, TimeRangeBounds } from "../types";
+import { MS_PER_DAY, TIME_RANGE_DAYS, MAX_CHART_WEEKS } from "../constants";
+import type { BucketUnit, TimeRange, TimeRangeBounds } from "../types";
 
 /**
  * Analytics Stage 1 (docs/analytics-architecture.md §4). Pure — takes
@@ -60,6 +60,41 @@ export function startOfUtcWeek(now: Date): Date {
 /** The 1st of the UTC calendar month containing `now`, at 00:00:00.000. */
 export function startOfUtcMonth(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
+/**
+ * Analytics Stage 3 (docs/analytics-architecture.md §10's "adaptive
+ * axes"). The bucket size a chart uses for a given `TimeRange` — never
+ * fixed, so `today` isn't 24 empty-looking daily points and `last90Days`
+ * isn't ~2,160 unreadable hourly ones:
+ *
+ * - `today` → hourly (24 buckets)
+ * - `last7Days` / `last30Days` → daily (7 / 30 buckets)
+ * - `last90Days` / `allTime` → weekly (~13 buckets / capped at `MAX_CHART_WEEKS`)
+ */
+export function getBucketUnit(timeRange: TimeRange): BucketUnit {
+  if (timeRange === "today") return "hour";
+  if (timeRange === "last7Days" || timeRange === "last30Days") return "day";
+  return "week"; // last90Days, allTime
+}
+
+/**
+ * The bounds a chart's series query actually runs over — identical to
+ * `getTimeRangeBounds` for every range except `allTime`, which this caps
+ * to the last `MAX_CHART_WEEKS` weeks (see that constant's own doc
+ * comment for why). Every other analytics metric still uses
+ * `getTimeRangeBounds` directly and sees `allTime` literally.
+ */
+export function getSeriesBounds(timeRange: TimeRange, now: Date): TimeRangeBounds {
+  if (timeRange !== "allTime") {
+    return getTimeRangeBounds(timeRange, now);
+  }
+  return { start: new Date(now.getTime() - MAX_CHART_WEEKS * 7 * MS_PER_DAY), end: now };
+}
+
+/** Postgres `interval` literal for one bucket of the given unit — used only to advance `generate_series()`'s step in the raw time-series queries (queries/time-series.ts). */
+export function bucketUnitToIntervalLiteral(unit: BucketUnit): string {
+  return { hour: "1 hour", day: "1 day", week: "7 days" }[unit];
 }
 
 /**

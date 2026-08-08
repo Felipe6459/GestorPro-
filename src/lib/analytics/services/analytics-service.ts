@@ -1,7 +1,7 @@
 import type { Role } from "@/generated/prisma/enums";
 import { prisma } from "@/lib/prisma";
 import { assertCanViewAnalytics } from "../authorization";
-import { getTimeRangeBounds, getPreviousPeriodBounds } from "../calculations/date-ranges";
+import { getTimeRangeBounds, getPreviousPeriodBounds, getBucketUnit, getSeriesBounds } from "../calculations/date-ranges";
 import { calculateCompletionRate } from "../calculations/rates";
 import { DEFAULT_GROWTH_TIME_RANGE } from "../constants";
 import { getOrganizationMetrics } from "../queries/organization-metrics";
@@ -10,6 +10,13 @@ import { getInvoiceCompletionCounts } from "../queries/completion-metrics";
 import { getGrowthMetrics } from "../queries/growth-metrics";
 import { getBillingMetrics } from "../queries/billing-metrics";
 import { getOnboardingMetrics } from "../queries/onboarding-metrics";
+import {
+  getClientGrowthSeries,
+  getProjectGrowthSeries,
+  getTaskActivitySeries,
+  getInvoiceActivitySeries,
+  getActivityEventsSeries,
+} from "../queries/time-series";
 import type { AnalyticsSnapshot, PrismaClientOrTx, TimeRange } from "../types";
 
 /**
@@ -43,14 +50,27 @@ export async function getOrganizationAnalytics(
   const growthBounds = getTimeRangeBounds(growthTimeRange, now);
   const previousGrowthBounds = getPreviousPeriodBounds(growthBounds);
 
-  const [organization, activity, invoiceCounts, growth, billing, onboarding] = await Promise.all([
-    getOrganizationMetrics(client, organizationId),
-    getActivityMetrics(client, organizationId, now),
-    getInvoiceCompletionCounts(client, organizationId),
-    getGrowthMetrics(client, organizationId, growthBounds, previousGrowthBounds),
-    getBillingMetrics(client, organizationId, now),
-    getOnboardingMetrics(organizationId),
-  ]);
+  // Stage 3: chart series use their own bounds (getSeriesBounds caps
+  // `allTime` to MAX_CHART_WEEKS — see that function's own doc comment)
+  // and their own adaptive bucket unit — independent of growthBounds,
+  // which stays exactly as Stage 1 defined it for the KPI growth cards.
+  const seriesBounds = getSeriesBounds(timeRange, now);
+  const bucketUnit = getBucketUnit(timeRange);
+
+  const [organization, activity, invoiceCounts, growth, billing, onboarding, clientGrowthSeries, projectGrowthSeries, taskActivitySeries, invoiceActivitySeries, activityEventsSeries] =
+    await Promise.all([
+      getOrganizationMetrics(client, organizationId),
+      getActivityMetrics(client, organizationId, now),
+      getInvoiceCompletionCounts(client, organizationId),
+      getGrowthMetrics(client, organizationId, growthBounds, previousGrowthBounds),
+      getBillingMetrics(client, organizationId, now),
+      getOnboardingMetrics(organizationId),
+      getClientGrowthSeries(client, organizationId, seriesBounds, bucketUnit),
+      getProjectGrowthSeries(client, organizationId, seriesBounds, bucketUnit),
+      getTaskActivitySeries(client, organizationId, seriesBounds, bucketUnit),
+      getInvoiceActivitySeries(client, organizationId, seriesBounds, bucketUnit),
+      getActivityEventsSeries(client, organizationId, seriesBounds, bucketUnit),
+    ]);
 
   const billableInvoices = organization.totalInvoices - invoiceCounts.cancelledInvoices;
 
@@ -67,5 +87,12 @@ export async function getOrganizationAnalytics(
     growth,
     billing,
     onboarding,
+    charts: {
+      clientGrowthSeries,
+      projectGrowthSeries,
+      taskActivitySeries,
+      invoiceActivitySeries,
+      activityEventsSeries,
+    },
   };
 }

@@ -109,4 +109,30 @@ ok = report(
   consoleLogging,
 ) && ok;
 
+// 9. Analytics Stage 3 — the raw-SQL time-series queries use only the
+// parameterized $queryRaw tagged template, never $queryRawUnsafe/
+// $executeRawUnsafe (already globally banned in src/, but checked again
+// here specifically since this is the one place in the whole domain that
+// touches raw SQL at all).
+const TIME_SERIES_FILE = "src/lib/analytics/queries/time-series.ts";
+const timeSeriesSource = existsSync(TIME_SERIES_FILE) ? readFileSync(TIME_SERIES_FILE, "utf8") : "";
+ok = report(
+  "time-series.ts uses only the parameterized $queryRaw, never $queryRawUnsafe/$executeRawUnsafe",
+  existsSync(TIME_SERIES_FILE) && /\$queryRaw</.test(timeSeriesSource) && !/\$queryRawUnsafe|\$executeRawUnsafe/.test(timeSeriesSource),
+  timeSeriesSource ? "" : "time-series.ts not found",
+) && ok;
+
+// 10. Analytics Stage 3 — "subscription status transitions, aggregate
+// only": the WebhookEvent query is a plain count, and no analytics file
+// ever actually reads an individual event's own columns (eventType,
+// providerEventId, or anything payload-shaped) — matches real property
+// access / select clauses only, not this check's own doc comments (which
+// legitimately name these columns to explain what's deliberately absent).
+const webhookEventDetailRead = grep("\\.eventType\\b|\\.providerEventId\\b|\\.payloadSummary\\b|select:\\s*\\{[^}]*(eventType|providerEventId)", ANALYTICS_LIB_DIR);
+ok = report(
+  "no analytics file reads WebhookEvent's own per-event columns — aggregate count only",
+  webhookEventDetailRead === "",
+  webhookEventDetailRead,
+) && ok;
+
 process.exit(ok ? 0 : 1);

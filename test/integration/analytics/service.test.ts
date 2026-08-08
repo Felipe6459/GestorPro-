@@ -86,4 +86,60 @@ describe("getOrganizationAnalytics", () => {
     await prisma.organization.delete({ where: { id: otherOrg.id } });
     await prisma.user.delete({ where: { id: otherOwner.id } });
   });
+
+  it("Stage 3: charts are present, adaptive to the selected range, and never a second query beyond this one call", async () => {
+    const snapshot = await getOrganizationAnalytics(org.org.id, "OWNER", "last7Days", NOW);
+    expect(snapshot.charts.clientGrowthSeries.unit).toBe("day");
+    expect(snapshot.charts.projectGrowthSeries.unit).toBe("day");
+    expect(snapshot.charts.taskActivitySeries.unit).toBe("day");
+    expect(snapshot.charts.invoiceActivitySeries.unit).toBe("day");
+    expect(snapshot.charts.activityEventsSeries.unit).toBe("day");
+    expect(snapshot.charts.clientGrowthSeries.points.length).toBeGreaterThan(0);
+
+    const hourly = await getOrganizationAnalytics(org.org.id, "OWNER", "today", NOW);
+    expect(hourly.charts.clientGrowthSeries.unit).toBe("hour");
+
+    const weekly = await getOrganizationAnalytics(org.org.id, "OWNER", "allTime", NOW);
+    expect(weekly.charts.clientGrowthSeries.unit).toBe("week");
+  });
+
+  it("Stage 3: subscriptionEventCount is a real, present number (0 for an org with no WebhookEvent rows)", async () => {
+    const snapshot = await getOrganizationAnalytics(org.org.id, "OWNER", "last30Days", NOW);
+    expect(snapshot.billing.subscriptionEventCount).toBe(0);
+  });
+});
+
+describe("getOrganizationAnalytics — Stage 3 empty-state scenarios", () => {
+  it("a brand-new organization (no clients/projects/tasks/invoices/activity at all) returns a full snapshot with zero-filled charts, never an error", async () => {
+    const { owner, org: emptyOrg } = await createOrgWithOwner("empty");
+    const snapshot = await getOrganizationAnalytics(emptyOrg.id, "OWNER", "last30Days", NOW);
+
+    expect(snapshot.organization.totalClients).toBe(0);
+    expect(snapshot.charts.clientGrowthSeries.points.every((p) => p.count === 0)).toBe(true);
+    expect(snapshot.charts.taskActivitySeries.points.every((p) => p.created === 0 && p.completed === 0)).toBe(true);
+    // A brand-new org still has zero OrganizationOnboardingStep rows —
+    // getOrganizationOnboardingProgress() has no error path for that.
+    expect(typeof snapshot.onboarding.percent).toBe("number");
+    expect(snapshot.onboarding.percent).toBeGreaterThanOrEqual(0);
+    // No Subscription row — legacy fallback, not an error.
+    expect(snapshot.billing.planKey).toBe("LEGACY");
+    expect(snapshot.billing.subscriptionEventCount).toBe(0);
+
+    await prisma.organization.delete({ where: { id: emptyOrg.id } });
+    await prisma.user.delete({ where: { id: owner.id } });
+  });
+
+  it("a legacy organization (real data, but no Subscription row at all) still renders full chart series", async () => {
+    const { owner, org: legacyOrg } = await createOrgWithOwner("legacy");
+    await prisma.client.create({ data: { name: "Legacy Client", userId: owner.id, organizationId: legacyOrg.id, createdAt: NOW } });
+
+    const snapshot = await getOrganizationAnalytics(legacyOrg.id, "OWNER", "last30Days", NOW);
+    expect(snapshot.billing.planKey).toBe("LEGACY");
+    expect(snapshot.billing.subscriptionStatus).toBe("LEGACY");
+    expect(snapshot.charts.clientGrowthSeries.points.reduce((sum, p) => sum + p.count, 0)).toBe(1);
+
+    await prisma.client.deleteMany({ where: { organizationId: legacyOrg.id } });
+    await prisma.organization.delete({ where: { id: legacyOrg.id } });
+    await prisma.user.delete({ where: { id: owner.id } });
+  });
 });

@@ -57,7 +57,7 @@ test.describe("OWNER", () => {
     await page.goto("/analytics");
 
     await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Activity" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Completion" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Growth" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Status" })).toBeVisible();
@@ -65,6 +65,35 @@ test.describe("OWNER", () => {
     // orgA's seeded fixtures include a real Client/Project/Task/Invoice —
     // the Overview grid must render, not the empty state.
     await expect(page.getByText("No activity yet")).toHaveCount(0);
+  });
+
+  test("Stage 3: shows every chart section, and each chart actually renders (real SVG, not an empty container)", async ({ page }) => {
+    await page.goto("/analytics");
+
+    for (const heading of ["Trends", "Task & invoice activity", "Period comparison", "Organization activity"]) {
+      await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    }
+
+    // Recharts renders a real <svg> per chart — this proves the chart
+    // library actually mounted and drew something, not just that the
+    // section heading text is present.
+    const trendsSection = page.locator("section", { has: page.getByRole("heading", { name: "Trends" }) });
+    await expect(trendsSection.locator("svg").first()).toBeVisible();
+
+    const activitySection = page.locator("section", { has: page.getByRole("heading", { name: "Task & invoice activity" }) });
+    await expect(activitySection.locator("svg").first()).toBeVisible();
+
+    const orgActivitySection = page.locator("section", { has: page.getByRole("heading", { name: "Organization activity" }) });
+    await expect(orgActivitySection.getByRole("progressbar", { name: "Onboarding progress" })).toBeVisible();
+    await expect(orgActivitySection.getByText("Subscription events")).toBeVisible();
+  });
+
+  test("Stage 3: charts have an accessible name via role=img + aria-label, never relying on color alone", async ({ page }) => {
+    await page.goto("/analytics");
+    const clientChart = page.getByRole("img", { name: /Clients over time/i });
+    await expect(clientChart).toBeVisible();
+    const taskChart = page.getByRole("img", { name: /Tasks: \d+ created, \d+ completed/i });
+    await expect(taskChart).toBeVisible();
   });
 
   test("Status section never exposes a raw internal enum value or a provider/organization id as visible text", async ({ page }) => {
@@ -168,9 +197,12 @@ test.describe("Accessibility", () => {
   test("every section is a labeled landmark reachable by heading structure", async ({ page }) => {
     await page.goto("/analytics");
     await expect(page.getByRole("heading", { level: 1, name: "Analytics" })).toBeVisible();
-    for (const name of ["Overview", "Activity", "Completion", "Growth", "Status"]) {
+    for (const name of ["Overview", "Completion", "Growth", "Status", "Trends", "Period comparison"]) {
       await expect(page.getByRole("heading", { level: 2, name })).toBeVisible();
     }
+    await expect(page.getByRole("heading", { level: 2, name: "Activity", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Task & invoice activity" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Organization activity" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Time range" })).toBeVisible();
   });
 

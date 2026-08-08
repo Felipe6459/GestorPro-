@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { AnalyticsCard } from "./analytics-card";
 
-export type AnalyticsGridMetric = { label: string; value: ReactNode; indicator?: ReactNode };
+export type AnalyticsGridMetric = { label: string; value: ReactNode; indicator?: ReactNode; sparkline?: ReactNode };
 
 /**
  * Analytics Stage 2. Three breakpoints (2/3/4 columns) — verified against
@@ -25,7 +25,7 @@ export function AnalyticsGrid({
       </h2>
       <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {metrics.map((metric) => (
-          <AnalyticsCard key={metric.label} label={metric.label} value={metric.value} indicator={metric.indicator} />
+          <AnalyticsCard key={metric.label} label={metric.label} value={metric.value} indicator={metric.indicator} sparkline={metric.sparkline} />
         ))}
       </div>
     </section>

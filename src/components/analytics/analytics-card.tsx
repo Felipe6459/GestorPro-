@@ -1,24 +1,25 @@
 import type { ReactNode } from "react";
 
 /**
- * Analytics Stage 2. Foundation-only display: a label, a value, and an
- * optional trailing indicator (growth-indicator.tsx) — no chart, no
- * sparkline (still explicitly out of scope, docs/analytics-architecture.md
- * §9). `value` is always a pre-formatted string/number the caller already
- * resolved (a plan's real `displayName`, a rounded percent, a plain
- * count) — this component never formats an enum or looks up a label
- * itself, so it can never be the place a raw internal value (a
- * `SubscriptionStatus` string, a `PlanKey`, an organization id) leaks
- * into the DOM by accident.
+ * Foundation display: a label, a value, an optional trailing indicator
+ * (growth-indicator.tsx), and — since Stage 3 — an optional decorative
+ * `sparkline` slot (charts/sparkline.tsx). `value` is always a
+ * pre-formatted string/number the caller already resolved (a plan's real
+ * `displayName`, a rounded percent, a plain count) — this component never
+ * formats an enum or looks up a label itself, so it can never be the
+ * place a raw internal value (a `SubscriptionStatus` string, a `PlanKey`,
+ * an organization id) leaks into the DOM by accident.
  */
 export function AnalyticsCard({
   label,
   value,
   indicator,
+  sparkline,
 }: {
   label: string;
   value: ReactNode;
   indicator?: ReactNode;
+  sparkline?: ReactNode;
 }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">
@@ -27,6 +28,7 @@ export function AnalyticsCard({
         <p className="text-2xl font-semibold tracking-tight text-gray-900">{value}</p>
         {indicator}
       </div>
+      {sparkline}
     </div>
   );
 }
