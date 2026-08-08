@@ -27,9 +27,13 @@ export function OrganizationSwitcher({
 
   if (organizations.length === 1) {
     return (
-      <div className="flex flex-col leading-tight">
-        <span className="text-sm font-medium text-gray-900">{active.name}</span>
-        <span className="text-xs text-gray-500">{active.slug}</span>
+      <div className="flex min-w-0 max-w-[10rem] flex-col leading-tight sm:max-w-[16rem]">
+        <span className="truncate text-sm font-medium text-gray-900" title={active.name}>
+          {active.name}
+        </span>
+        <span className="truncate text-xs text-gray-500" title={active.slug}>
+          {active.slug}
+        </span>
       </div>
     );
   }
