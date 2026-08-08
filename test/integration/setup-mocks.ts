@@ -41,6 +41,17 @@ vi.mock("next/cache", () => ({
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
+  // Stage 6.2.1: the mocked equivalent of the real getVerifiedAuthUser()
+  // — not wrapped in React.cache() here (that only actually memoizes
+  // inside a real Next.js request-scoped render, which this integration
+  // harness deliberately never provides; verified empirically before
+  // writing this comment). Reads through to the same mock auth state
+  // getUser() below does, so getOrCreateUser() and any direct caller
+  // continue to see identical, consistent behavior in tests.
+  getVerifiedAuthUser: async () => {
+    const user = getMockAuthUser();
+    return user ? { ...user, user_metadata: user.user_metadata ?? {} } : null;
+  },
   createClient: async () => ({
     auth: {
       async getUser() {

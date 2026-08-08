@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getVerifiedAuthUser } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { Role } from "@/generated/prisma/enums";
@@ -36,10 +36,7 @@ function activeOrgCookieOptions() {
  * at — a single guard higher up in the tree doesn't see those.
  */
 export async function getOrCreateUser() {
-  const supabase = await createClient();
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
+  const authUser = await getVerifiedAuthUser();
 
   if (!authUser) {
     redirect("/login");

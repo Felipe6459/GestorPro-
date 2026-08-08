@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { getVerifiedAuthUser } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUserOrganization, getOrganizationSwitcherItems } from "@/lib/current-user";
 import { getRecentNotifications, getUnreadNotificationCount } from "@/lib/notifications/queries";
@@ -17,10 +17,12 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // Stage 6.2.1: shares one request-scoped auth.getUser() call with
+  // getOrCreateUser() below (getCurrentUserOrganization ->
+  // getOrCreateUser) instead of each making its own independent network
+  // round-trip — see getVerifiedAuthUser()'s own doc comment for why
+  // that redundancy was causing spurious session-loss after mutations.
+  const user = await getVerifiedAuthUser();
 
   if (!user) {
     redirect("/login");

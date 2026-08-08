@@ -54,6 +54,17 @@ test.describe("Company Profile", () => {
       page.getByRole("button", { name: "Save company profile" }).click(),
     ]);
     await expect(page.getByText("Company profile saved.")).toBeVisible();
+    // Stage 6.2.1: the exact symptom being regression-tested — a
+    // successful save must never bounce the browser to /login.
+    await expect(page).not.toHaveURL(/\/login/);
+
+    // Reload — the exact check a follow-up page render performs. Proves
+    // both real persistence (not a client-side-only success message) and
+    // that the session survived the mutation: a redirect-to-login would
+    // fail this navigation outright.
+    await page.reload();
+    await expect(page).toHaveURL(/\/settings\/company/);
+    await expect(page.getByLabel("Legal company name")).toHaveValue("E2E Test Org LLC");
   });
 
   test("MEMBER sees a read-only summary, no editable form", async ({ page, context, baseURL }) => {
@@ -79,6 +90,11 @@ test.describe("Payment Details", () => {
       page.getByRole("button", { name: "Save payment details" }).click(),
     ]);
     await expect(page.getByText("Payment details saved.")).toBeVisible();
+    await expect(page).not.toHaveURL(/\/login/);
+
+    await page.reload();
+    await expect(page).toHaveURL(/\/settings\/payment/);
+    await expect(page.getByLabel("Bank name")).toHaveValue("First Bank");
   });
 
   test("MEMBER sees Access denied, never the form or any data", async ({ page, context, baseURL }) => {
@@ -102,12 +118,18 @@ test.describe("Domain Settings", () => {
     await expect(page.getByRole("heading", { name: "Domain settings", level: 1 })).toBeVisible();
     await expect(page.getByText(`${fixtures.orgA.slug}.`)).toBeVisible();
 
-    await page.getByLabel("Custom domain").fill(`${fixtures.runId}-custom.example.com`);
+    const customDomain = `${fixtures.runId}-custom.example.com`;
+    await page.getByLabel("Custom domain").fill(customDomain);
     await Promise.all([
       page.waitForResponse((r) => r.url().includes("/settings/domain") && r.request().method() === "POST"),
       page.getByRole("button", { name: "Save domain settings" }).click(),
     ]);
     await expect(page.getByText("Domain settings saved.")).toBeVisible();
+    await expect(page).not.toHaveURL(/\/login/);
+
+    await page.reload();
+    await expect(page).toHaveURL(/\/settings\/domain/);
+    await expect(page.getByLabel("Custom domain")).toHaveValue(customDomain);
   });
 
   test("MEMBER can view the generated subdomain but cannot edit", async ({ page, context, baseURL }) => {
