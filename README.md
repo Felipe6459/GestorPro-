@@ -339,6 +339,21 @@ new table or column), with a non-persisted "Got it" dismiss and two
 CTAs (View projects / View invoices). No checklist, no steps, no shared
 state with the staff onboarding system above.
 
+## Analytics
+
+A staff-only Analytics dashboard (`/analytics`, OWNER/ADMIN only) — see
+[`docs/analytics-architecture.md`](docs/analytics-architecture.md): KPI
+cards (clients, projects, tasks, invoices, members, attachments,
+completion rates), trend charts (client/project growth, task and
+invoice activity, portal growth) built on Recharts, and a URL-driven
+time range selector (today / 7 / 30 / 90 days / all time). A dedicated
+Portal analytics section reuses the same chart components. Everything
+is derived from this app's own real business data — no external
+analytics provider, no tracking cookies, no telemetry. Two portal
+metrics ("recent logins", "document download count") were deliberately
+not implemented, since neither has a real data source in the current
+schema — see the architecture doc's own §12 for the full reasoning.
+
 ## License
 
 Portfolio project — no license specified.
