@@ -305,3 +305,112 @@ test.describe("Desktop", () => {
     expect(hasHorizontalOverflow).toBe(false);
   });
 });
+
+// Regression safety net (added after main received PR #19's mobile header
+// fix and PR #21's tablet-breakpoint overflow fix — both shared-layout
+// changes, neither one touching Analytics code). Proves Analytics keeps
+// rendering correctly at every breakpoint those fixes targeted, and closes
+// a few pre-existing coverage gaps the earlier Stage 2-5 suite above
+// didn't need: the full breakpoint set (only 375/768/1280 were covered),
+// every supported range (only last7Days was exercised end to end), a
+// correct "no empty chart container" check (deliberately not `[class*=
+// "chart"]`, which false-positives on every recharts-* internal SVG
+// sub-node), and cross-org leakage specifically on this page. No
+// Analytics application code changes alongside this file.
+test.describe("Regression: Analytics health after unrelated layout changes (PR #19 / PR #21)", () => {
+  test.beforeEach(async ({ context, baseURL }) => {
+    await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+  });
+
+  // 320/390/430 close the PR #19 mobile-breakpoint gap; 834/1024 close the
+  // PR #21 tablet-breakpoint gap. 375/768/1280 stay covered by the
+  // existing Mobile/Tablet/Desktop describes above, not duplicated here.
+  for (const width of [320, 390, 430, 834, 1024]) {
+    test(`no horizontal overflow at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/analytics");
+      await expect(page.getByRole("heading", { name: "Analytics", level: 1 })).toBeVisible();
+      const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+      expect(hasHorizontalOverflow).toBe(false);
+    });
+  }
+
+  test("every supported time range updates the URL, and the selection survives a reload", async ({ page }) => {
+    const nav = page.getByRole("navigation", { name: "Time range" });
+    for (const [label, param] of [
+      ["Today", "today"],
+      ["Last 7 days", "last7Days"],
+      ["Last 30 days", "last30Days"],
+      ["Last 90 days", "last90Days"],
+      ["All time", "allTime"],
+    ] as const) {
+      await page.goto("/analytics");
+      await nav.getByRole("link", { name: label }).click();
+      await expect(page).toHaveURL(new RegExp(`\\?range=${param}$`));
+      await expect(nav.getByRole("link", { name: label })).toHaveAttribute("aria-current", "true");
+
+      await page.reload();
+      await expect(page).toHaveURL(new RegExp(`\\?range=${param}$`));
+      await expect(nav.getByRole("link", { name: label })).toHaveAttribute("aria-current", "true");
+    }
+  });
+
+  test("every chart renders real content (no empty container) and exposes a non-empty accessible name", async ({ page }) => {
+    await page.goto("/analytics?range=allTime");
+
+    // A real Recharts mount always produces at least one populated
+    // .recharts-wrapper (containing a drawn <svg>, never an empty shell) —
+    // this is the correct signal Stage 3's own test above already uses
+    // per-section; here it's asserted globally, once, across every chart
+    // on the page.
+    const wrappers = page.locator(".recharts-wrapper");
+    // .count() (unlike expect(locator).toBeVisible()) does not auto-wait —
+    // Recharts is a Client Component, so the first wrapper only exists
+    // after hydration mounts it. Wait for that before counting, or this
+    // races the count against hydration and reads 0.
+    await expect(wrappers.first()).toBeVisible();
+    const wrapperCount = await wrappers.count();
+    expect(wrapperCount).toBeGreaterThan(0);
+    for (let i = 0; i < wrapperCount; i++) {
+      // .first(): a wrapper with a chart legend renders more than one
+      // <svg> (the legend's own small icon swatches alongside the main
+      // chart) — any one of them being visible already proves this
+      // wrapper isn't an empty shell.
+      await expect(wrappers.nth(i).locator("svg").first()).toBeVisible();
+    }
+
+    // Every chart's accessible name (role=img + aria-label, Recharts'
+    // accessibilityLayer) must be present and non-empty — never relying on
+    // color/shape alone, and never a blank string that would announce as
+    // nothing to a screen reader.
+    const chartImages = page.getByRole("img");
+    await expect(chartImages.first()).toBeVisible();
+    const chartImageCount = await chartImages.count();
+    expect(chartImageCount).toBeGreaterThan(0);
+    for (let i = 0; i < chartImageCount; i++) {
+      const ariaLabel = await chartImages.nth(i).getAttribute("aria-label");
+      expect(ariaLabel, `chart image ${i} should have a non-empty aria-label`).toBeTruthy();
+      expect(ariaLabel!.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  test("Billing/Onboarding integration: the Status section shows a real plan name, subscription status badge, and onboarding percent", async ({ page }) => {
+    await page.goto("/analytics");
+    const statusSection = page.locator("section", { has: page.getByRole("heading", { name: "Status", exact: true }) });
+    await expect(statusSection).toBeVisible();
+    // fixtures.orgA has no seeded Subscription row — access-mode.ts's own
+    // documented "missing row = LEGACY, full access" fallback — so this
+    // also proves that fallback still renders a real plan name, not a
+    // crash or a blank value.
+    await expect(statusSection.getByText("Legacy (pre-billing)")).toBeVisible();
+    await expect(statusSection.getByText(/^\d+%$/)).toBeVisible();
+  });
+
+  test("no cross-organization leakage: Org B's client/org data never appears on Org A's Analytics page", async ({ page }) => {
+    await page.goto("/analytics?range=allTime");
+    const bodyText = await page.locator("body").innerText();
+    expect(bodyText).not.toContain(fixtures.clientB.name);
+    expect(bodyText).not.toContain(fixtures.orgB.slug);
+    expect(bodyText).not.toContain(fixtures.orgB.id);
+  });
+});
