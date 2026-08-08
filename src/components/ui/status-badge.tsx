@@ -68,6 +68,10 @@ export const STATUS_TONES: Record<string, StatusTone> = {
   COMPLETE: "success",
   SKIPPED: "muted",
   NOT_APPLICABLE: "muted",
+
+  // Customer Setup Wizard (Stage 6.2) — DomainVerificationStatus.
+  // PENDING already shares tone with the values above; VERIFIED is new.
+  VERIFIED: "success",
 };
 
 export function StatusBadge({ status }: { status: string }) {

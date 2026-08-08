@@ -78,6 +78,12 @@ export type OnboardingRawSignals = {
   hasSecondMember: boolean;
   /** True once a PortalUser row exists for any Client in this organization — created only on invitation *accept*, never on send (a ClientInvitation alone is not enough — see src/app/portal/invite/[token]/actions.ts). */
   hasPortalUser: boolean;
+  /** Customer Setup Wizard (Stage 6.2): OrganizationProfile row exists (the OWNER submitted the Company Profile form at least once). */
+  hasCompanyProfile: boolean;
+  /** OrganizationPaymentDetails row exists. */
+  hasPaymentDetails: boolean;
+  /** OrganizationDomainSettings row exists — regardless of whether a custom domain was actually entered; confirming "I'll use the generated subdomain" is itself a complete way to finish this step. */
+  hasDomainSettings: boolean;
   /** The set of step keys with an existing OrganizationOnboardingStep row for this organization — each one means either "explicitly skipped" (a skippable step) or "explicitly acknowledged" (WELCOME/FINISH), never both meanings for the same key (§9's own row-existence-is-the-whole-signal model). */
   actedStepKeys: ReadonlySet<OnboardingStepKey>;
 };
@@ -95,6 +101,12 @@ const BLOCKED_REASONS: Partial<Record<OnboardingStepKey, string>> = {
 
 function isStepDoneByData(key: OnboardingStepKey, signals: OnboardingRawSignals): boolean {
   switch (key) {
+    case "COMPANY_PROFILE":
+      return signals.hasCompanyProfile;
+    case "PAYMENT_DETAILS":
+      return signals.hasPaymentDetails;
+    case "DOMAIN_SETUP":
+      return signals.hasDomainSettings;
     case "CREATE_CLIENT":
       return signals.hasClient;
     case "CREATE_PROJECT":
@@ -118,6 +130,9 @@ function isStepDoneByData(key: OnboardingStepKey, signals: OnboardingRawSignals)
  * do" in the sense §3 path 1 means.
  */
 const SUBSTANTIVE_STEPS: readonly OnboardingStepKey[] = [
+  "COMPANY_PROFILE",
+  "PAYMENT_DETAILS",
+  "DOMAIN_SETUP",
   "CREATE_CLIENT",
   "CREATE_PROJECT",
   "CREATE_TASK",
@@ -243,12 +258,25 @@ function buildStepResult(
  * boolean is needed, one organization per call.
  */
 export async function getOrganizationOnboardingProgress(organizationId: string): Promise<OnboardingProgressSummary> {
-  const [clientCount, projectCount, taskCount, membershipCount, portalUserCount, actedRows] = await Promise.all([
+  const [
+    clientCount,
+    projectCount,
+    taskCount,
+    membershipCount,
+    portalUserCount,
+    hasCompanyProfileRow,
+    hasPaymentDetailsRow,
+    hasDomainSettingsRow,
+    actedRows,
+  ] = await Promise.all([
     prisma.client.count({ where: { organizationId } }),
     prisma.project.count({ where: { organizationId } }),
     prisma.task.count({ where: { organizationId } }),
     prisma.membership.count({ where: { organizationId } }),
     prisma.portalUser.count({ where: { client: { organizationId } } }),
+    prisma.organizationProfile.findUnique({ where: { organizationId }, select: { organizationId: true } }),
+    prisma.organizationPaymentDetails.findUnique({ where: { organizationId }, select: { organizationId: true } }),
+    prisma.organizationDomainSettings.findUnique({ where: { organizationId }, select: { organizationId: true } }),
     prisma.organizationOnboardingStep.findMany({
       where: { organizationId },
       select: { step: true },
@@ -259,6 +287,9 @@ export async function getOrganizationOnboardingProgress(organizationId: string):
     hasClient: clientCount > 0,
     hasProject: projectCount > 0,
     hasTask: taskCount > 0,
+    hasCompanyProfile: hasCompanyProfileRow !== null,
+    hasPaymentDetails: hasPaymentDetailsRow !== null,
+    hasDomainSettings: hasDomainSettingsRow !== null,
     hasSecondMember: membershipCount > 1,
     hasPortalUser: portalUserCount > 0,
     actedStepKeys: new Set(actedRows.map((r) => r.step)),

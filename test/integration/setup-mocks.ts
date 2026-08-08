@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { vi } from "vitest";
-import { getMockAuthUser, mockCookies } from "../support/auth-mock";
+import { getMockAuthUser, setMockAuthUser, consumeMockSignUpConfig, mockCookies } from "../support/auth-mock";
 import { mockUploadAttachmentObject, mockRemoveAttachmentObject } from "../support/storage-mock";
 import { mockRedirect, mockNotFound, mockRevalidatePath } from "../support/navigation-mock";
 
@@ -10,9 +11,10 @@ import { mockRedirect, mockNotFound, mockRevalidatePath } from "../support/navig
 //  - next/headers' cookies()
 //  - next/navigation's redirect()/notFound()
 //  - next/cache's revalidatePath()
-//  - @/lib/supabase/server's createClient() (auth.getUser() would need a
-//    live Supabase Auth network call — stubbed to whatever
-//    test/support/auth-mock.ts's setMockAuthUser() currently holds)
+//  - @/lib/supabase/server's createClient() (auth.getUser()/signUp() would
+//    need a live Supabase Auth network call — stubbed to whatever
+//    test/support/auth-mock.ts's setMockAuthUser()/setMockSignUpConfig()
+//    currently holds)
 //  - @/lib/storage/attachments-storage (imports "server-only", and its
 //    real implementation needs a live Supabase Storage bucket)
 // Everything else — getOrCreateUser, getCurrentMembership,
@@ -47,6 +49,22 @@ vi.mock("@/lib/supabase/server", () => ({
       },
       async signOut() {
         return { error: null };
+      },
+      // SaaS Signup Foundation (Stage 6.1) — see setMockSignUpConfig()'s
+      // own doc comment for what each configured "kind" simulates.
+      async signUp({ email, options }: { email: string; password: string; options?: { data?: Record<string, unknown> } }) {
+        const config = consumeMockSignUpConfig();
+        if (config.kind === "error") {
+          return { data: { user: null, session: null }, error: { message: config.message } };
+        }
+        const user = { id: config.id ?? randomUUID(), email, user_metadata: options?.data ?? {} };
+        if (config.kind === "session") {
+          // Mirrors the real SSR client persisting a session cookie that a
+          // subsequent getUser() call in the same request then reads back.
+          setMockAuthUser(user);
+          return { data: { user, session: { access_token: "mock-session-token" } }, error: null };
+        }
+        return { data: { user, session: null }, error: null };
       },
     },
   }),

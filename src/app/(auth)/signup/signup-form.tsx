@@ -17,6 +17,20 @@ export function SignupForm({ redirectTo }: { redirectTo?: string }) {
     <form action={formAction} className="space-y-4">
       {redirectTo && <input type="hidden" name="redirectTo" value={redirectTo} />}
       <div>
+        <FormLabel htmlFor="organizationName" required>
+          Organization name
+        </FormLabel>
+        <Input
+          id="organizationName"
+          name="organizationName"
+          type="text"
+          autoComplete="organization"
+          placeholder="Acme Inc."
+          required
+        />
+      </div>
+
+      <div>
         <FormLabel htmlFor="email" required>
           Email
         </FormLabel>

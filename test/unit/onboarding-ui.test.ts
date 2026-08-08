@@ -20,6 +20,9 @@ function signals(overrides: Partial<OnboardingRawSignals> = {}): OnboardingRawSi
     hasTask: false,
     hasSecondMember: false,
     hasPortalUser: false,
+    hasCompanyProfile: false,
+    hasPaymentDetails: false,
+    hasDomainSettings: false,
     actedStepKeys: new Set<OnboardingStepKey>(),
     ...overrides,
   };
@@ -151,7 +154,16 @@ describe("shouldRenderOnboardingCard", () => {
 
   it("a fully complete organization (every substantive step done) hides the card", () => {
     const progress = buildOnboardingProgress(
-      signals({ hasClient: true, hasProject: true, hasTask: true, hasSecondMember: true, hasPortalUser: true }),
+      signals({
+        hasClient: true,
+        hasProject: true,
+        hasTask: true,
+        hasSecondMember: true,
+        hasPortalUser: true,
+        hasCompanyProfile: true,
+        hasPaymentDetails: true,
+        hasDomainSettings: true,
+      }),
     );
     expect(progress.isComplete).toBe(true);
     expect(shouldRenderOnboardingCard(progress)).toBe(false);

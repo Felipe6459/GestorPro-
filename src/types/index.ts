@@ -79,3 +79,21 @@ export type AttachmentUploadState = {
 export type CommentActionState = {
   error: string | null;
 };
+
+export type CompanyProfileFormState = {
+  error: string | null;
+  fieldErrors?: Partial<Record<"legalName" | "displayName" | "country" | "currency" | "timezone", string>>;
+  message?: string | null;
+};
+
+export type PaymentDetailsFormState = {
+  error: string | null;
+  fieldErrors?: Partial<Record<"bankName" | "accountHolder" | "accountNumber" | "swiftBic" | "paymentInstructions", string>>;
+  message?: string | null;
+};
+
+export type DomainSettingsFormState = {
+  error: string | null;
+  fieldErrors?: Partial<Record<"customDomain", string>>;
+  message?: string | null;
+};

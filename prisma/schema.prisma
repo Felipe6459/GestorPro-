@@ -248,6 +248,15 @@ enum NotificationDeliveryStatus {
 // ready, nothing depends on it yet.
 enum OnboardingStepKey {
   WELCOME
+  // Customer Setup Wizard (Stage 6.2, docs/onboarding-architecture.md's
+  // own "growing the step-key set is designed to grow, §20" allowance —
+  // an additive enum value, same as every other step key here). These
+  // three sit between WELCOME and CREATE_CLIENT (src/lib/onboarding/
+  // steps.ts's own ONBOARDING_STEP_ORDER) — initial workspace setup,
+  // before a user starts putting business data in.
+  COMPANY_PROFILE
+  PAYMENT_DETAILS
+  DOMAIN_SETUP
   CREATE_CLIENT
   CREATE_PROJECT
   CREATE_TASK
@@ -255,6 +264,17 @@ enum OnboardingStepKey {
   INVITE_PORTAL_USER
   REVIEW_BILLING
   FINISH
+}
+
+// Customer Setup Wizard (Stage 6.2). Never real-time-verified — a fixed,
+// inert placeholder status exactly like REVIEW_BILLING was before Billing
+// existed (schema.prisma's own precedent for "an honest placeholder, not
+// a guessed future state"). No DNS/ownership verification of any kind
+// runs anywhere in this app; VERIFIED is defined for a future stage to
+// actually set, never written by any code on this branch.
+enum DomainVerificationStatus {
+  PENDING
+  VERIFIED
 }
 
 // id is intended to match Supabase auth.users.id once auth is wired up.
@@ -311,6 +331,129 @@ model Organization {
   webhookEvents WebhookEvent[]
 
   onboardingSteps OrganizationOnboardingStep[]
+
+  // Customer Setup Wizard (Stage 6.2). All three optional on this side for
+  // the same reason `subscription` is: every Organization that exists
+  // before this stage ships has none yet — each row is only ever created
+  // once its own setup step's form is actually submitted (see each
+  // model's own doc comment).
+  profile        OrganizationProfile?
+  paymentDetails OrganizationPaymentDetails?
+  domainSettings OrganizationDomainSettings?
+}
+
+// Customer Setup Wizard (Stage 6.2) — Company Profile step. One row per
+// Organization, created only once the OWNER submits the form (no row =
+// "not set up yet", the same "no row = default/not-yet-acted" model
+// `NotificationPreference`/`OrganizationOnboardingStep` already use — see
+// those models' own comments). `Organization.name` already IS the
+// display/company name shown throughout the app (header, org switcher) —
+// this step edits that existing field directly rather than duplicating it
+// here; only the genuinely new facts (legal name, country, currency,
+// timezone) get new columns, per this stage's own "extend existing
+// models, don't duplicate" instruction. All four fields are required at
+// the database level because the row itself is only ever created by one
+// complete, server-validated form submission (updateCompanyProfileAction)
+// — never partially, the same "all-or-nothing" shape `Subscription`'s own
+// required fields already have.
+model OrganizationProfile {
+  id String @id @default(uuid()) @db.Uuid
+
+  organizationId String       @unique @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // The formal registered business name — distinct from Organization.name
+  // (the everyday display name), e.g. for future invoice/contract copy.
+  legalName String
+
+  // Freeform text, not an ISO-3166-validated enum/lookup — this stage
+  // does not implement a country database (out of scope, see this
+  // stage's own "do not redesign" constraint); validated only for
+  // required-ness/length in the Server Action, the same level of
+  // validation Client.company/Client.notes already get.
+  country String
+
+  // ISO 4217 currency code (e.g. "USD"), validated server-side against
+  // Intl.supportedValuesOf("currency") — a real platform API, not a
+  // hand-maintained list — never against a DB-level enum (mirrors
+  // Subscription.planKey's own "String, validated in code, never a
+  // Prisma enum" reasoning: this is descriptive catalog data, not a
+  // small fixed set core to this schema's own structure).
+  currency String
+
+  // IANA time zone name (e.g. "America/New_York"), validated server-side
+  // against Intl.supportedValuesOf("timeZone") — same reasoning as
+  // currency above.
+  timezone String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Customer Setup Wizard (Stage 6.2) — Payment Receiving Details step.
+// Deliberately its own table, never folded into OrganizationProfile or
+// Organization itself: this is the one genuinely sensitive concern this
+// stage adds (real bank details), and keeping it structurally isolated
+// means no query written for company-profile/domain data can ever
+// accidentally select these columns too — the same "sensitive concern
+// gets its own narrow table" reasoning `Subscription` already established
+// for billing data. OWNER-only read AND write, enforced in
+// src/lib/organization-setup/authorization.ts and re-checked at every
+// call site (service layer + Server Action), never left to the UI alone.
+// This is NOT a payment processor integration (no Stripe, no real payment
+// collection) — purely where an organization tells this app where to
+// send money it's owed, entered and read back as plain text.
+model OrganizationPaymentDetails {
+  id String @id @default(uuid()) @db.Uuid
+
+  organizationId String       @unique @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  bankName            String
+  accountHolder       String
+  // Account number or IBAN — one free-text field, since which format
+  // applies depends entirely on the organization's own country/bank, and
+  // this stage does not implement per-country account-number validation.
+  accountNumber       String
+  swiftBic            String
+  // Optional: not every organization needs extra free-text instructions
+  // beyond the four structured fields above.
+  paymentInstructions String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Customer Setup Wizard (Stage 6.2) — Domain Settings preparation step.
+// No DNS/domain verification of any kind happens anywhere in this app —
+// `verificationStatus` is a fixed, inert placeholder (see its own enum
+// comment above). The generated subdomain shown to a user in this step's
+// own UI is never stored here: it's always computed on the fly from this
+// Organization's own unique `slug` (already real, already unique) plus
+// this app's base domain — storing a second, derivable copy of the same
+// fact would be exactly the kind of redundant state this schema
+// consistently avoids elsewhere (e.g. onboarding's own computed-by-
+// default philosophy, docs/onboarding-architecture.md §9 Option A). A row
+// here only ever exists once the OWNER has visited this step at least
+// once (no row = "hasn't gotten to domain setup yet", not "has no
+// domain") — `customDomain` itself stays nullable even then, since
+// confirming "I'll use the generated subdomain" is itself a valid,
+// complete way to finish this step without ever entering a custom one.
+model OrganizationDomainSettings {
+  id String @id @default(uuid()) @db.Uuid
+
+  organizationId String       @unique @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Globally unique: two different tenants can never claim the same
+  // custom domain, the same cross-tenant uniqueness guarantee
+  // Attachment.storagePath/Invitation.token already give their own
+  // globally-unique values.
+  customDomain       String?                  @unique
+  verificationStatus DomainVerificationStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Membership {

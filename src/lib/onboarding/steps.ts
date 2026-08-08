@@ -13,9 +13,21 @@ import type { OnboardingStepKey } from "@/generated/prisma/enums";
  * `enum OnboardingStepKey` decision).
  */
 
-/** The exact order docs/onboarding-architecture.md §5 already argued for and adopted unchanged from the example it was asked to evaluate. */
+/**
+ * docs/onboarding-architecture.md §5's original order, with three new
+ * steps (Customer Setup Wizard, Stage 6.2) inserted between WELCOME and
+ * CREATE_CLIENT: initial workspace setup (company profile, payment
+ * receiving details, domain preparation) happens before a user starts
+ * putting business data in, matching the signup -> setup -> dashboard
+ * flow this stage was asked to build. None of the three has a dependency
+ * on the others or on Client/Project/Task — a user may complete them in
+ * any order, or skip Payment/Domain entirely and come back later.
+ */
 export const ONBOARDING_STEP_ORDER: readonly OnboardingStepKey[] = [
   "WELCOME",
+  "COMPANY_PROFILE",
+  "PAYMENT_DETAILS",
+  "DOMAIN_SETUP",
   "CREATE_CLIENT",
   "CREATE_PROJECT",
   "CREATE_TASK",
@@ -72,9 +84,51 @@ export const ONBOARDING_STEPS: Readonly<Record<OnboardingStepKey, OnboardingStep
     dependsOn: null,
     targetHref: null,
   },
+  // Customer Setup Wizard (Stage 6.2). Load-bearing the same way Client/
+  // Project already are (§1's "productive first session" — a workspace's
+  // own identity is as foundational as its first business data): no
+  // explicit Skip button, but never blocking navigation either, exactly
+  // like Client/Project already don't block (§6's own "no Skip button
+  // does not mean blocking" rule).
+  COMPANY_PROFILE: {
+    key: "COMPANY_PROFILE",
+    order: 1,
+    label: "Set up your company profile",
+    computed: true,
+    skippable: false,
+    required: true,
+    dependsOn: null,
+    targetHref: "/settings/company",
+  },
+  // Deferred/optional, matching this stage's own explicit "no Stripe/
+  // payment processing yet" scope — real payment collection is a later
+  // concern, entering *where to receive* money is not mandatory today.
+  PAYMENT_DETAILS: {
+    key: "PAYMENT_DETAILS",
+    order: 2,
+    label: "Add payment receiving details",
+    computed: true,
+    skippable: true,
+    required: false,
+    dependsOn: null,
+    targetHref: "/settings/payment",
+  },
+  // Deferred/optional, matching this stage's own explicit "no real custom
+  // domain verification yet" scope — the generated subdomain already
+  // works with zero action from the user.
+  DOMAIN_SETUP: {
+    key: "DOMAIN_SETUP",
+    order: 3,
+    label: "Review your domain settings",
+    computed: true,
+    skippable: true,
+    required: false,
+    dependsOn: null,
+    targetHref: "/settings/domain",
+  },
   CREATE_CLIENT: {
     key: "CREATE_CLIENT",
-    order: 1,
+    order: 4,
     label: "Create your first client",
     computed: true,
     skippable: false,
@@ -84,7 +138,7 @@ export const ONBOARDING_STEPS: Readonly<Record<OnboardingStepKey, OnboardingStep
   },
   CREATE_PROJECT: {
     key: "CREATE_PROJECT",
-    order: 2,
+    order: 5,
     label: "Create your first project",
     computed: true,
     skippable: false,
@@ -94,7 +148,7 @@ export const ONBOARDING_STEPS: Readonly<Record<OnboardingStepKey, OnboardingStep
   },
   CREATE_TASK: {
     key: "CREATE_TASK",
-    order: 3,
+    order: 6,
     label: "Create your first task",
     computed: true,
     skippable: true,
@@ -104,7 +158,7 @@ export const ONBOARDING_STEPS: Readonly<Record<OnboardingStepKey, OnboardingStep
   },
   INVITE_TEAMMATE: {
     key: "INVITE_TEAMMATE",
-    order: 4,
+    order: 7,
     label: "Invite a teammate",
     computed: true,
     skippable: true,
@@ -114,7 +168,7 @@ export const ONBOARDING_STEPS: Readonly<Record<OnboardingStepKey, OnboardingStep
   },
   INVITE_PORTAL_USER: {
     key: "INVITE_PORTAL_USER",
-    order: 5,
+    order: 8,
     label: "Invite a Client Portal user",
     computed: true,
     skippable: true,
@@ -129,7 +183,7 @@ export const ONBOARDING_STEPS: Readonly<Record<OnboardingStepKey, OnboardingStep
   },
   REVIEW_BILLING: {
     key: "REVIEW_BILLING",
-    order: 6,
+    order: 9,
     label: "Review billing",
     computed: false,
     skippable: true,
@@ -144,7 +198,7 @@ export const ONBOARDING_STEPS: Readonly<Record<OnboardingStepKey, OnboardingStep
   },
   FINISH: {
     key: "FINISH",
-    order: 7,
+    order: 10,
     label: "Finish setup",
     computed: false,
     skippable: false,
@@ -180,6 +234,9 @@ export function isOnboardingStepAvailable(key: OnboardingStepKey): boolean {
 
 /** A fixed allowlist of every href this catalog can ever point at — real, existing routes only, checked by this module's own unit tests and by the security check. */
 export const ONBOARDING_STEP_HREF_ALLOWLIST: readonly string[] = [
+  "/settings/company",
+  "/settings/payment",
+  "/settings/domain",
   "/clients/new",
   "/projects/new",
   "/tasks/new",
