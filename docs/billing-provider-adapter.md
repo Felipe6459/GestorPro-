@@ -24,6 +24,48 @@ now a matter of implementing one interface and wiring a few environment
 variables — no changes to entitlements, the Billing UI, or the webhook
 route's own trust/idempotency/ordering logic.
 
+## Implementation status (Sale-Ready Phase E)
+
+- **E2.2** — `src/lib/billing/provider/paddle-config.ts`: reads and
+  validates the env vars below (fail-closed on any partial config).
+- **E2.3 (this PR)** — `src/lib/billing/provider/paddle-provider.ts`: a
+  real, server-only Paddle adapter. **`createCheckoutSession` and
+  `createCustomerPortalSession` are implemented** against the actual
+  Paddle Transactions API and Customer Portal Sessions API (via the
+  official `@paddle/paddle-node-sdk`). **`verifyWebhook`/
+  `parseWebhookEvent` are still safe, fail-closed placeholders** —
+  `verifyWebhook` always returns `{ verified: false, reason:
+  "not_implemented" }`, `parseWebhookEvent` always returns `null`. Real
+  webhook signature verification and event parsing are a later PR
+  (E2.4+).
+- **The provider registry (`getBillingProviderAdapter()`,
+  `./provider.ts`) is still unchanged** — it still only ever resolves to
+  the mock (`TEST_MODE`) or the fail-closed unconfigured adapter. The
+  real Paddle adapter exists and is fully unit-tested, but is not yet
+  reachable from anywhere in the running application. Wiring it in as
+  the real third branch is a later PR.
+- **No Paddle account was created or required for this PR** — every
+  test uses a fully mocked SDK client, no network call is ever made. Per
+  the sale-ready framing established in E2.2: real credentials are still
+  supplied later, by whoever actually connects a Paddle account —
+  never by this repository.
+
+**E2.3 is not an end-to-end payment flow yet — three real gaps remain
+even once real credentials exist:** (1) the webhook placeholders above
+mean no subscription ever actually activates, regardless of how
+checkout goes; (2) `createCheckoutSession`'s returned `checkout.url`
+resolves to Paddle's own hosted checkout only once this app also hosts
+a Paddle.js-enabled page as its default payment link (Paddle Billing's
+checkout is not a pure server-redirect-and-done flow the way Stripe
+Checkout is — confirmed against Paddle's own docs, not assumed) — that
+page doesn't exist in this codebase yet and is a separate future PR,
+not part of E2.3; (3) relatedly, `input.returnUrl`/`cancelUrl` are
+accepted by this app's own contract but never sent to Paddle at all —
+Transactions API has no such field, and a subscription's real
+post-checkout redirect is set via Paddle.js's own `successUrl`
+argument or a per-Product dashboard default, neither of which this PR
+wires up.
+
 ## The adapter contract
 
 `src/lib/billing/provider/types.ts` defines `BillingProviderAdapter`:
