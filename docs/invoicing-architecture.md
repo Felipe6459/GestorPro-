@@ -227,9 +227,19 @@ installed — `src/lib/email/resend-client.ts` sends via a raw
   they already queried the column directly and became correct once the
   data/schema were repaired.
 - Migration `20260911090000_repair_invoice_organization_scope` exists in
-  source control on `main` (guarded, self-verifying, no explicit
-  `BEGIN`/`COMMIT` — Prisma Migrate already wraps it; see the migration's
-  own header comment for the exact-toolchain reproduction proving this).
+  source control on `main` (guarded, self-verifying, and **deliberately
+  contains no explicit top-level `BEGIN`/`COMMIT`**). Atomic rollback on
+  failure was reproduced by hand against **this repository's exact
+  toolchain** — Prisma 7.9.1, applied via a real `prisma migrate deploy`
+  subprocess against a PGlite-backed Postgres instance — not against any
+  other Prisma version, real Postgres server, or deployment environment;
+  the migration file's own header comment documents that specific
+  reproduction. This is evidence for *this* migration in *this*
+  toolchain, not a general claim that every Prisma/PostgreSQL/deployment
+  combination behaves identically. A real deployment against any actual
+  target database remains a separate, controlled operator step (§1.6,
+  §12) that should confirm this behavior in that environment rather than
+  assume it.
 - **This migration has not been applied to any external/staging/production
   database by the PR #63 merge task** — merging into source control and
   deploying to a real database are separate, deliberately un-conflated
@@ -298,11 +308,15 @@ a bookkeeping system).
   `dueDate`, unchanged from CURRENT STATE §1.2 (a possible future,
   separate, out-of-scope slice).
 - **The `InvoiceStatus` enum value stays `SENT`** — zero schema/migration
-  churn for a label change. The **UI label is "Issued."** Provider
-  acceptance and actual delivery are separate facts (§9); "Issued" honestly
-  describes "this document has been finalized and transmitted," which
-  remains true even when no email was ever attempted (a manual status
-  change stays a fully valid, email-free path to `SENT`).
+  churn for a label change. The **UI label is "Issued."** **"Issued" means
+  the invoice has been finalized, assigned an immutable archived document
+  (§8), and made available for controlled delivery/access** — it does
+  **not** claim the document was transmitted or delivered to the client.
+  Email provider acceptance and actual delivery are separate,
+  independently-tracked facts (§9) — an email-free Issue action (a manual
+  status change, or an Issue with no email ever attempted) is a fully
+  valid way to reach `SENT`, and "Issued" remains accurate for it without
+  implying anything about transmission.
 
 ### 3.2 Corrections after issue
 
@@ -364,9 +378,9 @@ model Invoice {
   // amount (existing column, unchanged meaning) = subtotal - discountAmount + taxAmount
   // — remains the sole canonical total every Dashboard/Analytics/Search/Portal query reads.
 
-  finalizedAt        DateTime?  // set exactly once, first DRAFT -> non-DRAFT transition
-  issuerSnapshot      Json?     // { schemaVersion: 1, ... } — §7
-  recipientSnapshot   Json?     // { schemaVersion: 1, ... } — §7
+  finalizedAt        DateTime?  // set exactly once, by the successful DRAFT -> SENT archive/finalization commit (§8.1) — never by any other transition, never before the PDF archive exists
+  issuerSnapshot      Json?     // { schemaVersion: 1, ... } — §7, written in the same transaction as finalizedAt
+  recipientSnapshot   Json?     // { schemaVersion: 1, ... } — §7, written in the same transaction as finalizedAt
 
   pdfStoragePath  String?   @unique   // e.g. organizations/<orgId>/invoice-pdf/<invoiceId>/<documentVersion>/<archiveId>/invoice.pdf
   pdfGeneratedAt  DateTime?
@@ -383,12 +397,13 @@ enum InvoiceTaxLabel { TAX VAT GST }
 ```
 
 No separate "calculation/itemization discriminator" column is needed to
-distinguish legacy flat invoices from itemized ones — **`lineItems.length
-=== 0` is itself the discriminator.** A legacy (or deliberately
-flat-amount) invoice is simply an `Invoice` row with zero
-`InvoiceLineItem` children; the calculation service (§5) accepts either a
-`lineItems` array or a flat `amount` as its subtotal source through one
-unified contract, so no extra schema flag is needed to tell the two apart.
+distinguish flat invoices from itemized ones — **`lineItems.length === 0`
+is itself that discriminator.** The calculation service (§5) accepts
+either a `lineItems` array or a flat `amount` as its subtotal source
+through one unified contract, so no extra schema flag is needed for that
+axis. `lineItems.length === 0` alone does **not**, however, distinguish a
+*pre-feature legacy* invoice from a *new, deliberately flat* one — §4.6
+defines the exact rule for that.
 
 ### 4.2 `InvoiceLineItem`
 
@@ -440,8 +455,9 @@ model InvoiceEmailAttempt {
   requestedByUserId String? @db.Uuid           // nullable — matches the established actor/audit-FK convention (§1.5)
   requestedByUser   User?   @relation(fields: [requestedByUserId], references: [id], onDelete: SetNull)
 
-  attemptedAt        DateTime  @default(now())
-  providerAcceptedAt DateTime?                 // NOT a delivery timestamp — provider acceptance only, see §9.1
+  attemptedAt        DateTime  @default(now())  // created/attempted timestamp — set once, never rewritten
+  updatedAt          DateTime  @updatedAt        // bumped on every state change (PENDING -> ACCEPTED/FAILED/UNKNOWN) — audits *when* a transition happened, not just the current status
+  providerAcceptedAt DateTime?                   // set ONLY on a transition to ACCEPTED — NOT a delivery timestamp, provider acceptance only, see §9.1. Never set for FAILED/UNKNOWN.
 
   @@index([invoiceId, attemptedAt])
   @@index([invoiceId, status, attemptedAt])   // supports the stale-PENDING/UNKNOWN recovery query, §9.2
@@ -503,6 +519,24 @@ found must be surfaced to a human for a manual decision. If that preflight
 cannot be confidently run against real deployed data, the fallback is to
 **preserve `[clientId, invoiceNumber]`** as an explicitly documented v1
 limitation rather than risk a blind constraint change.
+
+### 4.6 Flat vs. legacy vs. newly-issued classification
+
+No new discriminator field is added merely to label legacy data — the
+existing durable state (`finalizedAt`, `pdfStoragePath`, `status`,
+`lineItems.length`) is sufficient to classify every invoice exactly:
+
+| Classification | Definition |
+|---|---|
+| **Flat invoice** | Zero persisted `InvoiceLineItem` rows (`lineItems.length === 0`) — regardless of when it was created. A brand-new `DRAFT` created deliberately flat is fully supported and, when issued through the Slice 3 pipeline, receives the **same** immutable archive as an itemized invoice. |
+| **Itemized invoice** | One or more persisted `InvoiceLineItem` rows. |
+| **Legacy unarchived historical invoice** | `status != DRAFT` **and** `finalizedAt IS NULL` **and** `pdfStoragePath IS NULL` — a real invoice created before this finalization system existed, predating `finalizedAt`'s introduction entirely. Eligible for the §8.3 read-only best-effort preview and the explicit "Archive Legacy Invoice" action. |
+| **Newly-issued invoice** | `finalizedAt` non-null **and** `pdfStoragePath` non-null — both are written together, in the same DB transaction, by the Slice 3 archive pipeline (§8.1 step 5); there is no code path that sets one without the other. |
+| **Invariant-violation / recovery state** | `finalizedAt` non-null **with** `pdfStoragePath IS NULL`. Given the pipeline design above, this should be **structurally unreachable** in normal operation — but classification logic must check for it defensively and treat any observed occurrence as an **error requiring staff attention**, never as "legacy" (a row with `finalizedAt` set was never a pre-feature row — legacy rows have `finalizedAt` permanently `NULL` by construction) and never eligible for a live-preview fallback (§8.1/§8.3). |
+
+This table is what §8.3's legacy-preview logic and §8.2's download routes
+check against — never `createdAt`, which the durable state above already
+makes unnecessary for this purpose.
 
 ---
 
@@ -639,22 +673,24 @@ Deliberately bounded v1 — **not** universal currency support:
 
 **Snapshots must be versioned and validated before use — JSON is not
 trusted merely because it came from the database.** `issuerSnapshot`/
-`recipientSnapshot` are populated exactly once, at first finalization
-(`DRAFT → non-DRAFT`), read *only* for a non-`DRAFT` invoice's archival
-render (§8) — a `DRAFT`'s PDF preview always reads live current data,
-since nothing has been promised to a client yet.
+`recipientSnapshot` are populated exactly once, **by the same successful
+`DRAFT → SENT` archive/finalization transaction that writes
+`pdfStoragePath`** (§8.1 step 5 — never earlier, never by any other
+transition), read *only* for a non-`DRAFT` invoice's archival render
+(§8) — a `DRAFT`'s PDF preview always reads live current data, since
+nothing has been promised to a client yet.
 
 **Issuer snapshot** (`{schemaVersion: 1, ...}`, from `OrganizationProfile`
-+ `OrganizationPaymentDetails` at finalization time): legal/business
++ `OrganizationPaymentDetails` at that same commit): legal/business
 name, address fields, country, tax ID, support email/phone/website where
 available, payment receiving details/instructions, brand color if used
 in the PDF, and a **source logo reference kept for provenance only** —
 the reference does not, by itself, guarantee the logo *image* is
 reproducible later (see below).
 
-**Recipient snapshot** (`{schemaVersion: 1, ...}`, from `Client` at
-finalization time): resolved billing name = `billingLegalName ?? company
-?? name`, email, optional billing address, country, tax ID.
+**Recipient snapshot** (`{schemaVersion: 1, ...}`, from `Client` at that
+same commit): resolved billing name = `billingLegalName ?? company ??
+name`, email, optional billing address, country, tax ID.
 
 - **Render code parses a versioned, typed shape** — never treats stored
   JSON as trustworthy just because a database wrote it. **An unknown
@@ -712,9 +748,11 @@ Never holds a DB transaction open across render/upload/network I/O:
 6. **If the DB commit fails after upload succeeded**, perform a
    compensating Storage deletion of the just-uploaded object.
 7. **If that cleanup also fails**, record/report only a fixed, sanitized
-   orphan-cleanup condition (never raw error detail) — the unique archive
-   id from step 4 guarantees a retry can never collide with the orphan, so
-   it never blocks a future attempt.
+   orphan-cleanup condition (never raw error detail, never the Storage
+   path itself). The unique archive id from step 4 guarantees this
+   specific orphan can never block a future retry — but the object itself
+   **remains in Storage, unreferenced, until reconciled** (§8.5); "never
+   blocks a retry" is not the same claim as "never needs cleanup."
 8. **Only after finalization commits** may email sending begin (§9) — a
    separate, later, independently-retriable step.
 
@@ -735,11 +773,24 @@ live-render fallback (see §8.3).
   (`organizationId` + `clientId` + `project.clientId`). **A `DRAFT`
   invoice is never available to the portal route** (§10 makes this a
   hard rule for every portal surface, not just PDF).
+- **Authorization happens before signed URL generation** — the scoped
+  `findFirst` above must succeed before any signed URL is ever requested.
 - If `pdfStoragePath` is set: issue a **short-lived signed URL** to that
-  stored object, **307 redirect** — no rendering happens on this GET
-  request at all.
-- `Cache-Control: private, no-store`, `Content-Type: application/pdf`,
-  safe filename (`Invoice-<sanitized-invoiceNumber>.pdf`).
+  stored object and return it as this route's **entire response: a `307`
+  redirect (`Location` header only)** — no rendering happens on this GET
+  request at all, and **the `307` response itself has no PDF body and no
+  `Content-Type: application/pdf`** (a redirect's own response is never
+  falsely claimed to be the PDF's body content-type — that header belongs
+  to the *stored object's* own metadata, set once at upload time in §8.1,
+  and/or to Supabase's own signed-URL response once the client follows
+  the redirect, not to this route's `307`). Where applicable, this
+  route's own `307` response carries a `Cache-Control: private, no-store`
+  policy so the redirect itself is never cached.
+- A **safe download filename**
+  (`Invoice-<sanitized-invoiceNumber>.pdf`) is requested via Supabase's
+  own existing signed-download mechanism/options at signed-URL-generation
+  time (the same `download` option the codebase's storage helpers already
+  support) — never bolted onto the `307` response as a header.
 - **GET is strictly read-only** — no snapshot write, no Storage write, no
   status change, ever, on any GET request, for any invoice in any state.
   **The portal must never receive a mutable, live-regenerated PDF as a
@@ -747,27 +798,32 @@ live-render fallback (see §8.3).
   error/recovery state from §8.1, surfaced to staff for remediation, not
   silently papered over for the client.
 
-### 8.3 Legacy invoices (zero line items, pre-dating this feature)
+### 8.3 Legacy invoices
 
-- Remaining a legacy flat-amount invoice with zero `InvoiceLineItem` rows
-  is a **permanent, valid, first-class state** — never "pending
-  migration."
+Uses §4.6's exact classification, never `createdAt`:
+
+- Remaining a **flat invoice** (zero `InvoiceLineItem` rows, §4.6) is a
+  **permanent, valid, first-class state** — never "pending migration" —
+  regardless of whether it's a pre-feature record or a brand-new,
+  deliberately flat `DRAFT`.
 - The PDF view model renders a **single synthetic "Services" row** from
-  the flat `amount` for such an invoice — **only in the in-memory view
+  the flat `amount` for a flat invoice — **only in the in-memory view
   model that feeds the renderer, never as a persisted `InvoiceLineItem`
   database row.**
-- A legacy **non-`DRAFT`** invoice with no archive
-  (`pdfStoragePath IS NULL`) may render a **clearly-labeled, read-only
+- A **legacy unarchived historical invoice** (§4.6's exact predicate:
+  `status != DRAFT` **and** `finalizedAt IS NULL` **and**
+  `pdfStoragePath IS NULL`) may render a **clearly-labeled, read-only
   best-effort preview** on GET — explicitly disclosed in the UI as
   non-archival and reflecting *currently available* data (live
   `OrganizationProfile`/`Client`, since no snapshot exists for a
   pre-feature invoice). **This preview must be visually/textually
   distinguishable from a genuinely archived download**, and — critically
-  — **must be distinguishable from the error/recovery state** (§8.1) of a
-  *newly*-finalized invoice whose archive failed to write: a legacy
-  record with no archive is expected and benign; a new finalized invoice
-  with no archive is a bug requiring staff attention. The portal-facing
-  copy/UI must not conflate the two.
+  — a row failing §4.6's **invariant-violation** check
+  (`finalizedAt` set, `pdfStoragePath` null) must **never** be classified
+  as legacy and must **never** receive this live-preview fallback: that
+  combination can only mean a newly-issued invoice whose archive failed
+  to write, which is a bug requiring staff attention, not a benign
+  historical record. The portal-facing copy/UI must not conflate the two.
 - A separate, explicit **staff "Archive Legacy Invoice" `POST` action**
   lets staff opt a legacy invoice into the same snapshot+archival
   pipeline retroactively, once, on demand — never automatic, never
@@ -784,6 +840,49 @@ a **byte cap**, and a **timeout**. On any failure, the PDF renders
 finalization time, a later logo replacement or fetch failure on some
 future *regeneration attempt* can never retroactively alter an
 already-archived document.
+
+### 8.5 Orphan reconciliation
+
+**Best-effort compensating deletion (§8.1 step 6) remains the immediate,
+first-line response** to an upload-succeeded-but-DB-commit-failed
+sequence — that is unchanged. But when the compensating deletion *also*
+fails (§8.1 step 7), the uploaded object genuinely remains in Storage,
+unreferenced by any `Invoice` row — a real, disclosed leak, not
+something the unique-archive-id design eliminates on its own (a fresh
+archive id only guarantees the orphan can never *collide with or block* a
+future retry; it does not delete the orphan).
+
+**Slice 3 must provide a bounded operational reconciliation mechanism**
+for objects under the `invoice-pdf` Storage namespace — either a small,
+dedicated job, or integrated into an existing cleanup job if one is
+already a suitable fit at implementation time. **No new database model is
+introduced for this** — a bounded job comparing two things already
+available is sufficient:
+
+- **List** private Storage objects under
+  `organizations/*/invoice-pdf/**` older than a **conservative safety
+  window** (recommend well beyond any plausible in-flight finalization
+  attempt — minutes, not seconds, to avoid racing a legitimate
+  in-progress upload).
+- **Compare** each against the full set of currently-persisted
+  `Invoice.pdfStoragePath` values.
+- **Delete only** an object with **no matching `Invoice.pdfStoragePath`
+  reference** — an object that *is* referenced (the normal case for every
+  successfully finalized invoice) is **never** touched, regardless of its
+  age.
+- **Idempotent and tenant-safe**: re-running the job changes nothing
+  beyond what a first run already reconciled; every comparison stays
+  scoped within the `organizations/<orgId>/...` path prefix already
+  present in the object key, so no cross-tenant listing/deletion is
+  possible.
+- **No raw Storage error detail or object path is ever logged** — matches
+  this codebase's blanket sanitized-logging convention (§9.2, §11); only
+  a fixed, sanitized count/condition may be reported.
+- This job's own coverage (§13/§14 Slice 3) must include: an orphan
+  correctly identified and removed; a referenced, current archive
+  correctly left untouched; an object younger than the safety window left
+  untouched (protects a legitimate in-flight upload); re-running the job
+  twice is a no-op the second time.
 
 ---
 
@@ -969,42 +1068,69 @@ an unsafe interpolated one).
 
 **The implementation must never expose incorrect default-zero totals
 during a rolling deployment.** An explicit expand → backfill → contract
-sequence, not a single blind migration:
+sequence, not a single blind migration — **with the contract step
+explicitly owned, never left ownerless**:
 
-1. **Expand**: additive nullable columns/tables only — `InvoiceLineItem`,
-   `InvoiceEmailAttempt`, `Client` billing fields, `Invoice`'s
-   discount/tax/subtotal/snapshot/pdf-archival columns. Old application
-   code deployed against this schema sees no behavioral change (it never
-   reads/writes the new columns).
-2. **Deterministic legacy backfill**: `subtotal = amount, discountAmount
-   = 0, taxAmount = 0` for every pre-existing row — a pure, deterministic
-   copy of an already-existing fact, **fabricating no line items**.
-3. **Application dual-read/dual-write compatibility**: new application
-   code must tolerate both a freshly-expanded schema (new columns exist
-   but may be zero/unbackfilled momentarily) and the fully-backfilled
-   state, without ever displaying an inconsistent `subtotal: 0` next to a
-   nonzero `amount`.
-4. **Verify** before any `NOT NULL` contract — a hard stop on any
-   remaining inconsistency, never a silent partial application (mirroring
-   the discipline already proven in migration
-   `20260911090000_repair_invoice_organization_scope`, §1.6).
-5. **Real-data collision preflight** before the organization-wide
-   invoice-number uniqueness contract (§4.5) — abort/report, never
-   silently rename.
+**The §4 schema snippets show the eventual, fully-contracted target
+state** (`subtotal`/`discountAmount`/`taxAmount` non-nullable and
+defaulted, `Invoice.organizationId`-style `NOT NULL` columns where
+applicable). **Slice 1's actual implementation schema may temporarily
+keep newly-added calculated/snapshot columns nullable** where rolling
+compatibility requires it — the contract to the final, non-nullable
+shape shown in §4 is a **separate, later step, owned by Slice 5** (below),
+not assumed to land atomically with Slice 1.
+
+1. **Slice 1 — Expand**: additive nullable columns/tables only —
+   `InvoiceLineItem`, `InvoiceEmailAttempt`, `Client` billing fields,
+   `Invoice`'s discount/tax/subtotal/snapshot/pdf-archival columns. Old
+   application code deployed against this schema sees no behavioral
+   change (it never reads/writes the new columns).
+2. **Slice 1 — Deterministic legacy backfill**, run immediately after
+   expand: `subtotal = amount, discountAmount = 0, taxAmount = 0` for
+   every pre-existing row — a pure, deterministic copy of an
+   already-existing fact, **fabricating no line items**.
+3. **Slices 1–4 — Application dual-read/dual-write compatibility**: every
+   slice's application code must tolerate both a freshly-expanded schema
+   (new columns exist but may be temporarily nullable/unbackfilled) and
+   the fully-backfilled state, without ever displaying an inconsistent
+   `subtotal: 0` next to a nonzero `amount`; all new saves write correct
+   values from the moment each slice ships, and legacy rows get a
+   fallback read path (§4.6) rather than being assumed fully populated.
+4. **Slice 5 — Verify, then contract**: verify zero remaining
+   inconsistency (a hard stop, never a silent partial application —
+   mirroring the discipline already proven in migration
+   `20260911090000_repair_invoice_organization_scope`, §1.6), **only
+   then** apply the `NOT NULL`/constraint changes that bring the schema to
+   §4's final target shape. This is the same expand/backfill/**contract**
+   split migration `20260911090000...` itself modeled for
+   `Invoice.organizationId` — Slice 5 is this feature's own contract step,
+   explicitly, not an implicit assumption.
+5. **Slice 5 — Real-data collision preflight** before the
+   organization-wide invoice-number uniqueness contract (§4.5) —
+   abort/report, never silently rename. (If Slice 1 already landed the
+   `[organizationId, invoiceNumber]` constraint per §4.5's "lands here or
+   is deferred" language, this preflight is Slice 1's responsibility
+   instead — whichever slice actually applies that specific constraint
+   change owns its own preflight.)
 6. **Old/new application version compatibility** across the deploy
-   window — the contract-phase migration (`NOT NULL`, constraint swaps)
-   must only run once application code guaranteeing correct writes has
-   been live for a full deploy cycle.
+   window — the Slice 5 contract-phase migration (`NOT NULL`, constraint
+   swaps) must only run once application code guaranteeing correct writes
+   (live since Slice 1/2) has been live for a full deploy cycle.
 7. **Honest rollback/data-loss consequences**: an additive-only migration
    with zero real usage is losslessly reversible; **the moment any real
    line item, email attempt, or archived-PDF reference has been written,
    a rollback is a genuine, disclosed data-loss event** — this must never
    be described as "reversible" once that data exists. Archived PDF
    *files* in Storage are not cleaned up by a schema rollback and become
-   orphaned references.
-8. **Storage orphan cleanup**: covered by §8.1's unique-archive-id design
-   — no orphan scan is ever required, only a sanitized, reported
-   condition on the rare double-failure path.
+   orphaned references (§8.5 covers reconciling those, not schema
+   rollback specifically).
+8. **Storage orphan cleanup**: best-effort compensating deletion (§8.1
+   step 6) remains the immediate first-line response, and a fresh archive
+   id (§8.1 step 4) guarantees an orphan can never *block* a future retry
+   — but neither of those *removes* an orphan that survives a
+   double-failure (§8.1 step 7). **§8.5's bounded reconciliation job is
+   the actual cleanup mechanism** — it is not optional, and "no orphan
+   scan is ever required" is not an accurate description of this design.
 
 **Operational note, restated**: PR #63's `Invoice.organizationId` repair
 migration is merged into source control on `main` but **was not applied
@@ -1015,47 +1141,84 @@ takes effect there.
 
 ---
 
-## 13. Test Matrix (target coverage for the slices in §14)
+## 13. Test Matrix (target coverage, explicitly owned per slice)
 
-**Unit**: `Decimal` calculation/rounding/bounds (§5, all four worked
-examples plus every error code); currency allowlist (§6); validation;
-the lifecycle transition matrix (§3.1, every allowed/forbidden edge);
-snapshot parser/versioning (§7, including an unknown-`schemaVersion`
-failure case); PDF view-model construction (including the legacy
-synthetic-row case, §8.3); idempotency/recovery helpers (stale-`PENDING`
-→ `UNKNOWN` timing, §9.2).
+### 13.1 Slice 2 tests
 
-**Integration**: real itemized create/edit through the actual Server
-Actions (never a fixture that manufactures totals); server-derived
-totals proof (a tampered client total discarded); relation/tenant
-consistency (line items always resolve through an already-authorized
-parent, §11); legacy flat-invoice compatibility (zero line items stays
-valid, synthetic PDF row, lazy vs. explicit archival distinction, §8.3);
-every lifecycle transition in §3.1, both allowed and forbidden;
-immutable-field enforcement after finalization, with `internalNotes`
-proven to remain editable; archive-pipeline compensation (upload
-succeeds, DB commit fails → Storage cleanup, §8.1 step 6-7); PDF GET
-routes proven read-only (zero DB writes on any GET, for every invoice
-state); staff/portal IDOR (cross-org/cross-client 404-equivalence,
-§11); portal status visibility for every status in §10's table, list +
-detail + PDF; email `ACCEPTED`/`FAILED`/`UNKNOWN` state transitions;
-same-`idempotencyKey` retry behavior and concurrent-send rejection via
-the partial unique index (§9.2); Activity/Notification effects (the
-existing `STATUS_CHANGED`→`INVOICE_STATUS_CHANGED` fan-out, unchanged,
-§1.2).
+DRAFT itemized CRUD (create/edit through the real Server Actions, never a
+fixture that manufactures totals); `calculateInvoiceTotals()` exhaustively
+(§5, all four worked examples plus every error code) and its live
+client-side preview; validation (currency allowlist §6, line-item
+count/description caps); **no `DRAFT → SENT` transition is possible yet
+— proven directly, since Slice 2 ships with no archive capability at
+all** (§14 Slice 2 scope); existing legacy non-`DRAFT` invoices' read-only
+presentation and status behavior (view-only rendering, no edit form for
+frozen fields); delete/cancel/duplicate rules (§3.1/§3.2, including the
+invoice-number confirmation UX); `internalNotes` remaining editable in
+every status.
 
-**E2E**: itemized `DRAFT` creation + live client-side total preview +
-edit; finalize/archive flow; PDF download (staff + portal, header/content
-assertions); send/resend (using `TEST_MODE`'s existing email
+### 13.2 Slice 3 tests
+
+Snapshot creation and versioned-parser correctness (§7, including an
+unknown-`schemaVersion` failure case); the full render → upload → final
+DB commit pipeline (§8.1); the transaction's own concurrency re-check
+(a second finalization attempt against an already-non-`DRAFT` invoice is
+rejected); compensating delete on DB-commit failure (§8.1 step 6);
+**orphan reconciliation** (§8.5: an orphan correctly identified and
+removed, a referenced/current archive never touched, an object younger
+than the safety window left untouched, re-running the job twice is a
+no-op); **the core invariant, proven directly**: `status = SENT` implies
+both `finalizedAt` and `pdfStoragePath` are non-null for every
+newly-issued invoice (§4.6); **no live-fallback rendering for an
+invariant-violation record** (`finalizedAt` set, `pdfStoragePath` null,
+§4.6/§8.3); both PDF GET routes proven read-only (zero DB writes on any
+GET, for every invoice state) and correctly authorized (staff/portal
+IDOR, cross-org/cross-client 404-equivalence, §11); **`DRAFT → SENT`
+becomes possible only once this slice's archive capability exists** —
+the UI's Issue action stays disabled/unavailable until this slice ships
+(§14 Slice 2/3 boundary).
+
+### 13.3 Slice 4 tests
+
+Email `ACCEPTED`/`FAILED`/`UNKNOWN` state transitions; same-
+`idempotencyKey` retry behavior and concurrent-send rejection via the
+partial unique index (§9.2); no-email block (missing `Client.email`);
+Activity/Notification effects unchanged (the existing
+`STATUS_CHANGED`→`INVOICE_STATUS_CHANGED` fan-out, §1.2); **the combined
+Send behavior, proven directly**: if the target invoice is still `DRAFT`,
+Send first invokes the exact same Slice 3 Issue/archive service (never a
+separate, divergent finalization path) — email sending only begins after
+that Issue commit succeeds, and **if archive/finalization fails, no
+`InvoiceEmailAttempt` row is ever created and no email is dispatched**.
+
+### 13.4 Slice 5 tests
+
+**Owns the contract-migration verification** (§12 step 4): the final
+`NOT NULL`/constraint changes applied cleanly against fully-backfilled
+data, with the same "verify zero inconsistency before altering" discipline
+already proven for `20260911090000_repair_invoice_organization_scope`;
+the organization-wide invoice-number uniqueness constraint (§4.5), if not
+already landed in Slice 1, gated on its own real-data collision preflight.
+Portal status visibility for every status in §10's table — list + detail
++ PDF — including a direct proof that `DRAFT` is genuinely unreachable
+(404, not merely absent from a list); relation/tenant consistency (line
+items always resolve through an already-authorized parent, §11);
+immutable-field enforcement after finalization holds across every
+lifecycle transition in §3.1, both allowed and forbidden; final,
+whole-feature E2E closure.
+
+### 13.5 Cross-cutting E2E (closed out in Slice 5, exercised incrementally as each slice ships)
+
+Itemized `DRAFT` creation + live client-side total preview + edit;
+finalize/archive flow; PDF download (staff + portal, header/content
+assertions, including the corrected §8.2 redirect-only response
+semantics); send/resend (using `TEST_MODE`'s existing email
 short-circuit, matching the established precedent for untestable
 real-provider paths — `test/e2e/password-reset.spec.ts`); cancel +
-duplicate (including the invoice-number confirmation UX, §3.2); portal
-visibility/download across every status in §10's table, including a
-direct proof that `DRAFT` is genuinely unreachable (404, not merely
-absent from a list); legacy invoice behavior fully unaffected;
-responsive/accessibility assertions for the new line-item sub-form,
-matching this codebase's existing mobile/tablet-overflow regression-test
-discipline.
+duplicate; portal visibility/download across every status in §10's
+table; legacy invoice behavior fully unaffected; responsive/accessibility
+assertions for the new line-item sub-form, matching this codebase's
+existing mobile/tablet-overflow regression-test discipline.
 
 ---
 
@@ -1071,12 +1234,17 @@ before any code. *(This slice.)*
 **Slice 1 — expand schema, calculation domain, Client billing identity,
 legacy compatibility.**
 - *Dependencies*: prerequisite (complete).
-- *Scope*: the full §4 schema (all new tables/columns, Decimal(10,2)/(10,3)
-  throughout, no precision change to the existing `amount` column), the
-  deterministic legacy backfill (§12 step 2), `calculateInvoiceTotals()`
-  (§5), `Client` billing fields + validation, currency validation (§6).
-  The invoice-numbering uniqueness migration (§4.5/§12.5) lands here or
-  is deferred per its own preflight outcome.
+- *Scope*: an **expand** migration only — the full §4 schema, but with
+  newly-added calculated/snapshot columns kept **temporarily nullable**
+  where rolling compatibility requires it (§12), not necessarily §4's
+  final contracted shape yet; `Decimal(10,2)/(10,3)` throughout, no
+  precision change to the existing `amount` column; the deterministic
+  legacy backfill (§12 step 2), run immediately after expand;
+  `calculateInvoiceTotals()` (§5); `Client` billing fields + validation;
+  currency validation (§6); application code correctly reads/writes the
+  new columns from this point on (§12 step 3). The invoice-numbering
+  uniqueness migration (§4.5/§12.5) lands here or is deferred per its own
+  preflight outcome.
 - *Likely files*: `prisma/schema.prisma`, new migration(s),
   `src/lib/invoices/calculations.ts` (new), `src/lib/validation/{invoice,client}.ts`,
   `src/lib/validation/company-profile.ts`-adjacent currency helper.
@@ -1085,80 +1253,119 @@ legacy compatibility.**
 - *Acceptance*: schema validates, migration applies cleanly against the
   real PGlite-backed test harness, `calculateInvoiceTotals()` unit-tested
   exhaustively.
-- *Non-goals*: no UI, no PDF, no email, no lifecycle enforcement yet.
+- *Non-goals*: no UI, no PDF, no email, no lifecycle enforcement yet. No
+  `NOT NULL`/constraint contract — that is Slice 5's, explicitly (§12).
 - *Migration/deployment*: expand + deterministic backfill only (§12
-  steps 1-2); no contract-phase `NOT NULL`/constraint changes until a
-  later, separate migration once application code is confirmed live.
+  steps 1-2); owns no contract-phase step.
 
-**Slice 2 — staff itemized UI, lifecycle/finalization preparation,
-read-only issued view, cancel+duplicate.**
+**Slice 2 — staff itemized UI, DRAFT-only lifecycle enforcement,
+read-only issued view, cancel+duplicate. Does NOT finalize anything.**
 - *Dependencies*: Slice 1.
-- *Scope*: line-item sub-form + discount/tax/tax-label inputs + live
-  client-side preview; the full §3.1 transition matrix enforced
-  server-side; `DRAFT`-only creation; `finalizedAt` + snapshot population
-  (§7) on first `DRAFT → non-DRAFT` (still manual-status-change-only,
-  no email/PDF archive yet — those are Slices 3-4); read-only detail view
-  for non-`DRAFT` (labeled "Issued" for `SENT`); delete restricted to
-  `DRAFT`; cancel + duplicate-as-new-draft with the confirm-the-number UX
-  (§3.2).
+- *Scope*: itemized `DRAFT` create/edit UI (line-item sub-form +
+  discount/tax/tax-label inputs); the live client-side calculation
+  preview plus full server-side validation (§5); `DRAFT`-only creation;
+  validation of the §3.1 transition rules for **already-existing**
+  non-`DRAFT`/legacy records (e.g. `SENT→PAID`, `PAID→SENT` undo,
+  `→CANCELLED`, all still enforceable without an archive pipeline since
+  those invoices are already finalized); a **read-only presentation** for
+  every existing non-`DRAFT` invoice (labeled "Issued" for `SENT`);
+  `internalNotes` behavior (always editable, never rendered externally,
+  §3.3); delete restricted to `DRAFT` only; cancel + duplicate-as-new-draft
+  with the confirm-the-number UX (§3.2), where applicable to
+  already-non-`DRAFT` invoices; **prepares a reusable
+  lifecycle/finalization domain-service contract** (the function
+  signature/interface Slice 3 will implement against) **without
+  implementing its body**.
+- **This slice does NOT allow a new `DRAFT → SENT` transition.** It does
+  **NOT** write `finalizedAt`, `issuerSnapshot`, `recipientSnapshot`, or
+  `pdfStoragePath` under any circumstance. **The Issue action is
+  unavailable/disabled in the UI until Slice 3 ships** — there is no
+  intermediate state, reachable from any merged `main` in this slice, in
+  which a newly-created invoice can become `SENT` without an immutable
+  archived PDF (§4.6/§8.1).
 - *Likely files*: `src/components/invoices/invoice-form.tsx`,
   `src/app/(dashboard)/invoices/{new,[id]/edit}/actions.ts`,
   `src/app/(dashboard)/invoices/[id]/edit/page.tsx` (read-only branch),
-  `src/lib/activity/invoice-metadata.ts`.
-- *Tests*: integration (itemized CRUD, transition-matrix enforcement,
-  immutability, legacy compatibility, delete restriction), E2E (draft
-  creation, edit + preview, legacy unaffected).
-- *Non-goals*: no PDF archive, no email, no "Send" action.
-- *Migration/deployment*: none beyond Slice 1's.
+  `src/lib/activity/invoice-metadata.ts`, a new
+  `src/lib/invoices/lifecycle.ts`-style contract module (interface only).
+- *Tests*: §13.1 in full.
+- *Non-goals*: no PDF archive, no email, no "Send"/"Issue" action, no
+  `finalizedAt`/snapshot/`pdfStoragePath` writes of any kind.
+- *Migration/deployment*: none beyond Slice 1's; dual-read/dual-write
+  compatibility maintained (§12 step 3).
 
-**Slice 3 — PDF renderer, archive pipeline, authenticated downloads.**
-- *Dependencies*: Slice 2 (needs `finalizedAt`/snapshots populated).
-- *Scope*: `@react-pdf/renderer` dependency (§15 verification gate), PDF
-  view-model builder, the full §8.1 archival pipeline (with compensation),
-  the two §8.2 read-only GET routes, the §8.3 legacy-preview/explicit-archive
-  distinction, §8.4 logo handling.
+**Slice 3 — PDF renderer, archive pipeline, the authoritative Issue
+operation, authenticated downloads. Owns every write to
+`finalizedAt`/the snapshots/`pdfStoragePath` for newly-issued invoices.**
+- *Dependencies*: Slice 2 (consumes its lifecycle/finalization service
+  contract; needs the read-only issued view already in place).
+- *Scope*: verifies `@react-pdf/renderer` (§15 verification gate) and
+  adds it as a dependency; implements the versioned snapshot builder and
+  parser (§7); implements the render → upload → compensation pipeline in
+  full (§8.1); **implements the actual, authoritative Issue/finalize
+  operation** against Slice 2's prepared service contract — **its final
+  DB transaction is the only code path anywhere in this feature that
+  writes `issuerSnapshot`, `recipientSnapshot`, `pdfStoragePath`,
+  `pdfGeneratedAt`, `finalizedAt`, and `status = SENT` together**; the
+  two §8.2 read-only, redirect-only GET routes; the §8.3/§4.6
+  legacy-preview vs. explicit-archive vs. invariant-violation
+  distinction; §8.4 logo handling; §8.5 orphan reconciliation. **Only
+  once this slice ships does the staff UI's `DRAFT → SENT`/Issue action
+  become enabled** — Slice 2 shipped it disabled.
 - *Likely files*: `package.json` (one new dependency), `src/lib/invoices/pdf/*`,
-  `src/app/api/{,portal/}invoices/[id]/pdf/route.ts`,
-  `src/lib/rate-limit/limits.ts`.
-- *Tests*: unit (PDF view-model), integration (route authorization,
-  archive-pipeline compensation, legacy vs. new-invoice-missing-archive
-  distinction), E2E (download headers, portal visibility).
+  `src/lib/invoices/lifecycle.ts` (implementation, against Slice 2's
+  contract), `src/app/api/{,portal/}invoices/[id]/pdf/route.ts`,
+  `src/lib/rate-limit/limits.ts`, an orphan-reconciliation job/script.
+- *Tests*: §13.2 in full.
 - *Non-goals*: no email attachment yet.
 - *Migration/deployment*: none beyond storing new `pdfStoragePath`/
   `pdfGeneratedAt`/`documentVersion` values — schema already expanded in
   Slice 1.
 
-**Slice 4 — email attachment, attempt state, idempotency.**
-- *Dependencies*: Slice 1 (schema), Slice 2 (finalization), Slice 3
-  (attaches the archived PDF it produces — a real code dependency, not
-  just ordering).
+**Slice 4 — email attachment, attempt state, idempotency. Always issues
+through Slice 3's service before ever sending.**
+- *Dependencies*: Slice 1 (schema), Slice 3 (the authoritative Issue
+  operation this slice invokes for a `DRAFT` target, and the archived PDF
+  it attaches — a real code dependency, not just ordering).
 - *Scope*: `InvoiceEmailAttempt` usage, the extended `sendEmailViaResend()`
   (§9.1), the send/resend action (§9.2's idempotency design in full,
   including the partial unique index and the `UNKNOWN`-state recovery
-  UX), portal-access-optional recipient resolution.
+  UX), portal-access-optional recipient resolution. **The combined Send
+  action, explicitly**: if the target invoice is still `DRAFT`, Send
+  invokes Slice 3's Issue/archive service first, in the same operation —
+  never a separate, divergent finalization path; email sending begins
+  only after that Issue commit succeeds; **if archive/finalization
+  fails, no `InvoiceEmailAttempt` row is ever created and no email is
+  dispatched.**
 - *Likely files*: `src/lib/email/resend-client.ts` (additive extension),
-  `src/lib/email/invoices.ts` (new), a new send Server Action, a new raw
+  `src/lib/email/invoices.ts` (new), a new send Server Action (calling
+  Slice 3's lifecycle service for the DRAFT-target case), a new raw
   migration statement for the partial unique index.
-- *Tests*: integration (send success/`FAILED`/`UNKNOWN`, idempotency-key
-  retry, concurrent-send rejection, no-email block, Activity/Notification
-  unaffected), E2E (finalize/send via `TEST_MODE`, resend UI).
+- *Tests*: §13.3 in full.
 - *Non-goals*: no delivery webhook (exactly-once is explicitly not
   claimed, §9.2).
 - *Migration/deployment*: the partial unique index migration; must be
   additive/expand-only relative to Slice 1's schema.
 
-**Slice 5 — portal visibility/presentation, final security/integration/
-E2E/seed/docs closure.**
+**Slice 5 — portal visibility/presentation, contract migration, final
+security/integration/E2E/seed/docs closure.**
 - *Dependencies*: all prior slices.
-- *Scope*: the full §10 portal-visibility fix (all four query surfaces),
-  the §11 log-hygiene static check (if adopted), the full §13 test matrix
-  closure, seed-data update (a demo itemized+archived invoice), README
-  Roadmap-item update, this document's own finalization if any design
-  detail shifted during implementation.
+- *Scope*: the full §10 portal-visibility fix (all four query surfaces);
+  the §11 log-hygiene static check (if adopted); the full §13 test matrix
+  closure (§13.4); seed-data update (a demo itemized+archived invoice);
+  README Roadmap-item update; this document's own finalization if any
+  design detail shifted during implementation. **Owns the Slice-5
+  contract migration explicitly** (§12 step 4): verification that every
+  backfilled/dual-written column is fully consistent, then the `NOT
+  NULL`/constraint changes that bring the schema to §4's final target
+  shape; owns the organization-wide invoice-number uniqueness constraint
+  and its real-data collision preflight (§4.5/§12.5) if not already
+  landed in Slice 1.
 - *Non-goals*: the `GPT_PROJECT_CONTEXT.md` refresh is explicitly
   **excluded** from this slice.
-- *Migration/deployment*: none beyond confirming the full deploy sequence
-  (§12) end to end.
+- *Migration/deployment*: the contract-phase migration described above —
+  the one step every earlier slice explicitly deferred to this slice,
+  never left ownerless.
 
 **Final, separate step (not a slice): a documentation-only
 `GPT_PROJECT_CONTEXT.md` refresh**, only after Slice 5 merges.
