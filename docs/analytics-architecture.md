@@ -392,12 +392,86 @@ documentation.
   log table, plus a write on every download — again, new persistence
   this stage did not add.
 
-**Neither was implemented, faked, or approximated with a misleading
-proxy.** No `lastLoginAt` column, no download-count column, no download-
-log table exists anywhere in `prisma/schema.prisma` —
-`check-analytics-security.mjs` asserts this directly (check #13) so a
-future change can't silently reintroduce it without the check catching
-it.
+**At the time Stage 4 shipped, neither was implemented, faked, or
+approximated with a misleading proxy.** No `lastLoginAt` column, no
+download-count column, no download-log table existed anywhere in
+`prisma/schema.prisma` — `check-analytics-security.mjs` asserted this
+directly (check #13) so a future change couldn't silently reintroduce it
+without the check catching it. **This is no longer the current state —
+see §12.2a below for what a later stage, Portal Analytics persistence
+Slice 1, deliberately and reviewedly added.**
+
+### 12.2a Portal Analytics persistence foundation (Slice 1) — the gap above is now closed at the persistence layer
+
+A later stage revisited this exact "stop and document" gap, did the
+review it called for, and added the minimum honest persistence needed —
+deliberately, not silently, and still gated by `check-analytics-security.mjs`
+(check #13 now allowlists exactly these two additions instead of banning
+all tracking persistence outright — see that check's own header comment).
+**This section documents the persistence and write paths only. No
+analytics query, `PortalMetrics` field, UI card, chart, or seed data
+exists yet for either metric — that is Slice 2's own, separate scope.**
+
+- **`PortalUser.lastLoginAt` (nullable `DateTime`).** Written by
+  `src/lib/client-portal/analytics-events.ts`'s `recordPortalLogin()`,
+  called from two places: a successful, credential-backed
+  `/portal/login` sign-in (`src/app/portal/login/actions.ts`), and a
+  genuine first `PENDING -> ACCEPTED` invitation acceptance
+  (`src/app/portal/invite/[token]/actions.ts` — set inside the same
+  `portalUser.upsert()` call that already gates on that exact
+  transition, never a second write). **This is current/recent-user
+  state only, never a login history or event log** — the column is
+  overwritten on every write, so it can only ever answer "is this
+  identity's most recent sign-in within some range right now," never
+  "how many times did they sign in" or "what did their login history
+  look like last month." It is never written by session-cookie
+  resolution (`getCurrentPortalUser()`/`getOptionalPortalUser()` remain
+  pure reads), a password-reset session, or a bare `portalSignup()` with
+  no invitation accepted yet.
+- **`PortalDownloadRequest` (new model).** One immutable row per
+  successfully issued portal attachment signed download link
+  (`src/app/api/portal/attachments/[id]/download/route.ts`, via
+  `recordPortalDownloadRequest()`), written only after session/PortalUser
+  verification, the rate limit, the `Attachment` lookup, access
+  verification, and a successfully generated signed URL have all already
+  succeeded. **Organization-only** — no `portalUserId`, no
+  `attachmentId`, no `clientId`, no email/name, no signed URL, no
+  storage path/bucket, no IP, no User-Agent, no session/auth data, no
+  payload/metadata of any kind. It is structurally incapable of
+  answering "who downloaded what." **One row means exactly "an
+  authorized request successfully received a signed download link" — it
+  does not, and cannot, prove the browser followed the redirect or that
+  the file transfer completed.** Every legitimate repeat click creates
+  its own separate row, by design (no unique constraint, no
+  deduplication).
+- **Both future UI metrics (Slice 2) will be plain, current-selected-range
+  scalar counts** — `recentlyActivePortalUsers: number` and
+  `documentDownloadRequests: number` (or an equivalent honest name) —
+  **never a `GrowthMetric`, never a previous-period comparison, and no
+  chart is planned for either in v1.** `lastLoginAt` cannot honestly
+  support a previous-period comparison at all (a later login destroys
+  the only evidence of an earlier one within an older window), so it is
+  only ever read against the literal currently-selected `TimeRange`,
+  including a true `allTime`. `PortalDownloadRequest` rows are immutable
+  and timestamped precisely enough to respect this app's actual rolling
+  `TimeRange` windows (`today`/`last7Days`/`last30Days`/`last90Days`/
+  `allTime` — see `calculations/date-ranges.ts`'s own "rolling, not
+  calendar-aligned" doc comment) without the boundary-misalignment a
+  calendar-day aggregate would introduce, but no growth comparison or
+  trend chart is being added for it in this pass either.
+- **Slice 1 (this stage) collects data but renders nothing new** — no
+  card, no chart, no `PortalMetrics` field references either value yet.
+  Slice 2 adds the read path and UI once real data already exists to
+  display, so the interface never promises a number before the app has
+  actually started tracking it.
+- **Historical data from before this deployment cannot be, and was not,
+  backfilled.** Every `PortalUser` row that predates this migration has
+  `lastLoginAt = NULL` (correctly meaning "no tracked sign-in yet," not
+  a false "never signed in ever" claim); no `PortalDownloadRequest` rows
+  exist for any download that happened before this stage shipped. Both
+  metrics will honestly read as lower than real historical usage for any
+  period that spans before this deployment — this is expected and
+  disclosed, not a bug.
 
 ### 12.3 What was implemented instead, and why each is honest
 
@@ -453,4 +527,4 @@ OWNER/ADMIN gate (§7) already covers it.
 - Scheduled/emailed analytics reports.
 - AI-generated summaries.
 - Configurable MEMBER-level access (§7).
-- Portal "recent logins" and "document download count" — see §12.
+- Portal "recently active users" and "download-link requests" **read path/UI** — the persistence foundation for both now exists (§12.2a), but the analytics query, `PortalMetrics` fields, cards, and any chart are still deferred to a follow-up stage (Slice 2).

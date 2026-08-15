@@ -5,6 +5,7 @@ import { verifyPortalAttachmentAccess } from "@/lib/client-portal/attachments";
 import { createAttachmentSignedUrl } from "@/lib/storage/attachments-storage";
 import { SIGNED_URL_TTL_SECONDS } from "@/lib/storage/attachments-config";
 import { checkRateLimit, PORTAL_ATTACHMENT_DOWNLOAD_LIMIT } from "@/lib/rate-limit";
+import { recordPortalDownloadRequest } from "@/lib/client-portal/analytics-events";
 
 /**
  * Separate from /api/attachments/[id]/download (staff) on purpose — that
@@ -64,6 +65,17 @@ export async function GET(
   if (!signed.ok) {
     return new NextResponse("Unable to generate a download link.", { status: 502 });
   }
+
+  // Portal Analytics persistence foundation (docs/analytics-architecture.md
+  // §12, Slice 1). Recorded only now — after session/PortalUser
+  // verification, the rate limit, the Attachment lookup, access
+  // verification, and a successfully issued signed URL have all already
+  // succeeded — meaning this row means exactly "an authorized request
+  // received a signed download link," never an unauthorized attempt and
+  // never a claim that the file was actually received. Best-effort:
+  // recordPortalDownloadRequest() never throws, so a transient DB failure
+  // here can never block the real redirect.
+  await recordPortalDownloadRequest(prisma, organizationId);
 
   // 307 preserves the GET method on redirect and is never cached — the
   // signed URL is single-use-window (60s TTL), so it must be re-issued on

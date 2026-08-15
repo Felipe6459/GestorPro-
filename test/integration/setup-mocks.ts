@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { vi } from "vitest";
-import { getMockAuthUser, setMockAuthUser, consumeMockSignUpConfig, mockCookies } from "../support/auth-mock";
-import { mockUploadAttachmentObject, mockRemoveAttachmentObject } from "../support/storage-mock";
+import { getMockAuthUser, setMockAuthUser, consumeMockSignUpConfig, consumeMockSignInConfig, mockCookies } from "../support/auth-mock";
+import { mockUploadAttachmentObject, mockRemoveAttachmentObject, mockCreateAttachmentSignedUrl } from "../support/storage-mock";
 import { mockUploadLogoObject, mockRemoveLogoObject } from "../support/logo-storage-mock";
 import { mockRedirect, mockNotFound, mockRevalidatePath } from "../support/navigation-mock";
 
@@ -61,8 +61,36 @@ vi.mock("@/lib/supabase/server", () => ({
         const user = getMockAuthUser();
         return { data: { user: user ? { ...user, user_metadata: user.user_metadata ?? {} } : null } };
       },
+      // Correction (Portal Analytics persistence foundation, verification
+      // gap): a real Supabase signOut() clears the session — leaving the
+      // mock auth identity set after this call would make a test's own
+      // "session signed out" claim untrue, and would leave the mock
+      // authenticated as this identity for whatever the same test does
+      // next. signInWithPassword()'s own setMockAuthUser(config.user) call
+      // is exactly the state this must now undo.
       async signOut() {
+        setMockAuthUser(null);
         return { error: null };
+      },
+      // Portal Analytics persistence foundation (docs/analytics-architecture.md
+      // §12, Slice 1) — see setMockSignInConfig()'s own doc comment for
+      // what each configured "kind" simulates. The only Supabase Auth
+      // method this suite previously left entirely unmocked; extending it
+      // here (rather than extracting portalLogin's own logic into a
+      // separately-tested function) lets tests call the real, unmodified
+      // portalLogin Server Action directly.
+      async signInWithPassword() {
+        const config = consumeMockSignInConfig();
+        if (config.kind === "error") {
+          return { data: { user: null, session: null }, error: { message: config.message } };
+        }
+        // Mirrors the real SSR client persisting a session cookie that a
+        // subsequent getUser() call in the same request then reads back.
+        setMockAuthUser(config.user);
+        return {
+          data: { user: config.user, session: { access_token: "mock-session-token" } },
+          error: null,
+        };
       },
       // Sale-Ready Phase B, PR1 (Password Recovery) — resetPasswordCore's
       // own generic call; TEST_MODE has no real password to check either
@@ -94,6 +122,7 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/storage/attachments-storage", () => ({
   uploadAttachmentObject: mockUploadAttachmentObject,
   removeAttachmentObject: mockRemoveAttachmentObject,
+  createAttachmentSignedUrl: mockCreateAttachmentSignedUrl,
 }));
 
 vi.mock("@/lib/storage/logo-storage", () => ({
