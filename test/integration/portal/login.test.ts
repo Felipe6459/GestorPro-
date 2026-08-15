@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { portalLogin } from "@/app/portal/login/actions";
 import { seedTestData, cleanupTestData, type TestFixtures } from "../../fixtures/seed";
-import { setMockSignInConfig, resetAuthMock } from "../../support/auth-mock";
+import { setMockSignInConfig, getMockAuthUser, resetAuthMock } from "../../support/auth-mock";
 import { RedirectSignal, resetNavigationMock } from "../../support/navigation-mock";
 import { testEmail } from "../../support/run-id";
 import { TEST_EMAIL_DOMAIN } from "../../support/env";
@@ -96,6 +96,12 @@ describe("portalLogin — Portal Analytics persistence foundation", () => {
 
     const portalUser = await prisma.portalUser.findUnique({ where: { id: strandedAuthId } });
     expect(portalUser).toBeNull();
+
+    // Proves the "session signed out" claim, rather than asserting it by
+    // name alone — the mock's own signOut() now actually clears the
+    // identity signInWithPassword() set, the same way a real Supabase
+    // sign-out would.
+    expect(getMockAuthUser()).toBeNull();
   });
 
   it("a Supabase sign-in error: existing generic error behavior is preserved, no tracking write", async () => {

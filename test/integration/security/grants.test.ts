@@ -5,9 +5,10 @@ import { prisma } from "@/lib/prisma";
 // migration 20260802120937_lockdown_public_schema_grants actually revoked
 // anon/authenticated's privileges (and default privileges for objects
 // created later), without touching postgres's own ownership or removing
-// tables. Runs against the same 12 real migrations applied to the local
-// test database (see test/support/local-postgres.ts) — this is the exact
-// SQL history, not a re-description of it.
+// tables. Runs against the full real migration history applied by the
+// integration suite's own global setup (see test/support/local-postgres.ts)
+// — this is the exact SQL history, not a re-description of it, and grows
+// as new migrations are added rather than staying pinned to a count.
 //
 // What this CANNOT verify locally, and why (see the Stage 4 report):
 //   - Real Supabase PostgREST behavior (an anon/authenticated JWT actually
