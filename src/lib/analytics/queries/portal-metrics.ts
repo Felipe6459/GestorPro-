@@ -16,7 +16,10 @@ import type { GrowthMetric, PortalMetrics, PrismaClientOrTx, TimeRangeBounds } f
  * never a giant join" tradeoff `usage.ts` already makes elsewhere in this
  * codebase, chosen here for auditability over a single denser raw query.
  */
-export async function getPortalOverview(client: PrismaClientOrTx, organizationId: string): Promise<Omit<PortalMetrics, "invitationsAccepted" | "portalRelatedActivity">> {
+export async function getPortalOverview(
+  client: PrismaClientOrTx,
+  organizationId: string,
+): Promise<Pick<PortalMetrics, "totalPortalUsers" | "portalAdoptionRate" | "documentsAvailable" | "invoicesVisible">> {
   const [totalPortalUsers, totalClients, clientsWithPortalAccess] = await Promise.all([
     client.portalUser.count({ where: { client: { organizationId } } }),
     client.client.count({ where: { organizationId } }),
@@ -93,4 +96,57 @@ export async function getPortalActivityCounts(
     },
     portalRelatedActivity,
   };
+}
+
+/**
+ * Portal Analytics read path Slice 2 (docs/analytics-architecture.md
+ * §12.2b; persisted by Slice 1, §12.2a/§12.3) — the read side of the
+ * persistence Slice 1 added. Both fields are plain, current-selected-range
+ * scalar counts, never `GrowthMetric`s: `recentlyActivePortalUsers` is
+ * derived from `PortalUser.lastLoginAt`, a single mutable timestamp with no
+ * previous-period history to honestly compare against (a later sign-in
+ * overwrites the only evidence of an earlier one); `documentDownloadRequests`
+ * counts immutable `PortalDownloadRequest` rows, which *could* support a
+ * previous-period comparison, but none is built here — see §12.2b for the
+ * full reasoning behind keeping both plain scalars in this pass.
+ *
+ * `bounds` must be the **literal** selected-`TimeRange` bounds
+ * (`getTimeRangeBounds(timeRange, now)`, called directly — never the
+ * growth-comparison-substituted `growthBounds` `getPortalActivityCounts`
+ * above receives) — a true `allTime` (`bounds.start === null`) must
+ * really mean "since the beginning of time," not silently fall back to
+ * `DEFAULT_GROWTH_TIME_RANGE`. Both filters use this domain's half-open
+ * `[start, end)` convention (`gte` on the inclusive start, `lt` on the
+ * exclusive end, `gte` entirely omitted when `start` is null) — the
+ * correct convention already established by `queries/growth-metrics.ts`,
+ * deliberately not `getPortalActivityCounts`'s own pre-existing `lte`
+ * convention above, which is a separate, out-of-scope, unrelated
+ * boundary behavior this function does not repeat and does not repair.
+ *
+ * Two independent `count` queries only — no `findMany`, no raw SQL, no
+ * row materialization, no per-row loop, no PII of any kind (`PortalUser`
+ * is never read beyond the bare count; `PortalDownloadRequest` has no PII
+ * to read in the first place).
+ */
+export async function getPortalEngagementCounts(
+  client: PrismaClientOrTx,
+  organizationId: string,
+  bounds: TimeRangeBounds,
+): Promise<Pick<PortalMetrics, "recentlyActivePortalUsers" | "documentDownloadRequests">> {
+  const [recentlyActivePortalUsers, documentDownloadRequests] = await Promise.all([
+    client.portalUser.count({
+      where: {
+        client: { organizationId },
+        lastLoginAt: { ...(bounds.start ? { gte: bounds.start } : {}), lt: bounds.end },
+      },
+    }),
+    client.portalDownloadRequest.count({
+      where: {
+        organizationId,
+        requestedAt: { ...(bounds.start ? { gte: bounds.start } : {}), lt: bounds.end },
+      },
+    }),
+  ]);
+
+  return { recentlyActivePortalUsers, documentDownloadRequests };
 }

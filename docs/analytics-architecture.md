@@ -25,13 +25,16 @@ reasons.
 - **Stage 4 (Portal analytics)** — aggregate Client Portal metrics
   (portal users, adoption rate, document/invoice visibility, invitation
   acceptance) — see §12/§13. Two of the metrics the Stage 4 task spec
-  requested (recent logins, document download count) are **not**
-  implemented — §12 explains exactly why, in detail, per that spec's own
-  "stop and document" instruction.
+  requested (recent logins, document download count) were **not**
+  implemented at the time — §12.2 explains exactly why, in detail, per
+  that spec's own "stop and document" instruction. Both are now
+  implemented, honestly and with a deliberately narrower semantic than
+  originally requested, by the later Portal Analytics persistence
+  Slice 1/Slice 2 work — see §12.2a/§12.2b.
 
 Still explicitly **not** implemented (deferred — see §14): CSV/PDF
 export, scheduled/emailed reports, AI-generated summaries, configurable
-MEMBER access, portal "recent logins," portal "document download count."
+MEMBER access.
 
 ## 3. Directory layout
 
@@ -350,12 +353,15 @@ necessary. If additional persistence becomes unavoidable: stop; document
 the reason; return CHANGES REQUIRED."* This section is that
 documentation.
 
-### 12.1 What the schema actually contains today
+### 12.1 What the schema contained at the time Stage 4 shipped (historical — see §12.2a for what has since changed)
 
-- `PortalUser` has `id`, `clientId`, `email`, `name`, `createdAt`,
-  `updatedAt` — **no login/session timestamp of any kind**.
+- `PortalUser` had `id`, `clientId`, `email`, `name`, `createdAt`,
+  `updatedAt` — **no login/session timestamp of any kind**. (This is no
+  longer true — `lastLoginAt` was added by Slice 1, §12.2a.)
 - `Attachment`'s only timestamp is `createdAt` (upload time) — no
-  access/open/download event is ever recorded.
+  access/open/download event is ever recorded. This part is still
+  accurate: Slice 1 added a download-*request* event
+  (`PortalDownloadRequest`), never an `Attachment`-level column or event.
 - The Portal attachment download route
   (`src/app/api/portal/attachments/[id]/download/route.ts`) issues a
   short-lived signed URL and redirects — its own header comment states
@@ -408,9 +414,11 @@ review it called for, and added the minimum honest persistence needed —
 deliberately, not silently, and still gated by `check-analytics-security.mjs`
 (check #13 now allowlists exactly these two additions instead of banning
 all tracking persistence outright — see that check's own header comment).
-**This section documents the persistence and write paths only. No
-analytics query, `PortalMetrics` field, UI card, chart, or seed data
-exists yet for either metric — that is Slice 2's own, separate scope.**
+**This section documents the persistence and write paths Slice 1 added.
+Slice 2 (§12.2b) is the read path that consumes this exact persistence —
+the analytics query, `PortalMetrics` fields, and UI cards described here
+as future work at the time Slice 1 shipped now exist, exactly as
+originally scoped.**
 
 - **`PortalUser.lastLoginAt` (nullable `DateTime`).** Written by
   `src/lib/client-portal/analytics-events.ts`'s `recordPortalLogin()`,
@@ -444,26 +452,26 @@ exists yet for either metric — that is Slice 2's own, separate scope.**
   the file transfer completed.** Every legitimate repeat click creates
   its own separate row, by design (no unique constraint, no
   deduplication).
-- **Both future UI metrics (Slice 2) will be plain, current-selected-range
+- **Both UI metrics (Slice 2, §12.2b) are plain, current-selected-range
   scalar counts** — `recentlyActivePortalUsers: number` and
-  `documentDownloadRequests: number` (or an equivalent honest name) —
-  **never a `GrowthMetric`, never a previous-period comparison, and no
-  chart is planned for either in v1.** `lastLoginAt` cannot honestly
-  support a previous-period comparison at all (a later login destroys
-  the only evidence of an earlier one within an older window), so it is
-  only ever read against the literal currently-selected `TimeRange`,
-  including a true `allTime`. `PortalDownloadRequest` rows are immutable
-  and timestamped precisely enough to respect this app's actual rolling
-  `TimeRange` windows (`today`/`last7Days`/`last30Days`/`last90Days`/
-  `allTime` — see `calculations/date-ranges.ts`'s own "rolling, not
-  calendar-aligned" doc comment) without the boundary-misalignment a
-  calendar-day aggregate would introduce, but no growth comparison or
-  trend chart is being added for it in this pass either.
-- **Slice 1 (this stage) collects data but renders nothing new** — no
-  card, no chart, no `PortalMetrics` field references either value yet.
-  Slice 2 adds the read path and UI once real data already exists to
-  display, so the interface never promises a number before the app has
-  actually started tracking it.
+  `documentDownloadRequests: number` — **never a `GrowthMetric`, never a
+  previous-period comparison, and no chart.** `lastLoginAt` cannot
+  honestly support a previous-period comparison at all (a later login
+  destroys the only evidence of an earlier one within an older window),
+  so it is only ever read against the literal currently-selected
+  `TimeRange`, including a true `allTime`. `PortalDownloadRequest` rows
+  are immutable and timestamped precisely enough to respect this app's
+  actual rolling `TimeRange` windows (`today`/`last7Days`/`last30Days`/
+  `last90Days`/`allTime` — see `calculations/date-ranges.ts`'s own
+  "rolling, not calendar-aligned" doc comment) without the
+  boundary-misalignment a calendar-day aggregate would introduce, but no
+  growth comparison or trend chart was added for it either.
+- **Slice 1 collected data before anything rendered it** — Slice 1
+  shipped with no card, no chart, no `PortalMetrics` field referencing
+  either value, specifically so the interface would never promise a
+  number before the app had actually started tracking it. Slice 2
+  (§12.2b) added the read path and UI only once real data already
+  existed to display.
 - **Historical data from before this deployment cannot be, and was not,
   backfilled.** Every `PortalUser` row that predates this migration has
   `lastLoginAt = NULL` (correctly meaning "no tracked sign-in yet," not
@@ -473,15 +481,69 @@ exists yet for either metric — that is Slice 2's own, separate scope.**
   period that spans before this deployment — this is expected and
   disclosed, not a bug.
 
+### 12.2b Portal Analytics read path (Slice 2) — the two new metrics are now live
+
+The read side of the persistence §12.2a added. One new query function,
+`getPortalEngagementCounts(client, organizationId, bounds)`
+(`src/lib/analytics/queries/portal-metrics.ts`), two new `PortalMetrics`
+fields, two new plain `AnalyticsGrid` cards, and one empty-state
+predicate correction — nothing else changed about how Portal analytics
+works.
+
+- **Query shape.** Two independent `count` queries, run concurrently via
+  `Promise.all` — never `findMany`, never raw SQL, never a per-row loop.
+  `recentlyActivePortalUsers` counts `PortalUser` rows scoped through
+  `client: { organizationId }` (the same Client-based scoping every
+  other portal query in this file already uses — `PortalUser` has no
+  `organizationId` column of its own, see §13). `documentDownloadRequests`
+  counts `PortalDownloadRequest` rows scoped directly by its own
+  `organizationId` column (no join needed — see §13). Neither reads a
+  `PortalUser`'s email/name, an id, a `clientId`, or any raw timestamp;
+  both return bare integers.
+- **`[start, end)` filtering.** Both counts filter their respective
+  timestamp column (`lastLoginAt`/`requestedAt`) with this domain's
+  half-open convention: `gte` on the inclusive `start` (omitted entirely
+  when `start` is `null`), `lt` on the exclusive `end` — matching
+  `queries/growth-metrics.ts`'s own already-correct convention, not
+  `getPortalActivityCounts`'s pre-existing `lte` (a separate, unrelated,
+  out-of-scope behavior this function does not touch or repeat).
+- **Literal `TimeRange`, including a true `allTime`.** The service layer
+  (`analytics-service.ts`) computes a dedicated `selectedBounds =
+  getTimeRangeBounds(timeRange, now)` — the literal, unsubstituted
+  selected range — specifically for these two fields, kept deliberately
+  separate from `growthBounds` (which silently substitutes
+  `DEFAULT_GROWTH_TIME_RANGE`/`last30Days` for every `GrowthMetric` card
+  whenever the UI selects `allTime`). Selecting "All time" for these two
+  cards means exactly that: `bounds.start === null`, every row ever
+  written counted, never a hidden 30-day cap.
+- **UI.** Two plain `AnalyticsGrid` cards in the existing "Portal
+  overview" grid (`portal-analytics-section.tsx`), with the exact visible
+  labels **"Recently active portal users"** and **"Download-link
+  requests"** — a label and a bare number, no `indicator`, no
+  `sparkline`, no `GrowthIndicator`, no `ComparisonBarChart`, no trend
+  chart, no tooltip. `documentDownloadRequests` is never labeled
+  "Document downloads" — the value can only ever prove a signed link was
+  successfully issued, never that the file transfer completed (§12.2a).
+- **Empty-state correction.** `PortalDownloadRequest` belongs directly to
+  `Organization`, not to `Client`/`PortalUser` — deleting a Client
+  cascades away its `PortalUser` rows but never touches an
+  organization-scoped `PortalDownloadRequest` row. The Portal section's
+  own emptiness check now requires **all five** of `totalPortalUsers`,
+  `documentsAvailable`, `invoicesVisible`, `recentlyActivePortalUsers`,
+  and `documentDownloadRequests` to be zero before rendering the empty
+  state — an organization with zero current Clients/PortalUsers but real
+  historical download-link request data still renders its real Portal
+  overview grid, not "No activity yet."
+
 ### 12.3 What was implemented instead, and why each is honest
 
 | Requested | Implemented as | Real source |
 |---|---|---|
-| Active portal users | **"Portal users"** — total count, not a recency-filtered "active" count (no recency signal exists) | `PortalUser` rows for the org |
+| Active portal users | **"Portal users"** — current total of `PortalUser` rows, unfiltered by the selected `TimeRange` and not a retained historical/lifetime count (deleted rows cascade away with their Client); not a recency-filtered "active" count (see "Recently active portal users" below for that) | `PortalUser` rows for the org |
 | Invitation acceptance count | Real, time-boundable count | `Activity` rows, `action = PORTAL_INVITATION_ACCEPTED` |
-| Recent logins | *(not implemented — §12.2)* | — |
+| Recent logins | **"Recently active portal users"** — distinct `PortalUser` identities whose most recent explicit sign-in falls within the literal selected `TimeRange` (§12.2b); a current-state scalar, not a login-event count | `PortalUser.lastLoginAt` |
 | Document access count | Folded into **"Documents available"** — content *reachable* by a portal identity, never an access event | `Attachment` rows (Client + Project level) scoped to Clients with a `PortalUser` |
-| Document download count | *(not implemented — §12.2)* | — |
+| Document download count | **"Download-link requests"** — authorized requests that successfully received a signed download link within the selected range; never "Document downloads," since a completed file transfer is never observed (§12.2a/§12.2b) | `PortalDownloadRequest` rows |
 | Completed actions | **"Portal activity"** — count of portal-lifecycle Activity rows in the period | `Activity` rows, `entityType = PORTAL_USER` |
 | Recent activity count | Same as above (one real signal, not two) | `Activity` rows, `entityType = PORTAL_USER` |
 | Activity trend | **Portal trends** line chart | Same Activity rows, bucketed (§10's shape, reused) |
@@ -505,15 +567,20 @@ component), `ComparisonBarChart`, `ChartsSection`. No new chart-rendering
 code was written for Stage 4.
 
 `PortalUser` has no `organizationId` column of its own (only `clientId`)
-— every portal query scopes through `Client.organizationId`, either as a
-Prisma `where: { client: { organizationId } }` filter
-(`portal-metrics.ts`) or a `clientId IN (SELECT id FROM "Client" WHERE
-"organizationId" = ...)` subquery in the one raw-SQL query
-(`portal-time-series.ts`) — functionally identical scoping, verified by
-`check-analytics-security.mjs`'s check #12 and by dedicated
-cross-organization-isolation tests in
+— every `PortalUser`-based query scopes through `Client.organizationId`,
+either as a Prisma `where: { client: { organizationId } }` filter
+(`portal-metrics.ts`'s `getPortalOverview` and, for
+`recentlyActivePortalUsers`, `getPortalEngagementCounts` — §12.2b) or a
+`clientId IN (SELECT id FROM "Client" WHERE "organizationId" = ...)`
+subquery in the one raw-SQL query (`portal-time-series.ts`) —
+functionally identical scoping, verified by `check-analytics-security.mjs`'s
+check #12 and by dedicated cross-organization-isolation tests in
 `test/integration/analytics/portal-metrics.test.ts` and
-`portal-time-series.test.ts`.
+`portal-time-series.test.ts`. `PortalDownloadRequest`, by contrast, *does*
+carry its own `organizationId` column directly (§12.2a) — its count in
+`getPortalEngagementCounts` scopes with a plain `where: { organizationId
+}`, no `Client` join needed at all, and is covered by the same
+cross-organization-isolation test file.
 
 Portal-only identities are rejected the same way every other Analytics
 consumer is: this route lives under `(dashboard)`, whose layout redirects
@@ -527,4 +594,3 @@ OWNER/ADMIN gate (§7) already covers it.
 - Scheduled/emailed analytics reports.
 - AI-generated summaries.
 - Configurable MEMBER-level access (§7).
-- Portal "recently active users" and "download-link requests" **read path/UI** — the persistence foundation for both now exists (§12.2a), but the analytics query, `PortalMetrics` fields, cards, and any chart are still deferred to a follow-up stage (Slice 2).

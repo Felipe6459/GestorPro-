@@ -132,6 +132,9 @@ describe("getOrganizationAnalytics", () => {
     expect(snapshot.portal.invoicesVisible).toBe(0);
     expect(snapshot.portal.invitationsAccepted).toEqual({ currentPeriodCount: 0, previousPeriodCount: 0, changePercent: null });
     expect(snapshot.portal.portalRelatedActivity).toBe(0);
+    // Portal Analytics persistence Slice 2.
+    expect(snapshot.portal.recentlyActivePortalUsers).toBe(0);
+    expect(snapshot.portal.documentDownloadRequests).toBe(0);
 
     expect(snapshot.charts.portalUserGrowthSeries.unit).toBe("day");
     expect(snapshot.charts.portalInvitationSeries.unit).toBe("day");
@@ -140,6 +143,61 @@ describe("getOrganizationAnalytics", () => {
     // every portal field is a plain count/rate/GrowthMetric.
     const serialized = JSON.stringify(snapshot);
     expect(serialized).not.toMatch(/@test\.local/); // the fixture's own email domain
+  });
+
+  describe("Portal Analytics persistence Slice 2: recentlyActivePortalUsers / documentDownloadRequests", () => {
+    let engagementOrg: Awaited<ReturnType<typeof createOrgWithOwner>>;
+    let engagementClient: { id: string };
+
+    // Deliberately older than DEFAULT_GROWTH_TIME_RANGE/last30Days (30
+    // days before NOW) but still before NOW itself — the exact scenario
+    // that would only be caught by a service-level test, never a direct
+    // query test: if getOrganizationAnalytics ever accidentally passed
+    // growthBounds (which silently substitutes last30Days for a selected
+    // allTime) instead of the literal selectedBounds to
+    // getPortalEngagementCounts, this data would wrongly disappear from
+    // "allTime" too, not just from "last30Days".
+    const OLD_LOGIN_AT = new Date(NOW.getTime() - 45 * 24 * 60 * 60 * 1000);
+    const OLD_DOWNLOAD_AT = new Date(NOW.getTime() - 45 * 24 * 60 * 60 * 1000);
+
+    beforeAll(async () => {
+      engagementOrg = await createOrgWithOwner("engagement-svc");
+      engagementClient = await prisma.client.create({
+        data: { name: "Engagement Service Client", userId: engagementOrg.owner.id, organizationId: engagementOrg.org.id },
+      });
+      await prisma.portalUser.create({
+        data: {
+          id: randomUUID(),
+          clientId: engagementClient.id,
+          email: testEmail("engagement-svc", "test.local", randomUUID().slice(0, 8)),
+          name: "Engagement Svc User",
+          lastLoginAt: OLD_LOGIN_AT,
+        },
+      });
+      await prisma.portalDownloadRequest.create({
+        data: { organizationId: engagementOrg.org.id, requestedAt: OLD_DOWNLOAD_AT },
+      });
+    });
+
+    afterAll(async () => {
+      await prisma.portalDownloadRequest.deleteMany({ where: { organizationId: engagementOrg.org.id } });
+      await prisma.client.deleteMany({ where: { organizationId: engagementOrg.org.id } });
+      await prisma.organization.delete({ where: { id: engagementOrg.org.id } });
+      await prisma.user.delete({ where: { id: engagementOrg.owner.id } });
+    });
+
+    it("last30Days excludes data older than 30 days from both new metrics", async () => {
+      const snapshot = await getOrganizationAnalytics(engagementOrg.org.id, "OWNER", "last30Days", NOW);
+      expect(snapshot.portal.recentlyActivePortalUsers).toBe(0);
+      expect(snapshot.portal.documentDownloadRequests).toBe(0);
+    });
+
+    it("allTime is literal — not the growth-comparison last30Days fallback — and includes the same 45-day-old data", async () => {
+      const snapshot = await getOrganizationAnalytics(engagementOrg.org.id, "OWNER", "allTime", NOW);
+      expect(snapshot.timeRange).toBe("allTime");
+      expect(snapshot.portal.recentlyActivePortalUsers).toBe(1);
+      expect(snapshot.portal.documentDownloadRequests).toBe(1);
+    });
   });
 });
 
@@ -188,6 +246,8 @@ describe("getOrganizationAnalytics — Stage 3 empty-state scenarios", () => {
       invoicesVisible: 0,
       invitationsAccepted: { currentPeriodCount: 0, previousPeriodCount: 0, changePercent: null },
       portalRelatedActivity: 0,
+      recentlyActivePortalUsers: 0,
+      documentDownloadRequests: 0,
     });
     expect(snapshot.charts.portalUserGrowthSeries.points.every((p) => p.count === 0)).toBe(true);
 

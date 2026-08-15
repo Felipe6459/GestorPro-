@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { test, expect, type BrowserContext } from "@playwright/test";
 import { seedE2EFixtures, cleanupTestData, dbQuery, type TestFixtures } from "./fixtures";
 import { injectTestSession } from "../support/e2e-session";
@@ -136,6 +137,216 @@ test.describe("OWNER", () => {
       await dbQuery("membership", "deleteMany", { where: { organizationId: empty.id } });
       await dbQuery("organization", "delete", { where: { id: empty.id } });
     }
+  });
+
+  test.describe("Portal Analytics persistence Slice 2: recentlyActivePortalUsers / documentDownloadRequests", () => {
+    /**
+     * Locates the exact AnalyticsCard for `label` and asserts its own
+     * value — never a page-wide text search — so a matching number
+     * rendered by an unrelated card cannot make this pass accidentally.
+     * AnalyticsCard's own markup (analytics-card.tsx) always renders the
+     * label as the immediate previous sibling's text; the card root is
+     * that text node's own parent element.
+     */
+    function cardValue(scope: import("@playwright/test").Locator, label: string) {
+      return scope.getByText(label, { exact: true }).locator("xpath=..");
+    }
+
+    /**
+     * GrowthIndicator (growth-indicator.tsx) is a text-only `<span>` with
+     * no `role="img"` and no `<svg>` — checking only those two proves
+     * "no chart," not "no growth indicator." It renders exactly one of
+     * two `aria-label` shapes (`"${label}: ${direction} ${magnitude}%
+     * compared with the previous period"` or `"${label}: no
+     * prior-period data"`), so asserting neither substring is present
+     * inside the card is the real proof of absence.
+     */
+    function expectNoGrowthIndicator(card: import("@playwright/test").Locator) {
+      return Promise.all([
+        expect(card.locator('[aria-label*="compared with the previous period"]')).toHaveCount(0),
+        expect(card.locator('[aria-label*="no prior-period data"]')).toHaveCount(0),
+      ]);
+    }
+
+    test("real scalar values render inside their own cards, with no growth indicator/comparison/chart, and no PII", async ({ page, context, baseURL }) => {
+      const tempPortalUserIds = [randomUUID(), randomUUID()];
+      const originalPortalUserLastLoginAt = (
+        await dbQuery<{ lastLoginAt: string | null }>("portalUser", "findUniqueOrThrow", {
+          where: { id: fixtures.portalUser.id },
+          select: { lastLoginAt: true },
+        })
+      ).lastLoginAt;
+      const downloadRows = await dbQuery<{ id: string }[]>("portalDownloadRequest", "createManyAndReturn", {
+        data: [
+          { organizationId: fixtures.orgA.id, requestedAt: new Date() },
+          { organizationId: fixtures.orgA.id, requestedAt: new Date() },
+          { organizationId: fixtures.orgA.id, requestedAt: new Date() },
+        ],
+      });
+
+      try {
+        await dbQuery("portalUser", "createMany", {
+          data: tempPortalUserIds.map((id, i) => ({
+            id,
+            clientId: fixtures.clientA.id,
+            email: `e2e-engagement-${i}-${fixtures.runId}@e2e-test.example`,
+            name: `E2E Engagement User ${i}`,
+            lastLoginAt: new Date(),
+          })),
+        });
+        // fixtures.portalUser itself must stay excluded from this count —
+        // explicitly confirmed unset, defensively, regardless of any
+        // other test's own ordering. Restored in `finally` below.
+        await dbQuery("portalUser", "update", { where: { id: fixtures.portalUser.id }, data: { lastLoginAt: null } });
+
+        await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+        await page.goto("/analytics");
+
+        const portalSection = page.locator("section", { has: page.getByRole("heading", { name: "Portal", exact: true }) });
+        const overviewGrid = portalSection.locator("section", { has: page.getByRole("heading", { name: "Portal overview" }) });
+
+        const activeUsersCard = cardValue(overviewGrid, "Recently active portal users");
+        await expect(activeUsersCard.getByText("2", { exact: true })).toBeVisible();
+        await expect(activeUsersCard.locator("svg")).toHaveCount(0);
+        await expect(activeUsersCard.getByRole("img")).toHaveCount(0); // no chart
+        await expectNoGrowthIndicator(activeUsersCard);
+
+        const downloadsCard = cardValue(overviewGrid, "Download-link requests");
+        await expect(downloadsCard.getByText("3", { exact: true })).toBeVisible();
+        await expect(downloadsCard.locator("svg")).toHaveCount(0);
+        await expect(downloadsCard.getByRole("img")).toHaveCount(0);
+        await expectNoGrowthIndicator(downloadsCard);
+
+        const sectionText = await portalSection.innerText();
+        for (const id of tempPortalUserIds) expect(sectionText).not.toContain(id);
+        for (const row of downloadRows) expect(sectionText).not.toContain(row.id);
+        expect(sectionText).not.toContain("e2e-engagement-0");
+        expect(sectionText).not.toContain("E2E Engagement User");
+        expect(sectionText).not.toContain(fixtures.clientA.id);
+      } finally {
+        await dbQuery("portalUser", "deleteMany", { where: { id: { in: tempPortalUserIds } } });
+        await dbQuery("portalDownloadRequest", "deleteMany", { where: { id: { in: downloadRows.map((r) => r.id) } } });
+        await dbQuery("portalUser", "update", {
+          where: { id: fixtures.portalUser.id },
+          data: { lastLoginAt: originalPortalUserLastLoginAt },
+        });
+      }
+    });
+
+    test("data older than 30 days is excluded from range=last30Days and included under literal range=allTime, for both metrics", async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      // Comfortably away from the 30-day boundary (45 days) to avoid
+      // wall-clock flakiness — never right at the edge.
+      const oldInstant = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000);
+      const tempPortalUserId = randomUUID();
+      const originalPortalUserLastLoginAt = (
+        await dbQuery<{ lastLoginAt: string | null }>("portalUser", "findUniqueOrThrow", {
+          where: { id: fixtures.portalUser.id },
+          select: { lastLoginAt: true },
+        })
+      ).lastLoginAt;
+
+      const downloadRow = await dbQuery<{ id: string }>("portalDownloadRequest", "create", {
+        data: { organizationId: fixtures.orgA.id, requestedAt: oldInstant },
+      });
+
+      try {
+        await dbQuery("portalUser", "create", {
+          data: {
+            id: tempPortalUserId,
+            clientId: fixtures.clientA.id,
+            email: `e2e-old-login-${fixtures.runId}@e2e-test.example`,
+            name: "E2E Old Login User",
+            lastLoginAt: oldInstant,
+          },
+        });
+        // Restored in `finally` below.
+        await dbQuery("portalUser", "update", { where: { id: fixtures.portalUser.id }, data: { lastLoginAt: null } });
+
+        await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+
+        await page.goto("/analytics?range=last30Days");
+        const portalSection30 = page.locator("section", { has: page.getByRole("heading", { name: "Portal", exact: true }) });
+        const overviewGrid30 = portalSection30.locator("section", { has: page.getByRole("heading", { name: "Portal overview" }) });
+        await expect(cardValue(overviewGrid30, "Recently active portal users").getByText("0", { exact: true })).toBeVisible();
+        await expect(cardValue(overviewGrid30, "Download-link requests").getByText("0", { exact: true })).toBeVisible();
+
+        await page.goto("/analytics?range=allTime");
+        const portalSectionAll = page.locator("section", { has: page.getByRole("heading", { name: "Portal", exact: true }) });
+        const overviewGridAll = portalSectionAll.locator("section", { has: page.getByRole("heading", { name: "Portal overview" }) });
+        await expect(cardValue(overviewGridAll, "Recently active portal users").getByText("1", { exact: true })).toBeVisible();
+        await expect(cardValue(overviewGridAll, "Download-link requests").getByText("1", { exact: true })).toBeVisible();
+      } finally {
+        await dbQuery("portalUser", "deleteMany", { where: { id: tempPortalUserId } });
+        await dbQuery("portalDownloadRequest", "deleteMany", { where: { id: downloadRow.id } });
+        await dbQuery("portalUser", "update", {
+          where: { id: fixtures.portalUser.id },
+          data: { lastLoginAt: originalPortalUserLastLoginAt },
+        });
+      }
+    });
+
+    test("historical download-link requests keep the Portal section visible even after its Client (and PortalUser) are deleted", async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      // Only the Organization is created outside `try` — it has no prior
+      // dependency, so if this single call fails there is nothing yet to
+      // clean up. Every dependent row (Membership/Client/PortalUser/
+      // PortalDownloadRequest) is created inside `try`, so a partial
+      // setup failure anywhere after this point still reaches `finally`.
+      const org = await dbQuery<{ id: string }>("organization", "create", {
+        data: { name: `E2E Historical Download Org ${fixtures.runId}`, slug: `e2e-historical-download-${fixtures.runId}` },
+      });
+
+      try {
+        await dbQuery("membership", "create", { data: { userId: fixtures.owner.id, organizationId: org.id, role: "OWNER" } });
+        const client = await dbQuery<{ id: string }>("client", "create", {
+          data: { name: "Temp Historical Client", userId: fixtures.owner.id, organizationId: org.id },
+        });
+        const portalUserId = randomUUID();
+        await dbQuery("portalUser", "create", {
+          data: {
+            id: portalUserId,
+            clientId: client.id,
+            email: `e2e-historical-${fixtures.runId}@e2e-test.example`,
+            name: "E2E Historical Portal User",
+          },
+        });
+        await dbQuery("portalDownloadRequest", "create", { data: { organizationId: org.id, requestedAt: new Date() } });
+
+        // Deleting the Client cascades away its PortalUser — the
+        // organization-scoped PortalDownloadRequest row has no
+        // relationship to either, so it survives.
+        await dbQuery("client", "delete", { where: { id: client.id } });
+
+        await actAsMember(context, baseURL!, fixtures.owner, org.id);
+        await page.goto("/analytics");
+
+        const portalSection = page.locator("section", { has: page.getByRole("heading", { name: "Portal", exact: true }) });
+        await expect(portalSection.getByText("No activity yet")).toHaveCount(0);
+
+        const overviewGrid = portalSection.locator("section", { has: page.getByRole("heading", { name: "Portal overview" }) });
+        await expect(cardValue(overviewGrid, "Portal users").getByText("0", { exact: true })).toBeVisible();
+        await expect(cardValue(overviewGrid, "Download-link requests").getByText("1", { exact: true })).toBeVisible();
+      } finally {
+        // `deleteMany` (never a not-found-throwing `delete`) scoped by
+        // `organizationId`, in dependency order, so this is safe
+        // regardless of how far setup got: nothing is left behind even
+        // if `client`/`portalUserId` never got created. `client` is
+        // deleted explicitly (its own onDelete is `SetNull`, not
+        // `Cascade`, on Organization) rather than relied on to vanish
+        // when the Organization itself is deleted below.
+        await dbQuery("portalDownloadRequest", "deleteMany", { where: { organizationId: org.id } });
+        await dbQuery("client", "deleteMany", { where: { organizationId: org.id } });
+        await dbQuery("membership", "deleteMany", { where: { organizationId: org.id } });
+        await dbQuery("organization", "delete", { where: { id: org.id } });
+      }
+    });
   });
 
   test("Status section never exposes a raw internal enum value or a provider/organization id as visible text", async ({ page }) => {
