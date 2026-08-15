@@ -167,20 +167,19 @@ export type AnalyticsChartData = {
 };
 
 /**
- * Analytics Stage 4 (docs/analytics-architecture.md §13). Every field
- * here is derived exclusively from PortalUser/Client/Project/Attachment/
- * Invoice/Activity rows this app already writes for other reasons — see
- * queries/portal-metrics.ts's own doc comment for exactly which source
- * backs which field, and §13's "what could not be honestly implemented"
- * note for the two requested metrics (recent logins, document download
- * count) this snapshot deliberately does NOT include.
+ * Analytics Stage 4 (docs/analytics-architecture.md §13), extended by
+ * Portal Analytics persistence Slice 1/Slice 2 (§12.2a). Every field here
+ * is derived exclusively from PortalUser/Client/Project/Attachment/
+ * Invoice/Activity/PortalDownloadRequest rows this app already writes for
+ * other reasons — see queries/portal-metrics.ts's own doc comment for
+ * exactly which source backs which field.
  */
 export type PortalMetrics = {
-  /** Total PortalUser rows for the organization — see §13 for why this is labeled "Portal users," not "active portal users" (no login/session data exists to define "active"). */
+  /** Total PortalUser rows for the organization — see §13 for why this is labeled "Portal users," not "active portal users" (this is a lifetime total, unrelated to `recentlyActivePortalUsers` below). */
   totalPortalUsers: number;
   /** 0–100, integer: percent of the organization's Clients that have at least one PortalUser. `0` when the organization has no Clients at all (never NaN). */
   portalAdoptionRate: number;
-  /** Attachment rows reachable by at least one of this organization's portal identities (Client-level + Project-level, scoped to Clients that have a PortalUser) — content *availability*, never an access/open/download event (none of those are tracked — see §13). */
+  /** Attachment rows reachable by at least one of this organization's portal identities (Client-level + Project-level, scoped to Clients that have a PortalUser) — content *availability*, never an access/open/download event. */
   documentsAvailable: number;
   /** Invoice rows belonging to a Client that has a PortalUser — same "reachable, not accessed" caveat as documentsAvailable. */
   invoicesVisible: number;
@@ -188,6 +187,37 @@ export type PortalMetrics = {
   invitationsAccepted: GrowthMetric;
   /** Count of Activity rows scoped to the portal domain (entityType = PORTAL_USER, or a PORTAL_-prefixed action), within the selected TimeRange — "completed actions" / "recent activity count" combined into one real, time-boundable signal. */
   portalRelatedActivity: number;
+  /**
+   * Portal Analytics persistence Slice 2 (docs/analytics-architecture.md
+   * §12.2a/§12.3). Count of `PortalUser` rows whose `lastLoginAt` falls
+   * within the **literal** selected `TimeRange` (a true, unsubstituted
+   * `allTime` included — never the growth-comparison fallback). A plain
+   * current-range scalar, deliberately **not** a `GrowthMetric`:
+   * `lastLoginAt` is mutable current state, not a login history — a
+   * later sign-in overwrites the only evidence of an earlier one, so
+   * this can never honestly support a previous-period comparison. This
+   * counts distinct portal *identities*, never login *events* (a person
+   * who signed in five times in the range still counts once). `NULL`
+   * means "no explicit sign-in has been tracked since this persistence
+   * was introduced," not "this identity has never signed in, ever."
+   * Exposes no PII — never a name, email, id, or `clientId`, only the
+   * aggregate count.
+   */
+  recentlyActivePortalUsers: number;
+  /**
+   * Portal Analytics persistence Slice 2. Count of `PortalDownloadRequest`
+   * rows for this organization whose `requestedAt` falls within the
+   * literal selected `TimeRange`. Means "authorized portal requests that
+   * successfully received a signed document download link during the
+   * selected range" — **not** completed file transfers (this app cannot
+   * observe whether the browser followed the redirect), so this is never
+   * labeled "Document downloads." A plain current-range scalar,
+   * deliberately not a `GrowthMetric`, with no previous-period
+   * comparison, `GrowthIndicator`, or trend chart. Exposes no per-user or
+   * per-document detail — `PortalDownloadRequest` itself carries no such
+   * reference to begin with.
+   */
+  documentDownloadRequests: number;
 };
 
 /** The full snapshot — one call, one consistent `computedAt` instant, every dimension this and every prior stage defines. */

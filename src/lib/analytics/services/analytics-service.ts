@@ -10,7 +10,7 @@ import { getInvoiceCompletionCounts } from "../queries/completion-metrics";
 import { getGrowthMetrics } from "../queries/growth-metrics";
 import { getBillingMetrics } from "../queries/billing-metrics";
 import { getOnboardingMetrics } from "../queries/onboarding-metrics";
-import { getPortalOverview, getPortalActivityCounts } from "../queries/portal-metrics";
+import { getPortalOverview, getPortalActivityCounts, getPortalEngagementCounts } from "../queries/portal-metrics";
 import {
   getClientGrowthSeries,
   getProjectGrowthSeries,
@@ -63,6 +63,15 @@ export async function getOrganizationAnalytics(
   const seriesBounds = getSeriesBounds(timeRange, now);
   const bucketUnit = getBucketUnit(timeRange);
 
+  // Portal Analytics persistence Slice 2 (docs/analytics-architecture.md
+  // §12.2a). Deliberately the LITERAL selected-range bounds, never
+  // growthBounds — recentlyActivePortalUsers/documentDownloadRequests are
+  // plain scalars, not GrowthMetrics, and a true `allTime` must really
+  // mean "since the beginning of time" for them (bounds.start === null),
+  // not silently fall back to DEFAULT_GROWTH_TIME_RANGE the way the
+  // growth-comparison cards' own allTime substitution does.
+  const selectedBounds = getTimeRangeBounds(timeRange, now);
+
   const [
     organization,
     activity,
@@ -72,6 +81,7 @@ export async function getOrganizationAnalytics(
     onboarding,
     portalOverview,
     portalActivity,
+    portalEngagement,
     clientGrowthSeries,
     projectGrowthSeries,
     taskActivitySeries,
@@ -88,6 +98,7 @@ export async function getOrganizationAnalytics(
     getOnboardingMetrics(organizationId),
     getPortalOverview(client, organizationId),
     getPortalActivityCounts(client, organizationId, growthBounds, previousGrowthBounds),
+    getPortalEngagementCounts(client, organizationId, selectedBounds),
     getClientGrowthSeries(client, organizationId, seriesBounds, bucketUnit),
     getProjectGrowthSeries(client, organizationId, seriesBounds, bucketUnit),
     getTaskActivitySeries(client, organizationId, seriesBounds, bucketUnit),
@@ -115,6 +126,7 @@ export async function getOrganizationAnalytics(
     portal: {
       ...portalOverview,
       ...portalActivity,
+      ...portalEngagement,
     },
     charts: {
       clientGrowthSeries,

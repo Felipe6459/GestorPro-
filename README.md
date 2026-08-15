@@ -397,10 +397,12 @@ invoice activity, portal growth) built on Recharts, and a URL-driven
 time range selector (today / 7 / 30 / 90 days / all time). A dedicated
 Portal analytics section reuses the same chart components. Everything
 is derived from this app's own real business data — no external
-analytics provider, no tracking cookies, no telemetry. Two portal
-metrics ("recent logins", "document download count") were deliberately
-not implemented, since neither has a real data source in the current
-schema — see the architecture doc's own §12 for the full reasoning.
+analytics provider, no tracking cookies, no telemetry. The Portal
+section also includes two plain scalar metrics, "Recently active
+portal users" and "Download-link requests" — current-selected-range
+counts with no growth comparison or chart, deliberately scoped this way
+for privacy reasons — see the architecture doc's own §12 for the full
+reasoning and known limitations.
 
 ## License
 
