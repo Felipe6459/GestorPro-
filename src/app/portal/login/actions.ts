@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { withToast } from "@/lib/toast-url";
 import { sanitizePortalRedirectPath } from "@/lib/safe-redirect";
 import { checkRateLimit, getRequestIp, PORTAL_LOGIN_LIMIT } from "@/lib/rate-limit";
+import { recordPortalLogin } from "@/lib/client-portal/analytics-events";
 import type { AuthActionState } from "@/types";
 
 const NO_ACCESS_ERROR = "This account does not have Client Portal access.";
@@ -47,6 +48,11 @@ export async function portalLogin(
   });
 
   if (portalUser && portalUser.client.organizationId) {
+    // Portal Analytics persistence foundation (docs/analytics-architecture.md
+    // §12, Slice 1) — best-effort; recordPortalLogin() never throws, so a
+    // transient DB failure here can never turn a successful sign-in into a
+    // user-facing error.
+    await recordPortalLogin(prisma, portalUser.id);
     redirect(withToast(redirectTo, "Signed in successfully"));
   }
 

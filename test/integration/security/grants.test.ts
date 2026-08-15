@@ -76,9 +76,31 @@ describe("public schema grants lockdown (migration 20260802120937)", () => {
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`,
     );
     const tableNames = rows.map((r) => r.table_name);
-    for (const expected of ["Organization", "Membership", "Client", "Project", "Task", "Invoice", "Attachment", "Activity", "PortalUser", "Invitation", "ClientInvitation", "User"]) {
+    for (const expected of ["Organization", "Membership", "Client", "Project", "Task", "Invoice", "Attachment", "Activity", "PortalUser", "Invitation", "ClientInvitation", "User", "PortalDownloadRequest"]) {
       expect(tableNames).toContain(expected);
     }
+  });
+
+  // Portal Analytics persistence foundation (docs/analytics-architecture.md
+  // §12, Slice 1) — the security consideration this stage's own task
+  // explicitly raised: does a brand-new table, created after the lockdown
+  // migration already ran, actually inherit its no-grants state? Verified
+  // directly here rather than assumed — PortalDownloadRequest exists only
+  // because a later migration created it, so if the lockdown's default-
+  // privilege change (migration 20260802120937, step 4) didn't apply to
+  // "future" postgres-owned tables the way it claims to, this is exactly
+  // the test that would catch it.
+  it("the new PortalDownloadRequest table (created after the lockdown migration) still has zero anon/authenticated grants", async () => {
+    const [anonRows, authenticatedRows] = await Promise.all([
+      prisma.$queryRawUnsafe<{ count: bigint }[]>(
+        `SELECT count(*)::int as count FROM information_schema.role_table_grants WHERE grantee = 'anon' AND table_schema = 'public' AND table_name = 'PortalDownloadRequest'`,
+      ),
+      prisma.$queryRawUnsafe<{ count: bigint }[]>(
+        `SELECT count(*)::int as count FROM information_schema.role_table_grants WHERE grantee = 'authenticated' AND table_schema = 'public' AND table_name = 'PortalDownloadRequest'`,
+      ),
+    ]);
+    expect(Number(anonRows[0].count)).toBe(0);
+    expect(Number(authenticatedRows[0].count)).toBe(0);
   });
 
   // TODO (needs real Supabase, out of scope for Stage 4 — see file header):
@@ -92,20 +114,42 @@ describe("public schema grants lockdown (migration 20260802120937)", () => {
 
 describe("whole-suite cleanup (runs last alphabetically — security/ sorts after activity/attachments/authorization/invitations/portal)", () => {
   it("every other suite's afterAll has already run: no fixture rows remain anywhere", async () => {
-    const [users, orgs, clients, memberships, portalUsers, invitations, clientInvitations, attachments, activities] =
-      await Promise.all([
-        prisma.user.count(),
-        prisma.organization.count(),
-        prisma.client.count(),
-        prisma.membership.count(),
-        prisma.portalUser.count(),
-        prisma.invitation.count(),
-        prisma.clientInvitation.count(),
-        prisma.attachment.count(),
-        prisma.activity.count(),
-      ]);
+    const [
+      users,
+      orgs,
+      clients,
+      memberships,
+      portalUsers,
+      invitations,
+      clientInvitations,
+      attachments,
+      activities,
+      portalDownloadRequests,
+    ] = await Promise.all([
+      prisma.user.count(),
+      prisma.organization.count(),
+      prisma.client.count(),
+      prisma.membership.count(),
+      prisma.portalUser.count(),
+      prisma.invitation.count(),
+      prisma.clientInvitation.count(),
+      prisma.attachment.count(),
+      prisma.activity.count(),
+      prisma.portalDownloadRequest.count(),
+    ]);
 
-    expect({ users, orgs, clients, memberships, portalUsers, invitations, clientInvitations, attachments, activities }).toEqual({
+    expect({
+      users,
+      orgs,
+      clients,
+      memberships,
+      portalUsers,
+      invitations,
+      clientInvitations,
+      attachments,
+      activities,
+      portalDownloadRequests,
+    }).toEqual({
       users: 0,
       orgs: 0,
       clients: 0,
@@ -115,6 +159,7 @@ describe("whole-suite cleanup (runs last alphabetically — security/ sorts afte
       clientInvitations: 0,
       attachments: 0,
       activities: 0,
+      portalDownloadRequests: 0,
     });
   });
 });

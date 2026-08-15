@@ -166,17 +166,139 @@ ok = report(
   portalMetricsSource && portalTimeSeriesSource ? "" : "portal query file(s) not found",
 ) && ok;
 
-// 13. Analytics Stage 4 — the two requested metrics that would require
-// new persistence (recent logins, document download count) are
-// deliberately absent from the codebase, not silently faked with a
-// placeholder value. No lastLoginAt/loginAt column, no download-count/
-// download-log table anywhere in the schema.
+// 13. Portal Analytics persistence foundation (docs/analytics-architecture.md
+// §12, Slice 1) — narrowed from a blanket "no tracking persistence at
+// all" ban to a precise allowlist of exactly two approved additions:
+// PortalUser.lastLoginAt (current-state only, never a login-history log)
+// and the organization-only PortalDownloadRequest model. Extracts each
+// model's own brace-delimited block (Prisma model blocks never nest, so
+// simple depth counting is exact) and strips `//` line comments before
+// inspecting fields, so a doc comment mentioning a forbidden word (e.g.
+// explaining why storagePath is deliberately absent) can never trip this
+// check the way a whole-file regex could. Everything else in the schema
+// is still scanned for the original forbidden patterns — this check is a
+// precision upgrade to Stage 4's own protection, not a weakening of it.
 const schemaSource = existsSync("prisma/schema.prisma") ? readFileSync("prisma/schema.prisma", "utf8") : "";
-const newTrackingColumns = /lastLoginAt|loginAt|downloadCount|downloadLog|AttachmentAccessLog|AttachmentDownload/.test(schemaSource);
+
+/** Returns { body, blockStart, blockEnd } for `model <name> { ... }`, or null if not found. blockStart/blockEnd span the full `model ... { ... }` text (for masking), body is just the interior. */
+function extractModelBlock(source, modelName) {
+  const header = source.match(new RegExp(`^model\\s+${modelName}\\s*\\{`, "m"));
+  if (!header) return null;
+  const bodyStart = header.index + header[0].length;
+  let depth = 1;
+  let i = bodyStart;
+  while (i < source.length && depth > 0) {
+    if (source[i] === "{") depth++;
+    else if (source[i] === "}") depth--;
+    i++;
+  }
+  return { body: source.slice(bodyStart, i - 1), blockStart: header.index, blockEnd: i };
+}
+
+function stripLineComments(body) {
+  return body
+    .split("\n")
+    .map((line) => line.replace(/\/\/.*$/, ""))
+    .join("\n");
+}
+
+/** Field declaration lines only — excludes blank lines and `@@`-prefixed block attributes (@@index/@@unique/...). */
+function fieldNames(cleanedBody) {
+  return cleanedBody
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("@@"))
+    .map((line) => line.split(/\s+/)[0]);
+}
+
+/** @@-prefixed block attribute lines only, whitespace-normalized. */
+function blockAttributes(cleanedBody) {
+  return cleanedBody
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("@@"))
+    .map((line) => line.replace(/\s+/g, ""));
+}
+
+const portalUserBlock = extractModelBlock(schemaSource, "PortalUser");
+const portalUserFields = portalUserBlock ? fieldNames(stripLineComments(portalUserBlock.body)) : [];
+const PORTAL_USER_ALLOWED_FIELDS = ["id", "clientId", "client", "email", "name", "lastLoginAt", "createdAt", "updatedAt"];
 ok = report(
-  "no new login-timestamp or download-tracking column/table was added to the schema (Stage 4's 'stop and document' requirement)",
-  !newTrackingColumns,
-  newTrackingColumns ? "prisma/schema.prisma contains a tracking-shaped column/table that Stage 4 should not have added" : "",
+  "PortalUser has exactly the approved field set, including exactly one login-tracking field (lastLoginAt) and no login-history/event field",
+  portalUserBlock !== null &&
+    portalUserFields.length === PORTAL_USER_ALLOWED_FIELDS.length &&
+    PORTAL_USER_ALLOWED_FIELDS.every((f) => portalUserFields.includes(f)),
+  portalUserBlock ? `PortalUser fields: ${portalUserFields.join(", ")}` : "PortalUser model not found",
+) && ok;
+
+const downloadBlock = extractModelBlock(schemaSource, "PortalDownloadRequest");
+const downloadFields = downloadBlock ? fieldNames(stripLineComments(downloadBlock.body)) : [];
+const PORTAL_DOWNLOAD_REQUEST_ALLOWED_FIELDS = ["id", "organizationId", "organization", "requestedAt"];
+ok = report(
+  "PortalDownloadRequest exists with exactly its approved field set (id, organizationId, organization, requestedAt) — nothing more",
+  downloadBlock !== null &&
+    downloadFields.length === PORTAL_DOWNLOAD_REQUEST_ALLOWED_FIELDS.length &&
+    PORTAL_DOWNLOAD_REQUEST_ALLOWED_FIELDS.every((f) => downloadFields.includes(f)),
+  downloadBlock ? `PortalDownloadRequest fields: ${downloadFields.join(", ")}` : "PortalDownloadRequest model not found",
+) && ok;
+
+// Defense in depth alongside the exact-allowlist check above: even if a
+// forbidden field were somehow added under an unexpected name, this
+// catches it by keyword rather than relying on the allowlist alone.
+const FORBIDDEN_DOWNLOAD_FIELD_KEYWORDS = [
+  "portaluser", "attachment", "client", "email", "name",
+  "signedurl", "url", "storagepath", "storagebucket", "bucket",
+  "ip", "address", "useragent", "agent", "token", "session", "auth",
+  "payload", "metadata",
+];
+const forbiddenDownloadFields = downloadFields.filter((f) =>
+  FORBIDDEN_DOWNLOAD_FIELD_KEYWORDS.some((kw) => f.toLowerCase().includes(kw)),
+);
+ok = report(
+  "PortalDownloadRequest contains no forbidden identifying/PII/storage/auth-shaped field",
+  forbiddenDownloadFields.length === 0,
+  forbiddenDownloadFields.join(", "),
+) && ok;
+
+const downloadAttributes = downloadBlock ? blockAttributes(stripLineComments(downloadBlock.body)) : [];
+ok = report(
+  "PortalDownloadRequest's only index is @@index([organizationId, requestedAt]) — no unique constraint (every request is a separate immutable event)",
+  downloadAttributes.length === 1 && downloadAttributes[0] === "@@index([organizationId,requestedAt])",
+  downloadAttributes.join(", "),
+) && ok;
+
+// Everything else in the schema — outside these two specifically-approved
+// blocks — must still contain none of the original forbidden patterns,
+// preserving Stage 4's own protection against a THIRD, unreviewed
+// tracking-shaped addition appearing anywhere else. Masking (not just
+// excluding matches inside the two blocks) is what makes this exact:
+// blanking the full `model X { ... }` text of both approved models before
+// scanning means a match anywhere in the remaining schema can only be a
+// genuinely new, unreviewed addition — never a false echo of the two
+// approved ones.
+let maskedSchema = schemaSource;
+for (const block of [downloadBlock, portalUserBlock]) {
+  if (block) {
+    maskedSchema = maskedSchema.slice(0, block.blockStart) + " ".repeat(block.blockEnd - block.blockStart) + maskedSchema.slice(block.blockEnd);
+  }
+}
+const residualTrackingMatch = /lastLoginAt|loginAt|downloadCount|downloadLog|AttachmentAccessLog|AttachmentDownload|PortalLoginEvent|PortalDownloadEvent/.test(maskedSchema);
+ok = report(
+  "no additional login-history/event or download-tracking column/table exists anywhere else in the schema, beyond the two approved additions",
+  !residualTrackingMatch,
+  residualTrackingMatch ? "prisma/schema.prisma contains a further tracking-shaped column/table beyond the two approved additions" : "",
+) && ok;
+
+// The write side of this feature (recordPortalLogin/recordPortalDownloadRequest)
+// must live outside the analytics domain — that domain stays read-only/
+// pure by its own established convention (checks #6/#8 above); this
+// check fails if a Prisma write call (.update(/.create() on portalUser/
+// portalDownloadRequest) ever appears inside it.
+const analyticsDomainWrites = grep("portalUser\\.update\\(|portalDownloadRequest\\.create\\(", ANALYTICS_LIB_DIR);
+ok = report(
+  "the Portal Analytics write helpers (recordPortalLogin/recordPortalDownloadRequest) are never called or reimplemented inside src/lib/analytics — that domain stays read-only",
+  analyticsDomainWrites === "",
+  analyticsDomainWrites,
 ) && ok;
 
 process.exit(ok ? 0 : 1);

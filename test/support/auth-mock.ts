@@ -96,10 +96,46 @@ export function consumeMockSignUpConfig(): MockSignUpConfig {
   return config;
 }
 
+/**
+ * Portal Analytics persistence foundation (docs/analytics-architecture.md
+ * §12, Slice 1) — same one-shot, "must be set before use" discipline as
+ * MockSignUpConfig, for the one remaining unmocked Supabase Auth method
+ * this stage's tests need: signInWithPassword(). "success" mirrors a real
+ * credential match — the caller is immediately authenticated, so it also
+ * sets this as the current mock auth user, the same "reflects a persisted
+ * session a subsequent getUser() call reads back" behavior signUp's own
+ * "session" kind already has. "error" mirrors Supabase rejecting the
+ * credentials (never distinguishing wrong-password from unknown-email, the
+ * same generic behavior the real portalLogin/login actions already rely
+ * on Supabase itself to provide).
+ */
+export type MockSignInConfig =
+  | { kind: "success"; user: MockAuthUser }
+  | { kind: "error"; message: string };
+
+let mockSignInConfig: MockSignInConfig | null = null;
+
+export function setMockSignInConfig(config: MockSignInConfig): void {
+  mockSignInConfig = config;
+}
+
+/** Reads and clears the configured response — throws if a test invoked signInWithPassword() without configuring one first, rather than silently guessing a default. */
+export function consumeMockSignInConfig(): MockSignInConfig {
+  if (!mockSignInConfig) {
+    throw new Error(
+      "setMockSignInConfig(...) must be called before invoking a Server Action that calls supabase.auth.signInWithPassword().",
+    );
+  }
+  const config = mockSignInConfig;
+  mockSignInConfig = null;
+  return config;
+}
+
 /** Call in afterEach — clears both the identity and the cookie jar so one test's "logged in as" state never leaks into the next. */
 export function resetAuthMock(): void {
   currentUser = null;
   mockSignUpConfig = null;
+  mockSignInConfig = null;
   cookieStore.clear();
 }
 

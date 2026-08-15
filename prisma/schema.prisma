@@ -324,6 +324,10 @@ model Organization {
   attachments Attachment[]
   comments    Comment[]
 
+  // Portal Analytics persistence foundation (docs/analytics-architecture.md
+  // §12, Slice 1) — see PortalDownloadRequest's own doc comment.
+  portalDownloadRequests PortalDownloadRequest[]
+
   // Billing & Subscriptions Stage 2. Optional on this side because an
   // Organization created before this stage shipped has none — see
   // Subscription's own doc comment for the full "legacy" fallback story.
@@ -1041,11 +1045,69 @@ model PortalUser {
   email String
   name  String
 
+  // Portal Analytics persistence foundation (docs/analytics-architecture.md
+  // §12, Slice 1). Current-state only: the timestamp of this identity's
+  // most recent explicit authentication (a real signInWithPassword success
+  // via /portal/login, or the moment a genuine PENDING -> ACCEPTED
+  // invitation acceptance first establishes it as an active portal
+  // session) — overwritten on every such event, never appended to. This is
+  // deliberately NOT a login history/event log: it cannot honestly support
+  // a previous-period comparison (a later login destroys the only evidence
+  // of an earlier one), so it is only ever read as "is this within the
+  // currently selected range," never diffed against a prior period. Never
+  // written by session-cookie resolution (getCurrentPortalUser()/
+  // getOptionalPortalUser() stay pure reads), a password-reset session, or
+  // a bare signup with no invitation accepted yet. Null = no tracked
+  // sign-in yet (including every PortalUser row that predates this
+  // column).
+  lastLoginAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([clientId])
   @@index([email])
+  @@index([lastLoginAt])
+}
+
+// Portal Analytics persistence foundation (docs/analytics-architecture.md
+// §12, Slice 1) — the second of the two approved, minimal, privacy-
+// preserving additions this stage makes. One immutable row per
+// successfully issued portal attachment signed download link (see
+// src/app/api/portal/attachments/[id]/download/route.ts) — never per
+// download attempt that failed authorization, never per completed byte
+// transfer (this app has no way to observe that; a row means "an
+// authorized request received a signed link," nothing more).
+//
+// Deliberately organization-scoped ONLY — no portalUserId, no
+// attachmentId, no clientId, no email/name, no signed URL, no
+// storagePath/storageBucket, no IP, no User-Agent, no session/auth data,
+// no payload/metadata JSON of any kind. This table is structurally
+// incapable of answering "who downloaded what" — that is the point, not
+// an oversight (see check-analytics-security.mjs's own #13 for the
+// CI-enforced guarantee this shape never grows undetected).
+//
+// requestedAt is a real, precise timestamp (not a calendar-day bucket) so
+// this table can honestly answer this app's actual rolling-window
+// TimeRange queries (today/last7Days/last30Days/last90Days/allTime — see
+// src/lib/analytics/calculations/date-ranges.ts's own "rolling, not
+// calendar-aligned" doc comment) without the boundary-misalignment a
+// UTC-calendar-day aggregate would introduce.
+//
+// No unique constraint: every authorized signed-link issuance is its own
+// separate, immutable event — including legitimate repeat clicks on the
+// same document by the same identity, which this table has no way to (and
+// deliberately does not try to) distinguish from genuinely separate
+// download intents.
+model PortalDownloadRequest {
+  id String @id @default(uuid()) @db.Uuid
+
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  requestedAt DateTime @default(now())
+
+  @@index([organizationId, requestedAt])
 }
 
 // Invitation for a Client Portal contact, deliberately separate from the

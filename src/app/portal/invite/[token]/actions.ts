@@ -115,6 +115,16 @@ export async function acceptClientInvitationAction(token: string): Promise<Invit
 
   const portalUserName = resolvePortalUserName(authUser, normalizedUserEmail);
 
+  // Portal Analytics persistence foundation (docs/analytics-architecture.md
+  // §12, Slice 1). Server-owned, computed here rather than accepted as a
+  // parameter on this public Server Action — a genuine PENDING -> ACCEPTED
+  // transition (verified below by the transaction's own conditional
+  // updateMany) is treated as this identity's first active portal
+  // session. Reused for both the upsert's create and update branches, so
+  // a single, consistent instant describes "when this acceptance
+  // happened," not two slightly different ones.
+  const acceptedAt = new Date();
+
   let notificationIds: string[];
   try {
     notificationIds = await prisma.$transaction(async (tx) => {
@@ -147,6 +157,19 @@ export async function acceptClientInvitationAction(token: string): Promise<Invit
       // this as a native INSERT ... ON CONFLICT DO UPDATE — a genuinely
       // concurrent second accept for the same identity/client simply
       // confirms the row the winner already created, rather than throwing.
+      // Reaching this line at all already proves a genuine PENDING ->
+      // ACCEPTED transition just happened (the updateMany above throws
+      // STALE_INVITATION otherwise) — so both branches below are a real
+      // active portal session, including the update branch: a PortalUser
+      // with this exact id can legally already exist for this exact
+      // Client (e.g. an earlier acceptance under a since-changed email,
+      // now accepting a fresh invitation sent to the new address) without
+      // that being a repeated/idempotent acceptance — the
+      // redirectIfAlreadyAccepted()/STALE_INVITATION paths above already
+      // handle every case where this transition did NOT genuinely happen,
+      // and neither of those paths ever reaches this upsert. clientId is
+      // never reassigned and email/name are never touched on the update
+      // branch — only lastLoginAt is added here.
       const portalUser = await tx.portalUser.upsert({
         where: { id: authUser.id },
         create: {
@@ -154,8 +177,11 @@ export async function acceptClientInvitationAction(token: string): Promise<Invit
           clientId: invitation.clientId,
           email: normalizedUserEmail,
           name: portalUserName,
+          lastLoginAt: acceptedAt,
         },
-        update: {},
+        update: {
+          lastLoginAt: acceptedAt,
+        },
       });
 
       // Only reached on a genuine first-time PENDING -> ACCEPTED
