@@ -114,7 +114,7 @@ test("Client create → edit → delete works end to end, and the dashboard metr
 
 test("sign out clears the session, and dashboard then redirects to /login", async ({ page }) => {
   await page.goto("/dashboard");
-  await page.locator("form", { has: page.getByRole("button", { name: "Sign out" }) }).getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page).toHaveURL(/\/login/);
 
   await page.goto("/dashboard");
