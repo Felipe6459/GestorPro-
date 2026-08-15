@@ -539,7 +539,7 @@ works.
 
 | Requested | Implemented as | Real source |
 |---|---|---|
-| Active portal users | **"Portal users"** — total lifetime count, not a recency-filtered "active" count (see "Recently active portal users" below for that) | `PortalUser` rows for the org |
+| Active portal users | **"Portal users"** — current total of `PortalUser` rows, unfiltered by the selected `TimeRange` and not a retained historical/lifetime count (deleted rows cascade away with their Client); not a recency-filtered "active" count (see "Recently active portal users" below for that) | `PortalUser` rows for the org |
 | Invitation acceptance count | Real, time-boundable count | `Activity` rows, `action = PORTAL_INVITATION_ACCEPTED` |
 | Recent logins | **"Recently active portal users"** — distinct `PortalUser` identities whose most recent explicit sign-in falls within the literal selected `TimeRange` (§12.2b); a current-state scalar, not a login-event count | `PortalUser.lastLoginAt` |
 | Document access count | Folded into **"Documents available"** — content *reachable* by a portal identity, never an access event | `Attachment` rows (Client + Project level) scoped to Clients with a `PortalUser` |

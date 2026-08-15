@@ -168,14 +168,15 @@ export type AnalyticsChartData = {
 
 /**
  * Analytics Stage 4 (docs/analytics-architecture.md §13), extended by
- * Portal Analytics persistence Slice 1/Slice 2 (§12.2a). Every field here
- * is derived exclusively from PortalUser/Client/Project/Attachment/
- * Invoice/Activity/PortalDownloadRequest rows this app already writes for
- * other reasons — see queries/portal-metrics.ts's own doc comment for
- * exactly which source backs which field.
+ * Portal Analytics persistence Slice 1 (§12.2a) and read path Slice 2
+ * (§12.2b). Every field here is derived exclusively from
+ * PortalUser/Client/Project/Attachment/Invoice/Activity/PortalDownloadRequest
+ * rows this app already writes for other reasons — see
+ * queries/portal-metrics.ts's own doc comment for exactly which source
+ * backs which field.
  */
 export type PortalMetrics = {
-  /** Total PortalUser rows for the organization — see §13 for why this is labeled "Portal users," not "active portal users" (this is a lifetime total, unrelated to `recentlyActivePortalUsers` below). */
+  /** Current total of PortalUser rows for the organization, unfiltered by the selected TimeRange — see §13 for why this is labeled "Portal users," not "active portal users." This is a current-state count, not a retained historical/lifetime count: Client deletion cascades to PortalUser, so deleted rows are not counted. Independent of, and not the same as, `recentlyActivePortalUsers` below. */
   totalPortalUsers: number;
   /** 0–100, integer: percent of the organization's Clients that have at least one PortalUser. `0` when the organization has no Clients at all (never NaN). */
   portalAdoptionRate: number;
@@ -188,8 +189,9 @@ export type PortalMetrics = {
   /** Count of Activity rows scoped to the portal domain (entityType = PORTAL_USER, or a PORTAL_-prefixed action), within the selected TimeRange — "completed actions" / "recent activity count" combined into one real, time-boundable signal. */
   portalRelatedActivity: number;
   /**
-   * Portal Analytics persistence Slice 2 (docs/analytics-architecture.md
-   * §12.2a/§12.3). Count of `PortalUser` rows whose `lastLoginAt` falls
+   * Portal Analytics read path Slice 2 (docs/analytics-architecture.md
+   * §12.2b; persisted by Slice 1, §12.2a; see also §12.3). Count of
+   * `PortalUser` rows whose `lastLoginAt` falls
    * within the **literal** selected `TimeRange` (a true, unsubstituted
    * `allTime` included — never the growth-comparison fallback). A plain
    * current-range scalar, deliberately **not** a `GrowthMetric`:
@@ -205,7 +207,8 @@ export type PortalMetrics = {
    */
   recentlyActivePortalUsers: number;
   /**
-   * Portal Analytics persistence Slice 2. Count of `PortalDownloadRequest`
+   * Portal Analytics read path Slice 2 (docs/analytics-architecture.md
+   * §12.2b; persisted by Slice 1, §12.2a). Count of `PortalDownloadRequest`
    * rows for this organization whose `requestedAt` falls within the
    * literal selected `TimeRange`. Means "authorized portal requests that
    * successfully received a signed document download link during the

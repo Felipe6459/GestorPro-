@@ -99,15 +99,15 @@ export async function getPortalActivityCounts(
 }
 
 /**
- * Portal Analytics persistence Slice 2 (docs/analytics-architecture.md
- * §12.2a/§12.3) — the read side of the persistence Slice 1 added. Both
- * fields are plain, current-selected-range scalar counts, never
- * `GrowthMetric`s: `recentlyActivePortalUsers` is derived from
- * `PortalUser.lastLoginAt`, a single mutable timestamp with no
+ * Portal Analytics read path Slice 2 (docs/analytics-architecture.md
+ * §12.2b; persisted by Slice 1, §12.2a/§12.3) — the read side of the
+ * persistence Slice 1 added. Both fields are plain, current-selected-range
+ * scalar counts, never `GrowthMetric`s: `recentlyActivePortalUsers` is
+ * derived from `PortalUser.lastLoginAt`, a single mutable timestamp with no
  * previous-period history to honestly compare against (a later sign-in
  * overwrites the only evidence of an earlier one); `documentDownloadRequests`
  * counts immutable `PortalDownloadRequest` rows, which *could* support a
- * previous-period comparison, but none is built here — see §12.2a for the
+ * previous-period comparison, but none is built here — see §12.2b for the
  * full reasoning behind keeping both plain scalars in this pass.
  *
  * `bounds` must be the **literal** selected-`TimeRange` bounds

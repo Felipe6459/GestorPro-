@@ -10,7 +10,8 @@ import { ChartsSection, ChartPanel } from "./charts-section";
 
 /**
  * Analytics Stage 4 (docs/analytics-architecture.md §13/§14), extended by
- * Portal Analytics persistence Slice 2 (§12.2a). Composed entirely from
+ * Portal Analytics read path Slice 2 (§12.2b; persisted by Slice 1,
+ * §12.2a). Composed entirely from
  * Stage 2/3 components — `AnalyticsGrid`, `Sparkline`, `GrowthLineChart`,
  * `ActivityStackedBarChart`, `ComparisonBarChart`, `ChartsSection` — the
  * task's own "reuse wherever possible" requirement. No new

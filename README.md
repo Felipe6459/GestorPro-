@@ -396,13 +396,17 @@ completion rates), trend charts (client/project growth, task and
 invoice activity, portal growth) built on Recharts, and a URL-driven
 time range selector (today / 7 / 30 / 90 days / all time). A dedicated
 Portal analytics section reuses the same chart components. Everything
-is derived from this app's own real business data — no external
-analytics provider, no tracking cookies, no telemetry. The Portal
-section also includes two plain scalar metrics, "Recently active
-portal users" and "Download-link requests" — current-selected-range
-counts with no growth comparison or chart, deliberately scoped this way
-for privacy reasons — see the architecture doc's own §12 for the full
-reasoning and known limitations.
+is computed from this app's own first-party application records — no
+external analytics provider, no analytics tracking cookie, and no
+external telemetry pipeline. Portal Analytics adds only the
+narrowly-scoped persistence documented in §12 (a portal user's most
+recent login timestamp, and organization-scoped download-request
+events with no per-user or per-document linkage). The Portal section
+also includes two plain scalar metrics, "Recently active portal users"
+and "Download-link requests" — current-selected-range counts with no
+growth comparison or chart, deliberately scoped this way for privacy
+reasons — see the architecture doc's own §12 for the full reasoning
+and known limitations.
 
 ## License
 
