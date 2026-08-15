@@ -55,6 +55,11 @@ export async function createInvoiceAction(
           // Derived from the project, never a form field — keeps the two
           // FKs from ever disagreeing about which client this invoice bills.
           clientId: project.clientId,
+          // Also derived from the verified project (the findFirst above
+          // already matched project.organizationId === organizationId), not
+          // from formData — the invoice's own organizationId must never
+          // drift from the project it's actually scoped through.
+          organizationId,
           // Server-set, never from formData — the form does allow creating
           // an invoice directly in PAID status (no restriction to DRAFT),
           // so that case must record a real paidAt from the start, same as

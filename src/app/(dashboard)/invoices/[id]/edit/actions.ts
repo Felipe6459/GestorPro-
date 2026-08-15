@@ -49,11 +49,13 @@ export async function updateInvoiceAction(
     // Update and its Activity row(s) are one atomic unit — if any Activity
     // insert fails, the whole update rolls back with it.
     const outcome = await prisma.$transaction(async (tx) => {
-      // Scoped through the invoice's *current* project's organization —
-      // never by id alone. Also doubles as the "before" snapshot for
-      // change-detection below.
+      // organizationId is the primary tenant predicate (required, kept
+      // consistent with project.organizationId by every write path); the
+      // project.organizationId relation check is retained as defense in
+      // depth against inconsistent data. Never by id alone. Also doubles
+      // as the "before" snapshot for change-detection below.
       const existing = await tx.invoice.findFirst({
-        where: { id: invoiceId, project: { organizationId } },
+        where: { id: invoiceId, organizationId, project: { organizationId } },
       });
 
       if (!existing) {
@@ -77,7 +79,7 @@ export async function updateInvoiceAction(
       }
 
       const result = await tx.invoice.updateMany({
-        where: { id: invoiceId, project: { organizationId } },
+        where: { id: invoiceId, organizationId, project: { organizationId } },
         data: {
           invoiceNumber: values.invoiceNumber,
           amount: values.amount,
@@ -86,6 +88,11 @@ export async function updateInvoiceAction(
           notes: values.notes,
           projectId: project.id,
           clientId: project.clientId,
+          // Re-derived and rewritten on every update, from the same
+          // verified project the findFirst above already matched — a
+          // project change can never silently leave organizationId
+          // pointing at the invoice's old project's organization.
+          organizationId,
           ...paidAtUpdate,
         },
       });

@@ -20,7 +20,7 @@ export default async function EditInvoicePage({
 
   const [invoice, projects] = await Promise.all([
     prisma.invoice.findFirst({
-      where: { id, project: { organizationId } },
+      where: { id, organizationId, project: { organizationId } },
     }),
     prisma.project.findMany({
       where: { organizationId },

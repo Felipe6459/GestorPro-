@@ -40,6 +40,10 @@ export function buildInvoiceWhere(
   { q, status }: Pick<InvoiceListParams, "q" | "status">,
 ): Prisma.InvoiceWhereInput {
   return {
+    // organizationId (required, kept consistent with project.organizationId
+    // by every write path) is the primary predicate; the project relation
+    // check is retained as defense in depth against inconsistent data.
+    organizationId,
     project: { organizationId },
     ...(status ? { status } : {}),
     ...(q

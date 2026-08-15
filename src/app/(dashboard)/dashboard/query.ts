@@ -138,13 +138,14 @@ export async function getDashboardAnalytics({
       where: { project: { organizationId }, status: { not: "DONE" }, dueDate: { lt: now } },
     }),
     prisma.invoice.aggregate({
-      where: { project: { organizationId }, status: { in: [...UNPAID_INVOICE_STATUSES] } },
+      where: { organizationId, project: { organizationId }, status: { in: [...UNPAID_INVOICE_STATUSES] } },
       _sum: { amount: true },
     }),
     // Selected once, used for both the paidRevenue KPI (sum) and the
     // revenue time series (bucketing) below — never queried twice.
     prisma.invoice.findMany({
       where: {
+        organizationId,
         project: { organizationId },
         status: "PAID",
         paidAt: { not: null, gte: periodRange.start, lte: periodRange.end },
@@ -153,7 +154,7 @@ export async function getDashboardAnalytics({
     }),
     prisma.invoice.groupBy({
       by: ["status"],
-      where: { project: { organizationId } },
+      where: { organizationId, project: { organizationId } },
       _count: true,
     }),
     prisma.task.groupBy({
@@ -189,13 +190,13 @@ export async function getDashboardAnalytics({
     // dueDate is nullable in the schema; excluded here since a due-date-
     // sorted list has nothing meaningful to do with a null one.
     prisma.invoice.findMany({
-      where: { project: { organizationId }, status: "OVERDUE", dueDate: { not: null } },
+      where: { organizationId, project: { organizationId }, status: "OVERDUE", dueDate: { not: null } },
       orderBy: { dueDate: "asc" },
       take: LIST_TAKE,
       include: { project: { select: { client: { select: { name: true } } } } },
     }),
     prisma.invoice.findMany({
-      where: { project: { organizationId } },
+      where: { organizationId, project: { organizationId } },
       orderBy: { createdAt: "desc" },
       take: LIST_TAKE,
       include: { project: { select: { client: { select: { name: true } } } } },

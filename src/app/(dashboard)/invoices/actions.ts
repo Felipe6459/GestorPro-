@@ -17,7 +17,7 @@ export async function deleteInvoiceAction(invoiceId: string) {
     // key, so this row (and its metadata) is what keeps the entry readable
     // once the Invoice row itself is gone.
     const existing = await tx.invoice.findFirst({
-      where: { id: invoiceId, project: { organizationId } },
+      where: { id: invoiceId, organizationId, project: { organizationId } },
       include: { project: { select: { name: true } } },
     });
 
@@ -26,7 +26,7 @@ export async function deleteInvoiceAction(invoiceId: string) {
     }
 
     const result = await tx.invoice.deleteMany({
-      where: { id: invoiceId, project: { organizationId } },
+      where: { id: invoiceId, organizationId, project: { organizationId } },
     });
 
     if (result.count === 0) {

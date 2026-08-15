@@ -5,14 +5,15 @@ import { escapeLikePattern } from "./normalize-query";
 import type { SearchResult } from "./types";
 
 /**
- * Global Search Stage 2 (docs/search-architecture.md §2/§5/§8). Scoped
- * through BOTH `project: { organizationId }` (matching the existing
- * `buildInvoiceWhere` convention exactly, src/app/(dashboard)/invoices/
- * query.ts) AND `client: { organizationId }` as defense in depth — an
- * Invoice's Client and Project always belong to the same organization in
- * valid data, so requiring both costs nothing on the happy path while
- * refusing to surface a row in the rare case those two relations were ever
- * inconsistent.
+ * Global Search Stage 2 (docs/search-architecture.md §2/§5/§8). Scoped by
+ * `organizationId` (required, kept consistent with project.organizationId
+ * by every write path — matching the existing `buildInvoiceWhere`
+ * convention exactly, src/app/(dashboard)/invoices/query.ts) as the primary
+ * predicate, with BOTH `project: { organizationId }` and
+ * `client: { organizationId }` retained as defense in depth — an Invoice's
+ * Client and Project always belong to the same organization in valid data,
+ * so requiring all three costs nothing on the happy path while refusing to
+ * surface a row in the rare case those relations were ever inconsistent.
  *
  * Searches `invoiceNumber` and the related `Project.name`/`Client.name`
  * only — matching the design doc's §2 Scope exactly. `notes` is never
@@ -29,6 +30,7 @@ export async function searchInvoices(params: {
 
   const rows = await prisma.invoice.findMany({
     where: {
+      organizationId: params.organizationId,
       project: { organizationId: params.organizationId },
       client: { organizationId: params.organizationId },
       OR: [

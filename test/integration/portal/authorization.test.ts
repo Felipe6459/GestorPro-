@@ -60,10 +60,10 @@ describe("Client Portal authorization — PortalUser A cannot see Client B's dat
   });
 
   it("getPortalInvoice: Client A's clientId cannot resolve Client B's invoice", async () => {
-    const crossClient = await getPortalInvoice(fixtures.clientA.id, invoiceB.id);
+    const crossClient = await getPortalInvoice(fixtures.clientA.id, fixtures.orgA.id, invoiceB.id);
     expect(crossClient).toBeNull();
 
-    const ownInvoice = await getPortalInvoice(fixtures.clientA.id, fixtures.invoice.id);
+    const ownInvoice = await getPortalInvoice(fixtures.clientA.id, fixtures.orgA.id, fixtures.invoice.id);
     expect(ownInvoice?.id).toBe(fixtures.invoice.id);
   });
 
@@ -74,7 +74,7 @@ describe("Client Portal authorization — PortalUser A cannot see Client B's dat
   });
 
   it("getPortalInvoices: never returns another Client's invoices", async () => {
-    const invoices = await getPortalInvoices(fixtures.clientA.id, "all");
+    const invoices = await getPortalInvoices(fixtures.clientA.id, fixtures.orgA.id, "all");
     expect(invoices.some((i) => i.id === invoiceB.id)).toBe(false);
     expect(invoices.some((i) => i.id === fixtures.invoice.id)).toBe(true);
   });
