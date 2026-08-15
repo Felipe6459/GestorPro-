@@ -57,15 +57,21 @@ describe("cross-organization data isolation", () => {
     expect(ownOrg?.id).toBe(fixtures.task.id);
   });
 
-  it("invoice: scoped by organizationId", async () => {
+  it("invoice: a findFirst scoped by organizationId excludes a foreign org's row (query-shape proof only — NOT proof that production write paths populate this column correctly)", async () => {
     // organizationId is a required column (migration
     // 20260911090000_repair_invoice_organization_scope), kept consistent
-    // with project.organizationId by every write path — this proves the
-    // query shape only. It does NOT prove production actually populates
-    // the column correctly on create/update (this fixture sets it
-    // directly, bypassing the real Server Action) — that proof lives in
-    // test/integration/invoices/organization-scope.test.ts, which
-    // exercises the real createInvoiceAction/updateInvoiceAction instead.
+    // with project.organizationId by every write path. This test's own
+    // fixture sets organizationId directly on insert, bypassing the real
+    // create/update Server Actions entirely — so, unlike every sibling
+    // case in this file, this one proves ONLY that a findFirst filtered by
+    // organizationId behaves correctly once the column is populated. It
+    // must never be read as evidence that production create/update
+    // actually populate Invoice.organizationId correctly — that write-path
+    // proof (the thing that was previously missing and let the real bug
+    // through undetected) lives exclusively in
+    // test/integration/invoices/organization-scope.test.ts, which exercises
+    // the real createInvoiceAction/updateInvoiceAction Server Actions
+    // instead of this file's direct-fixture-insert pattern.
     const crossOrg = await prisma.invoice.findFirst({
       where: { id: fixtures.invoice.id, organizationId: fixtures.orgB.id },
     });
