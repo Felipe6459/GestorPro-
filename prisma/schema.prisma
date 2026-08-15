@@ -648,8 +648,14 @@ model Invoice {
   projectId String  @db.Uuid
   project   Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
 
-  organizationId String?       @db.Uuid
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  // Required, kept consistent with project.organizationId by every write
+  // path (never trusted from client input) — Restrict, not SetNull, since
+  // an Invoice's Project/Client can never be deleted out from under it
+  // either, and Organizations are never hard-deleted anywhere in this app.
+  // Migration 20260911090000_repair_invoice_organization_scope backfilled
+  // this column from Project.organizationId for every pre-existing row.
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@unique([clientId, invoiceNumber])
   @@index([status])

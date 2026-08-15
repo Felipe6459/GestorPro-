@@ -29,11 +29,11 @@ export default async function PortalInvoicesPage({
 }: {
   searchParams: Promise<RawSearchParams>;
 }) {
-  const { clientId } = await getCurrentPortalUser();
+  const { clientId, organizationId } = await getCurrentPortalUser();
   const resolvedSearchParams = await searchParams;
   const filter = parsePortalInvoiceFilter(parseSearchParam(resolvedSearchParams.status));
 
-  const invoices = await getPortalInvoices(clientId, filter);
+  const invoices = await getPortalInvoices(clientId, organizationId, filter);
 
   return (
     <div>

@@ -9,9 +9,14 @@ import { PrismaClient, Prisma, Role } from "../src/generated/prisma/client";
  *   1. Ensures a personal Organization + OWNER Membership exist.
  *   2. Fills organizationId on Client/Project (by direct ownership) and
  *      Task (via its Project's owner).
- *   3. Fills organizationId on Invoice, cross-checking that the invoice's
- *      Project owner and Client owner agree before assigning a tenant —
- *      mismatches are reported and left NULL for manual review.
+ *
+ * Invoice.organizationId was previously backfilled here too (cross-checking
+ * Project owner vs. Client owner), but that column is now a required,
+ * schema-enforced field kept consistent with Invoice.project.organizationId
+ * by every write path — see migration
+ * 20260911090000_repair_invoice_organization_scope, which performed a
+ * one-time, self-verifying repair of that column directly and made it
+ * NOT NULL. There is nothing left for this script to do for Invoice.
  *
  * Idempotent: an existing OWNER Membership is reused (no duplicate
  * Organizations/Memberships), and every backfill query only ever touches
@@ -33,7 +38,6 @@ interface Counts {
   clientsNull: number;
   projectsNull: number;
   tasksNull: number;
-  invoicesNull: number;
 }
 
 function printCounts(counts: Counts) {
@@ -43,11 +47,10 @@ function printCounts(counts: Counts) {
   console.log(`    Client.organizationId    NULL: ${counts.clientsNull}`);
   console.log(`    Project.organizationId   NULL: ${counts.projectsNull}`);
   console.log(`    Task.organizationId      NULL: ${counts.tasksNull}`);
-  console.log(`    Invoice.organizationId   NULL: ${counts.invoicesNull}`);
 }
 
 async function snapshotCounts(): Promise<Counts> {
-  const [users, organizations, memberships, clientsNull, projectsNull, tasksNull, invoicesNull] =
+  const [users, organizations, memberships, clientsNull, projectsNull, tasksNull] =
     await Promise.all([
       prisma.user.count(),
       prisma.organization.count(),
@@ -55,9 +58,8 @@ async function snapshotCounts(): Promise<Counts> {
       prisma.client.count({ where: { organizationId: null } }),
       prisma.project.count({ where: { organizationId: null } }),
       prisma.task.count({ where: { organizationId: null } }),
-      prisma.invoice.count({ where: { organizationId: null } }),
     ]);
-  return { users, organizations, memberships, clientsNull, projectsNull, tasksNull, invoicesNull };
+  return { users, organizations, memberships, clientsNull, projectsNull, tasksNull };
 }
 
 function slugify(input: string): string {
@@ -146,59 +148,6 @@ async function backfillOwnedEntities(
   return { clients: clients.count, projects: projects.count, tasks: tasks.count };
 }
 
-async function backfillInvoices(
-  orgByUserId: Map<string, string>,
-  dryRun: boolean,
-): Promise<{
-  updated: number;
-  inconsistent: { id: string; projectOwnerId: string; clientOwnerId: string }[];
-}> {
-  const invoices = await prisma.invoice.findMany({
-    where: { organizationId: null },
-    select: {
-      id: true,
-      project: { select: { ownerId: true } },
-      client: { select: { userId: true } },
-    },
-  });
-
-  const byOwner = new Map<string, string[]>();
-  const inconsistent: { id: string; projectOwnerId: string; clientOwnerId: string }[] = [];
-
-  for (const invoice of invoices) {
-    const projectOwnerId = invoice.project.ownerId;
-    const clientOwnerId = invoice.client.userId;
-    if (projectOwnerId !== clientOwnerId) {
-      inconsistent.push({ id: invoice.id, projectOwnerId, clientOwnerId });
-      continue;
-    }
-    const ids = byOwner.get(projectOwnerId) ?? [];
-    ids.push(invoice.id);
-    byOwner.set(projectOwnerId, ids);
-  }
-
-  if (dryRun) {
-    const updated = [...byOwner.values()].reduce((sum, ids) => sum + ids.length, 0);
-    return { updated, inconsistent };
-  }
-
-  let updated = 0;
-  for (const [ownerId, ids] of byOwner) {
-    const organizationId = orgByUserId.get(ownerId);
-    if (!organizationId) {
-      // Shouldn't happen — every user was given an org in the prior pass —
-      // but skip rather than write a bad value if it ever does.
-      continue;
-    }
-    const result = await prisma.invoice.updateMany({
-      where: { id: { in: ids } },
-      data: { organizationId },
-    });
-    updated += result.count;
-  }
-  return { updated, inconsistent };
-}
-
 async function main() {
   const dryRun = !process.argv.includes("--apply");
   console.log(`Mode: ${dryRun ? "DRY RUN (no writes will be made)" : "APPLY (writing changes)"}\n`);
@@ -215,11 +164,8 @@ async function main() {
   let projectsUpdated = 0;
   let tasksUpdated = 0;
 
-  const orgByUserId = new Map<string, string>();
-
   for (const user of users) {
     const { organizationId, created } = await ensureOrganizationForUser(user, dryRun);
-    orgByUserId.set(user.id, organizationId);
     if (created) {
       organizationsCreated += 1;
       membershipsCreated += 1;
@@ -231,8 +177,6 @@ async function main() {
     tasksUpdated += owned.tasks;
   }
 
-  const invoiceResult = await backfillInvoices(orgByUserId, dryRun);
-
   console.log("\nRun summary:");
   console.log(`  Users processed:        ${users.length}`);
   console.log(`  Organizations created:  ${organizationsCreated}`);
@@ -240,20 +184,6 @@ async function main() {
   console.log(`  Clients updated:        ${clientsUpdated}`);
   console.log(`  Projects updated:       ${projectsUpdated}`);
   console.log(`  Tasks updated:          ${tasksUpdated}`);
-  console.log(`  Invoices updated:       ${invoiceResult.updated}`);
-
-  if (invoiceResult.inconsistent.length > 0) {
-    console.log(
-      `\n  Inconsistent invoices left NULL (Project owner != Client owner): ${invoiceResult.inconsistent.length}`,
-    );
-    for (const item of invoiceResult.inconsistent) {
-      console.log(
-        `    Invoice ${item.id}: project owner ${item.projectOwnerId} != client owner ${item.clientOwnerId}`,
-      );
-    }
-  } else {
-    console.log("\n  No inconsistent Project/Client ownership detected.");
-  }
 
   const after: Counts = dryRun
     ? {
@@ -263,7 +193,6 @@ async function main() {
         clientsNull: before.clientsNull - clientsUpdated,
         projectsNull: before.projectsNull - projectsUpdated,
         tasksNull: before.tasksNull - tasksUpdated,
-        invoicesNull: before.invoicesNull - invoiceResult.updated,
       }
     : await snapshotCounts();
 

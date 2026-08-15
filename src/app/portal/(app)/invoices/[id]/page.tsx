@@ -13,12 +13,13 @@ export default async function PortalInvoiceDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { clientId } = await getCurrentPortalUser();
+  const { clientId, organizationId } = await getCurrentPortalUser();
 
-  // Scoped by id + clientId (+ project.clientId inside the query), never a
-  // bare id lookup — an invoice belonging to a different Client simply
-  // doesn't match, indistinguishable from a nonexistent id.
-  const invoice = await getPortalInvoice(clientId, id);
+  // Scoped by id + clientId + organizationId (+ project.clientId inside
+  // the query), never a bare id lookup — an invoice belonging to a
+  // different Client simply doesn't match, indistinguishable from a
+  // nonexistent id.
+  const invoice = await getPortalInvoice(clientId, organizationId, id);
 
   if (!invoice) {
     notFound();

@@ -15,8 +15,8 @@ const viewAllClass =
   "rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2";
 
 export default async function PortalOverviewPage() {
-  const { client, clientId, portalUser } = await getCurrentPortalUser();
-  const overview = await getPortalOverview(clientId);
+  const { client, clientId, organizationId, portalUser } = await getCurrentPortalUser();
+  const overview = await getPortalOverview(clientId, organizationId);
   const welcomeEligible = isPortalWelcomeEligible(portalUser.createdAt, new Date());
 
   return (

@@ -13,11 +13,12 @@ export async function uploadAttachmentAction(
 ): Promise<AttachmentUploadState> {
   const { user, organizationId } = await getCurrentUserOrganization();
 
-  // Scoped through the invoice's project's organization — never by id
-  // alone, consistent with updateInvoiceAction and the edit page's own
-  // lookup. A foreign org's invoice id simply doesn't match.
+  // Scoped by organizationId (primary) with the project relation retained
+  // as defense in depth — never by id alone, consistent with
+  // updateInvoiceAction and the edit page's own lookup. A foreign org's
+  // invoice id simply doesn't match.
   const invoice = await prisma.invoice.findFirst({
-    where: { id: invoiceId, project: { organizationId } },
+    where: { id: invoiceId, organizationId, project: { organizationId } },
     select: { id: true, invoiceNumber: true },
   });
   if (!invoice) {
@@ -51,7 +52,7 @@ export async function deleteAttachmentAction(invoiceId: string, attachmentId: st
     entityType: "INVOICE",
     resolveParentLabel: async (entityId) => {
       const parentInvoice = await prisma.invoice.findFirst({
-        where: { id: entityId, project: { organizationId } },
+        where: { id: entityId, organizationId, project: { organizationId } },
         select: { invoiceNumber: true },
       });
       return parentInvoice?.invoiceNumber ?? null;

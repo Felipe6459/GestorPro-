@@ -122,13 +122,18 @@ function toInvoiceSummary(invoice: {
  * always pass the clientId that getCurrentPortalUser()/getOptionalPortalUser()
  * resolved for the current identity, never a value from a query string,
  * form field, or cookie. No caching layer sits in front of any of these.
+ * Invoice reads additionally require organizationId (also from the
+ * verified portal identity) as defense in depth beyond clientId.
  */
-export async function getPortalOverview(clientId: string): Promise<PortalOverview> {
+export async function getPortalOverview(
+  clientId: string,
+  organizationId: string,
+): Promise<PortalOverview> {
   const [activeProjectsCount, openInvoicesAgg, recentProjects, recentInvoices] =
     await Promise.all([
       prisma.project.count({ where: { clientId, status: ACTIVE_PROJECT_STATUS } }),
       prisma.invoice.aggregate({
-        where: { clientId, status: { in: [...OPEN_INVOICE_STATUSES] } },
+        where: { clientId, organizationId, status: { in: [...OPEN_INVOICE_STATUSES] } },
         _count: { _all: true },
         _sum: { amount: true },
       }),
@@ -139,7 +144,7 @@ export async function getPortalOverview(clientId: string): Promise<PortalOvervie
         select: PROJECT_SUMMARY_SELECT,
       }),
       prisma.invoice.findMany({
-        where: { clientId },
+        where: { clientId, organizationId },
         orderBy: { createdAt: "desc" },
         take: 5,
         select: INVOICE_SUMMARY_SELECT,
@@ -199,6 +204,7 @@ export async function getPortalProject(
 
 export async function getPortalInvoices(
   clientId: string,
+  organizationId: string,
   filter: PortalInvoiceFilter,
 ): Promise<PortalInvoiceSummary[]> {
   const statusWhere =
@@ -211,10 +217,12 @@ export async function getPortalInvoices(
   const invoices = await prisma.invoice.findMany({
     where: {
       clientId,
-      ...(statusWhere ? { status: statusWhere } : {}),
       // Defense in depth beyond Invoice.clientId (the primary boundary):
-      // also require the invoice's own project to belong to this same
-      // Client, in case the two ever disagree.
+      // also require organizationId (from the verified portal identity)
+      // and the invoice's own project to belong to this same Client, in
+      // case any of these ever disagree.
+      organizationId,
+      ...(statusWhere ? { status: statusWhere } : {}),
       project: { clientId },
     },
     orderBy: { createdAt: "desc" },
@@ -225,15 +233,17 @@ export async function getPortalInvoices(
 }
 
 /**
- * Scoped by id + clientId + project.clientId together — same reasoning as
- * getPortalProject. Callers must notFound() on null.
+ * Scoped by id + clientId + organizationId + project.clientId together —
+ * same reasoning as getPortalProject, extended with organizationId as
+ * defense in depth. Callers must notFound() on null.
  */
 export async function getPortalInvoice(
   clientId: string,
+  organizationId: string,
   invoiceId: string,
 ): Promise<PortalInvoiceDetail | null> {
   const invoice = await prisma.invoice.findFirst({
-    where: { id: invoiceId, clientId, project: { clientId } },
+    where: { id: invoiceId, clientId, organizationId, project: { clientId } },
     select: {
       ...INVOICE_SUMMARY_SELECT,
       paidAt: true,
