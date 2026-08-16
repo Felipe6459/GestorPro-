@@ -144,15 +144,19 @@ export function formatInvoiceCurrencyAmount(
   if (decimal === null) return null;
 
   // Only convert to a JS `number` here, at the final Intl.NumberFormat
-  // display boundary — never earlier, and never used for any comparison
-  // or validation above. Safe specifically because `decimal` has already
-  // been validated against the Decimal(10,2) ceiling: the largest
-  // possible accepted value, 99,999,999.99, has 10 significant digits —
-  // even read as a whole number of cents (9,999,999,999) it stays far
-  // inside the range of integers a JS double can represent exactly (every
-  // integer up to 2^53 - 1, i.e. 16 significant digits) — so this
-  // conversion can never lose precision for any value this function
-  // actually accepts.
+  // presentation boundary — never earlier, and never used for any
+  // validation, calculation, comparison, or persistence (every financial
+  // calculation and every persisted value stays `Prisma.Decimal`
+  // end to end). This conversion is a binary floating-point
+  // approximation, not an exact representation of the decimal value —
+  // most Decimal(10,2) values, including the ceiling 99,999,999.99, have
+  // no exact binary64 representation. It's display-safe here only
+  // because `decimal` has already been validated as non-negative,
+  // Decimal(10,2), and no greater than 99,999,999.99: within that bounded
+  // range, the binary64 representation error is far smaller than half a
+  // cent, so Intl.NumberFormat — rendering with exactly two fraction
+  // digits for this supported invoice currency — always displays the
+  // correct rounded amount.
   return new Intl.NumberFormat(locale, { style: "currency", currency: currency.trim().toUpperCase() }).format(
     decimal.toNumber(),
   );
