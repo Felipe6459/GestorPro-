@@ -148,9 +148,24 @@ describe("team-metadata builders", () => {
 });
 
 describe("client-metadata", () => {
+  const baseClientSnapshot = {
+    name: "Acme",
+    email: null as string | null,
+    phone: null as string | null,
+    company: null as string | null,
+    status: "LEAD",
+    billingLegalName: null as string | null,
+    taxId: null as string | null,
+    streetAddress: null as string | null,
+    city: null as string | null,
+    state: null as string | null,
+    postalCode: null as string | null,
+    country: null as string | null,
+  };
+
   it("diffClientFields returns only field names that changed, never values", () => {
-    const before = { name: "Acme", email: "old@test.local", phone: null, company: null, status: "LEAD" };
-    const after = { name: "Acme", email: "new@test.local", phone: null, company: null, status: "ACTIVE" };
+    const before = { ...baseClientSnapshot, email: "old@test.local" };
+    const after = { ...baseClientSnapshot, email: "new@test.local", status: "ACTIVE" };
     const changed = diffClientFields(before, after);
     expect(changed).toEqual(["email", "status"]);
     // No value ("old@test.local", "new@test.local", "LEAD", "ACTIVE") ever appears.
@@ -161,8 +176,15 @@ describe("client-metadata", () => {
   });
 
   it("diffClientFields returns an empty array when nothing changed", () => {
-    const snapshot = { name: "Acme", email: null, phone: null, company: null, status: "LEAD" };
-    expect(diffClientFields(snapshot, { ...snapshot })).toEqual([]);
+    expect(diffClientFields(baseClientSnapshot, { ...baseClientSnapshot })).toEqual([]);
+  });
+
+  it("diffClientFields (Invoice System Slice 1) detects a billing-field change, name only", () => {
+    const before = { ...baseClientSnapshot, taxId: "OLD-TAX-ID", streetAddress: "1 Old St" };
+    const after = { ...baseClientSnapshot, taxId: "NEW-TAX-ID", streetAddress: "1 Old St" };
+    const changed = diffClientFields(before, after);
+    expect(changed).toEqual(["taxId"]);
+    expect(JSON.stringify(changed)).not.toContain("TAX-ID");
   });
 
   it("buildClientActivityMetadata never includes email/phone/company/notes", () => {

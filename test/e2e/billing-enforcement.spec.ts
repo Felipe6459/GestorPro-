@@ -57,7 +57,10 @@ test.beforeEach(async ({ context, baseURL }) => {
 
 test("creating a Client past the plan's limit shows a controlled, generic error — never a 500 or crash page", async ({ page }) => {
   await page.goto("/clients/new");
-  await page.getByLabel("Name").fill(`BILLING-E2E-ShouldBeBlocked-${fixtures.runId}`);
+  // exact: true — the Client form's Billing details subsection (Invoice
+  // System Slice 1) added a "Billing legal name" field, making the
+  // default substring match for "Name" ambiguous.
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill(`BILLING-E2E-ShouldBeBlocked-${fixtures.runId}`);
   await page.getByRole("button", { name: "Create client" }).click();
 
   await expect(page.getByText("Your plan's client limit has been reached.")).toBeVisible();

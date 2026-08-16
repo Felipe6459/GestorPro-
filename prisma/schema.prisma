@@ -55,6 +55,40 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+// Invoice System Slice 1 (docs/invoicing-architecture.md §4.1/§5). NONE has
+// no discountValue; PERCENTAGE is 0-100; FIXED is a flat amount that must
+// never exceed the invoice's own subtotal — enforced by
+// calculateInvoiceTotals(), never by the database.
+enum InvoiceDiscountType {
+  NONE
+  PERCENTAGE
+  FIXED
+}
+
+// Invoice System Slice 1 (docs/invoicing-architecture.md §4.1). Which label
+// the PDF/UI prints next to the tax line — the calculation itself is
+// identical regardless of label (one exclusive tax rate, §5).
+enum InvoiceTaxLabel {
+  TAX
+  VAT
+  GST
+}
+
+// Invoice System Slice 1 (docs/invoicing-architecture.md §4.3/§9.1). States
+// reflect exactly what's knowable about a Resend send attempt: PENDING (no
+// provider result yet), ACCEPTED (provider returned 2xx — not proof of
+// delivery), FAILED (a definitive rejection before acceptance), UNKNOWN
+// (the outcome could not be established, e.g. a timeout — never silently
+// reclassified as FAILED). Unused in Slice 1 — no code sends email yet;
+// this enum exists so InvoiceEmailAttempt's shape doesn't need a second
+// migration once Slice 4 adds the send path.
+enum InvoiceEmailAttemptStatus {
+  PENDING
+  ACCEPTED
+  FAILED
+  UNKNOWN
+}
+
 enum InvitationStatus {
   PENDING
   ACCEPTED
@@ -300,6 +334,10 @@ model User {
   notificationPreferences NotificationPreference[]
   authoredComments        Comment[]                @relation("CommentAuthor")
   commentMentions         CommentMention[]         @relation("CommentMentionUser")
+
+  // Invoice System Slice 1 (docs/invoicing-architecture.md §4.3). Unused
+  // until Slice 4 adds a real send path — see InvoiceEmailAttempt.
+  requestedInvoiceEmailAttempts InvoiceEmailAttempt[] @relation("InvoiceEmailAttemptRequestedBy")
 }
 
 // Multi-tenant scaffolding (schema-only for now; not yet wired into app
@@ -570,6 +608,23 @@ model Client {
   portalUsers       PortalUser[]
   clientInvitations ClientInvitation[]
 
+  // Invoice System Slice 1 (docs/invoicing-architecture.md §4.4) — optional
+  // billing identity used by a future invoice PDF's "Bill To" block. All
+  // nullable, never backfilled (no source-of-truth data exists to backfill
+  // from) — every existing Client row has these null until a staff member
+  // fills them in via the Client form's Billing details subsection.
+  // billingLegalName exists only for the rarer case where a formal legal
+  // invoicing name differs from `company`/`name`; address field naming
+  // deliberately matches OrganizationProfile's own exact convention
+  // (streetAddress/city/state/postalCode).
+  billingLegalName String?
+  taxId            String?
+  streetAddress    String?
+  city             String?
+  state            String?
+  postalCode       String?
+  country          String?
+
   @@unique([userId, email])
   @@index([status])
   @@index([userId])
@@ -657,11 +712,105 @@ model Invoice {
   organizationId String       @db.Uuid
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
+  // Invoice System Slice 1 (docs/invoicing-architecture.md §4.1/§12).
+  // Transitional EXPAND schema, not §4's final contracted shape — see the
+  // schema-level comments below for exactly what's deferred to Slice 5.
+
+  // Staff-only — never rendered to the PDF, never emailed, never shown to
+  // any portal identity. Remains editable in every status, including after
+  // a future finalization concept exists (§3.3).
+  internalNotes String?
+
+  discountType   InvoiceDiscountType @default(NONE)
+  discountValue  Decimal?            @db.Decimal(10, 2)
+  taxRatePercent Decimal?            @db.Decimal(5, 2)
+  taxLabel       InvoiceTaxLabel     @default(TAX)
+
+  // Deliberately nullable in Slice 1 (unlike §4.1's final target, which
+  // shows these non-null with a DB default) — an old application version
+  // still running during a rolling deploy window could insert a row before
+  // this backfill/write path exists everywhere. Every Slice 1 write path
+  // (flat create/edit) populates these correctly from the moment this
+  // slice ships; the migration backfills every pre-existing row once,
+  // immediately after these columns are added (§12 step 2). The NOT NULL
+  // contract is Slice 5's, explicitly (§12 step 4) — never assumed here.
+  // `amount` (existing column, unchanged meaning) remains the sole
+  // canonical total every Dashboard/Analytics/Search/Portal query reads.
+  subtotal       Decimal? @db.Decimal(10, 2)
+  discountAmount Decimal? @db.Decimal(10, 2)
+  taxAmount      Decimal? @db.Decimal(10, 2)
+
+  // Finalization/archival — schema reserved now, unwritten by any code
+  // path in Slice 1 (Slice 3 is the sole future writer, §8.1 step 5).
+  finalizedAt       DateTime?
+  issuerSnapshot    Json?
+  recipientSnapshot Json?
+
+  pdfStoragePath  String?   @unique
+  pdfGeneratedAt  DateTime?
+  documentVersion Int       @default(1)
+
+  lineItems     InvoiceLineItem[]
+  emailAttempts InvoiceEmailAttempt[]
+
   @@unique([clientId, invoiceNumber])
   @@index([status])
   @@index([dueDate])
   @@index([projectId])
   @@index([organizationId])
+}
+
+// Invoice System Slice 1 (docs/invoicing-architecture.md §4.2). Schema
+// reserved now; no Server Action writes a row in Slice 1 — there is no
+// itemized UI yet (Slice 2). Positions are always server-assigned and
+// contiguous (0..n-1) by whatever slice's Server Action eventually saves
+// them — never trusted from client input.
+model InvoiceLineItem {
+  id        String  @id @default(uuid()) @db.Uuid
+  invoiceId String  @db.Uuid
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  description String
+  quantity    Decimal @db.Decimal(10, 3)
+  unitPrice   Decimal @db.Decimal(10, 2)
+  lineTotal   Decimal @db.Decimal(10, 2)
+  position    Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([invoiceId, position])
+}
+
+// Invoice System Slice 1 (docs/invoicing-architecture.md §4.3). Schema
+// reserved now; no code sends an email or creates a row in Slice 1 — Slice
+// 4 owns the real send path. requestedByUserId follows the established
+// actor/audit-FK convention (User? + onDelete: SetNull, see Task.assigneeId/
+// Activity.actorId/Attachment.uploadedById/Comment.authorId). The partial
+// unique index enforcing "at most one PENDING attempt per invoice" (§4.3/
+// §9.2) is deliberately NOT added in this migration — Slice 4 owns it,
+// since it only matters once a real send path exists.
+model InvoiceEmailAttempt {
+  id        String  @id @default(uuid()) @db.Uuid
+  invoiceId String  @db.Uuid
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  recipientEmail String
+  status         InvoiceEmailAttemptStatus @default(PENDING)
+
+  idempotencyKey    String  @unique
+  providerMessageId String?
+  failureReason     String?
+
+  requestedByUserId String? @db.Uuid
+  requestedByUser   User?   @relation("InvoiceEmailAttemptRequestedBy", fields: [requestedByUserId], references: [id], onDelete: SetNull)
+
+  attemptedAt        DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  providerAcceptedAt DateTime?
+
+  @@index([invoiceId, attemptedAt])
+  @@index([invoiceId, status, attemptedAt])
 }
 
 // Append-only audit log. Never updated or deleted by app code (see

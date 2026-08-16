@@ -1,8 +1,25 @@
 // Fields tracked for change-detection on Client Activity — deliberately a
-// subset of the actual Client model. email/phone/company/notes never leave
-// this module's diff (only their *names*, when they change), and notes
-// never appears here at all.
-const CLIENT_TRACKED_FIELDS = ["name", "email", "phone", "company", "status"] as const;
+// subset of the actual Client model. email/phone/company/notes/billing
+// fields never leave this module's diff (only their *names*, when they
+// change), and notes never appears here at all. Invoice System Slice 1
+// (docs/invoicing-architecture.md §4.4) added the seven optional billing-
+// identity fields below to this same names-only tracking — taxId/address
+// values are exactly the kind of PII this module's own doc comment below
+// already promises never to copy into Activity.metadata.
+const CLIENT_TRACKED_FIELDS = [
+  "name",
+  "email",
+  "phone",
+  "company",
+  "status",
+  "billingLegalName",
+  "taxId",
+  "streetAddress",
+  "city",
+  "state",
+  "postalCode",
+  "country",
+] as const;
 
 type ClientTrackedSnapshot = {
   name: string;
@@ -10,6 +27,13 @@ type ClientTrackedSnapshot = {
   phone: string | null;
   company: string | null;
   status: string;
+  billingLegalName: string | null;
+  taxId: string | null;
+  streetAddress: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  country: string | null;
 };
 
 export type ClientActivityMetadata = {

@@ -1240,21 +1240,33 @@ legacy compatibility.**
   final contracted shape yet; `Decimal(10,2)/(10,3)` throughout, no
   precision change to the existing `amount` column; the deterministic
   legacy backfill (§12 step 2), run immediately after expand;
-  `calculateInvoiceTotals()` (§5); `Client` billing fields + validation;
-  currency validation (§6); application code correctly reads/writes the
-  new columns from this point on (§12 step 3). The invoice-numbering
+  `calculateInvoiceTotals()` (§5); `Client` billing fields + validation,
+  including a minimal "Billing details" subsection added to the existing
+  `ClientForm` (create + edit) so the seven new fields have a real write
+  path from day one — a schema with permanently unwritable columns isn't
+  acceptable, and this is the only UI this slice adds; currency
+  validation (§6); application code correctly reads/writes the new
+  columns from this point on (§12 step 3). The invoice-numbering
   uniqueness migration (§4.5/§12.5) lands here or is deferred per its own
   preflight outcome.
 - *Likely files*: `prisma/schema.prisma`, new migration(s),
   `src/lib/invoices/calculations.ts` (new), `src/lib/validation/{invoice,client}.ts`,
-  `src/lib/validation/company-profile.ts`-adjacent currency helper.
+  `src/lib/validation/company-profile.ts`-adjacent currency helper,
+  `src/components/clients/client-form.tsx` (the Billing details
+  subsection).
 - *Tests*: unit (calc engine exhaustive), integration (backfill
-  correctness, currency validation).
+  correctness, currency validation, Client billing-field write path).
 - *Acceptance*: schema validates, migration applies cleanly against the
   real PGlite-backed test harness, `calculateInvoiceTotals()` unit-tested
   exhaustively.
-- *Non-goals*: no UI, no PDF, no email, no lifecycle enforcement yet. No
-  `NOT NULL`/constraint contract — that is Slice 5's, explicitly (§12).
+- *Non-goals*: **no *Invoice* UI** (no line-item sub-form, no
+  discount/tax/currency/issue-date inputs, no Issue/Send action — see
+  §14 Slice 2), no PDF, no email, no lifecycle enforcement yet. The
+  Client billing-details subsection above is the sole exception, and is
+  not itself invoice UI — it lives on the existing Client form, has no
+  invoice-specific behavior, and ships regardless of whether any invoice
+  ever references it. No `NOT NULL`/constraint contract — that is Slice
+  5's, explicitly (§12).
 - *Migration/deployment*: expand + deterministic backfill only (§12
   steps 1-2); owns no contract-phase step.
 

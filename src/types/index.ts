@@ -6,7 +6,21 @@ export type AuthActionState = {
 export type ClientFormState = {
   error: string | null;
   fieldErrors?: Partial<
-    Record<"name" | "email" | "company" | "phone" | "status", string>
+    Record<
+      | "name"
+      | "email"
+      | "company"
+      | "phone"
+      | "status"
+      | "billingLegalName"
+      | "taxId"
+      | "streetAddress"
+      | "city"
+      | "state"
+      | "postalCode"
+      | "country",
+      string
+    >
   >;
 };
 

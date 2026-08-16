@@ -13,6 +13,7 @@ import {
   buildInvoiceStatusChangedMetadata,
   buildInvoiceUpdatedMetadata,
 } from "@/lib/activity/invoice-metadata";
+import { buildFlatInvoiceWriteFields } from "@/lib/invoices/calculations";
 import type { InvoiceFormState } from "@/types";
 
 export async function updateInvoiceAction(
@@ -94,6 +95,13 @@ export async function updateInvoiceAction(
           // pointing at the invoice's old project's organization.
           organizationId,
           ...paidAtUpdate,
+          // Invoice System Slice 1 dual-write compatibility
+          // (docs/invoicing-architecture.md §12 step 3) — no itemized UI
+          // exists yet, so every edit through this form keeps the invoice
+          // flat: subtotal is recomputed from the (possibly changed)
+          // amount, discount/tax stay zeroed. Never writes
+          // finalizedAt/snapshots/pdfStoragePath/line items.
+          ...buildFlatInvoiceWriteFields(values.amount),
         },
       });
 

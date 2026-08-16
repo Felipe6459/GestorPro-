@@ -64,7 +64,10 @@ test("injected script-like text renders as literal text and never executes", asy
 
   try {
     await page.goto("/clients/new");
-    await page.getByLabel("Name").fill(payload);
+    // exact: true — the Client form's Billing details subsection (Invoice
+    // System Slice 1) added a "Billing legal name" field, making the
+    // default substring match for "Name" ambiguous.
+    await page.getByRole("textbox", { name: "Name", exact: true }).fill(payload);
     await Promise.all([
       page.waitForResponse((r) => r.url().includes("/clients/new") && r.request().method() === "POST"),
       page.getByRole("button", { name: "Create client" }).click(),

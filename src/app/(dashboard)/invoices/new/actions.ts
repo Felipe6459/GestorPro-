@@ -8,6 +8,7 @@ import { parseInvoiceForm } from "@/lib/validation/invoice";
 import { withToast } from "@/lib/toast-url";
 import { createActivity } from "@/lib/activity/create-activity";
 import { buildInvoiceMetadata } from "@/lib/activity/invoice-metadata";
+import { buildFlatInvoiceWriteFields } from "@/lib/invoices/calculations";
 import type { InvoiceFormState } from "@/types";
 
 export async function createInvoiceAction(
@@ -65,6 +66,13 @@ export async function createInvoiceAction(
           // so that case must record a real paidAt from the start, same as
           // any later DRAFT/SENT -> PAID transition would.
           paidAt: values.status === "PAID" ? new Date() : null,
+          // Invoice System Slice 1 dual-write compatibility
+          // (docs/invoicing-architecture.md §12 step 3) — no itemized UI
+          // exists yet, so every invoice created through this form is flat
+          // by construction: subtotal mirrors amount, discount/tax are
+          // zeroed. Never writes finalizedAt/snapshots/pdfStoragePath/line
+          // items.
+          ...buildFlatInvoiceWriteFields(values.amount),
         },
       });
 
