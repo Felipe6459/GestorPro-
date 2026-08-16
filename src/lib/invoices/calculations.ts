@@ -1,4 +1,20 @@
-import { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/browser";
+
+/**
+ * `@/generated/prisma/browser`'s own namespace (`prismaNamespaceBrowser.ts`)
+ * exports `Decimal` as a value only (`export const Decimal = runtime.Decimal`)
+ * — unlike `@/generated/prisma/client`'s namespace, it has no companion
+ * `export type Decimal = ...`, so `Prisma.Decimal` cannot be written in a
+ * TYPE position here (confirmed by `tsc --noEmit`: "'Prisma.Decimal' refers
+ * to a value, but is being used as a type here"). `InstanceType<typeof
+ * Prisma.Decimal>` recovers the instance type from the constructor's own
+ * type without relying on a type export this generator doesn't provide for
+ * the browser entry point. Every TYPE-position use of a Decimal in this
+ * file uses this local `Decimal` alias; every VALUE-position use (`new
+ * Prisma.Decimal(...)`, `Prisma.Decimal.ROUND_HALF_UP`,
+ * `Prisma.Decimal.isDecimal(...)`) still reads `Prisma.Decimal` directly.
+ */
+type Decimal = InstanceType<typeof Prisma.Decimal>;
 
 /**
  * Invoice System Slice 1 — Decimal calculation domain
@@ -24,7 +40,7 @@ import { Prisma } from "@/generated/prisma/client";
  * those directly rather than a `number`.
  */
 
-export type DecimalInput = Prisma.Decimal | string | number;
+export type DecimalInput = Decimal | string | number;
 
 export type LineItemInput = {
   description: string;
@@ -49,9 +65,9 @@ export type InvoiceCalculationInput = {
 
 export type CalculatedLineItem = {
   description: string;
-  quantity: Prisma.Decimal;
-  unitPrice: Prisma.Decimal;
-  lineTotal: Prisma.Decimal;
+  quantity: Decimal;
+  unitPrice: Decimal;
+  lineTotal: Decimal;
 };
 
 export type InvoiceCalculationError =
@@ -76,10 +92,10 @@ export type InvoiceCalculationResult =
   | {
       ok: true;
       lineItems: CalculatedLineItem[];
-      subtotal: Prisma.Decimal;
-      discountAmount: Prisma.Decimal;
-      taxAmount: Prisma.Decimal;
-      total: Prisma.Decimal;
+      subtotal: Decimal;
+      discountAmount: Decimal;
+      taxAmount: Decimal;
+      total: Decimal;
     }
   | { ok: false; error: InvoiceCalculationError };
 
@@ -100,9 +116,33 @@ const PERCENT_DECIMAL_PLACES = 2;
 
 const ZERO = new Prisma.Decimal(0);
 
-/** Converts a DecimalInput to a Prisma.Decimal, or null if it isn't a valid finite decimal. */
-function toDecimal(input: DecimalInput): Prisma.Decimal | null {
-  if (input instanceof Prisma.Decimal) {
+/**
+ * Converts a DecimalInput to a Prisma.Decimal, or null if it isn't a valid
+ * finite decimal.
+ *
+ * Uses `Prisma.Decimal.isDecimal(input)` rather than
+ * `input instanceof Prisma.Decimal` deliberately — empirically verified
+ * (via a throwaway Vitest spec, not assumed) that under this repo's actual
+ * Vitest module resolution, `Prisma.Decimal` re-exported from
+ * `@/generated/prisma/browser` (this module's own import, required for
+ * Client Component bundling — see this file's header comment) and
+ * `Prisma.Decimal` re-exported from `@/generated/prisma/client` (still
+ * used by Server Action code elsewhere in this app to construct Decimal
+ * values) are NOT the same class reference in that environment — a plain
+ * `instanceof` check fails for a perfectly valid Decimal instance
+ * constructed via the other entry point, silently treating it as invalid
+ * input. `Decimal.isDecimal()` is decimal.js's own duck-typing-based
+ * cross-instance check (a proper `object is Decimal` type predicate, see
+ * `@prisma/client-runtime-utils`'s own `.d.ts`) built exactly for this
+ * "two copies of the same class" scenario, and was verified to recognize
+ * a Decimal from either entry point correctly. This must not be reverted
+ * to `instanceof` even though both entry points were also verified to
+ * resolve to the identical class object in an isolated `tsx` script
+ * outside Vitest/Next.js's own module graphs — that isolated result does
+ * not hold inside this app's real toolchain.
+ */
+function toDecimal(input: DecimalInput): Decimal | null {
+  if (Prisma.Decimal.isDecimal(input)) {
     return input.isFinite() ? input : null;
   }
   if (typeof input === "number") {
@@ -122,11 +162,11 @@ function toDecimal(input: DecimalInput): Prisma.Decimal | null {
   return null;
 }
 
-function round2(value: Prisma.Decimal): Prisma.Decimal {
+function round2(value: Decimal): Decimal {
   return value.toDecimalPlaces(MONEY_DECIMAL_PLACES, Prisma.Decimal.ROUND_HALF_UP);
 }
 
-function isValidPercent(value: Prisma.Decimal): boolean {
+function isValidPercent(value: Decimal): boolean {
   return (
     value.greaterThanOrEqualTo(PERCENT_MIN) &&
     value.lessThanOrEqualTo(PERCENT_MAX) &&
@@ -136,7 +176,7 @@ function isValidPercent(value: Prisma.Decimal): boolean {
 
 function resolveLineItems(
   rawLineItems: LineItemInput[],
-): { ok: true; lineItems: CalculatedLineItem[]; subtotal: Prisma.Decimal } | { ok: false; error: InvoiceCalculationError } {
+): { ok: true; lineItems: CalculatedLineItem[]; subtotal: Decimal } | { ok: false; error: InvoiceCalculationError } {
   if (rawLineItems.length === 0) {
     return { ok: false, error: { code: "EMPTY_LINE_ITEMS" } };
   }
@@ -202,7 +242,7 @@ function resolveLineItems(
  * using this same function is never trusted as-is.
  */
 export function calculateInvoiceTotals(input: InvoiceCalculationInput): InvoiceCalculationResult {
-  let subtotal: Prisma.Decimal;
+  let subtotal: Decimal;
   let lineItems: CalculatedLineItem[] = [];
 
   if (input.subtotalSource.mode === "lineItems") {
@@ -277,12 +317,12 @@ export function calculateInvoiceTotals(input: InvoiceCalculationInput): InvoiceC
 }
 
 export type FlatInvoiceWriteFields = {
-  subtotal: Prisma.Decimal;
+  subtotal: Decimal;
   discountType: "NONE";
   discountValue: null;
-  discountAmount: Prisma.Decimal;
+  discountAmount: Decimal;
   taxRatePercent: null;
-  taxAmount: Prisma.Decimal;
+  taxAmount: Decimal;
   taxLabel: "TAX";
 };
 
@@ -298,7 +338,10 @@ export type FlatInvoiceWriteFields = {
  * beyond that (an invalid value fails the same way `amount` already would).
  */
 export function buildFlatInvoiceWriteFields(amount: DecimalInput): FlatInvoiceWriteFields {
-  const decimalAmount = amount instanceof Prisma.Decimal ? amount : new Prisma.Decimal(amount);
+  // Prisma.Decimal.isDecimal(), not `instanceof` — see toDecimal()'s own
+  // comment above for why (cross-module class identity, empirically
+  // verified under this repo's actual Vitest/Next.js toolchain).
+  const decimalAmount = Prisma.Decimal.isDecimal(amount) ? amount : new Prisma.Decimal(amount);
   return {
     subtotal: decimalAmount,
     discountType: "NONE",
