@@ -1,4 +1,5 @@
 import { formatStatusLabel } from "@/lib/format";
+import { formatInvoiceStatusLabel } from "@/lib/invoices/status-label";
 import type { NotificationType } from "@/generated/prisma/enums";
 
 export type NotificationDisplayModel = {
@@ -89,7 +90,7 @@ function buildInvoiceStatusChanged(metadata: Record<string, unknown>): PartialMo
   const from = str(metadata.from);
   const to = str(metadata.to);
   const projectName = str(metadata.projectName);
-  const statusChange = from && to ? `${formatStatusLabel(from)} → ${formatStatusLabel(to)}` : null;
+  const statusChange = from && to ? `${formatInvoiceStatusLabel(from)} → ${formatInvoiceStatusLabel(to)}` : null;
 
   return {
     title: `${actorName} changed invoice ${invoiceNumber} status`,

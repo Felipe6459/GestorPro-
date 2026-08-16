@@ -21,6 +21,14 @@ import { RedirectSignal } from "../../support/navigation-mock";
  * by organizationId" case, which only ever proved that querying by
  * organizationId works *if* the column is already set — never that
  * production actually sets it.
+ *
+ * Invoice System Slice 2b: createInvoiceAction now always forces DRAFT
+ * (status is never a submitted field), and updateInvoiceAction takes a
+ * page-version `expectedUpdatedAt` argument and never changes status —
+ * both updated here to match. The two paidAt-lifecycle cases that used to
+ * live in this file (proven via directly-submitted status on create/edit)
+ * moved to test/integration/invoices/lifecycle-transitions.test.ts, which
+ * exercises them through the real changeInvoiceStatusAction instead.
  */
 
 const INVOICE_NUMBER_PREFIX = "INV-SCOPE";
@@ -33,17 +41,23 @@ function buildInvoiceFormData(fields: {
   invoiceNumber: string;
   projectId: string;
   amount?: string;
-  status?: string;
   dueDate?: string;
   notes?: string;
 }): FormData {
   const formData = new FormData();
+  formData.set("mode", "flat");
   formData.set("invoiceNumber", fields.invoiceNumber);
   formData.set("projectId", fields.projectId);
   formData.set("amount", fields.amount ?? "100.00");
-  formData.set("status", fields.status ?? "DRAFT");
+  formData.set("currency", "USD");
+  formData.set("issueDate", "2026-01-15");
   formData.set("dueDate", fields.dueDate ?? "");
   formData.set("notes", fields.notes ?? "");
+  formData.set("internalNotes", "");
+  formData.set("discountType", "NONE");
+  formData.set("discountValue", "");
+  formData.set("taxRatePercent", "");
+  formData.set("taxLabel", "TAX");
   return formData;
 }
 
@@ -120,6 +134,7 @@ describe("Invoice.organizationId — real production write/read paths", () => {
       expect(created?.organizationId).toBe(fixtures.orgA.id);
       expect(created?.clientId).toBe(fixtures.clientA.id);
       expect(created?.projectId).toBe(fixtures.project.id);
+      expect(created?.status).toBe("DRAFT");
 
       resetAuthMock();
     });
@@ -155,6 +170,7 @@ describe("Invoice.organizationId — real production write/read paths", () => {
       await expectRedirect(
         updateInvoiceAction(
           created.id,
+          created.updatedAt.toISOString(),
           { error: null },
           buildInvoiceFormData({ invoiceNumber, projectId: projectA2.id }),
         ),
@@ -180,6 +196,7 @@ describe("Invoice.organizationId — real production write/read paths", () => {
 
       const result = await updateInvoiceAction(
         created.id,
+        created.updatedAt.toISOString(),
         { error: null },
         buildInvoiceFormData({ invoiceNumber, projectId: projectB.id }),
       );
@@ -189,74 +206,6 @@ describe("Invoice.organizationId — real production write/read paths", () => {
       expect(unchanged.projectId).toBe(fixtures.project.id);
       expect(unchanged.clientId).toBe(fixtures.clientA.id);
       expect(unchanged.organizationId).toBe(fixtures.orgA.id);
-
-      resetAuthMock();
-    });
-
-    it("paidAt: not-PAID -> PAID stamps a fresh timestamp, preserved through an unrelated same-org project change", async () => {
-      actAs(fixtures.owner, fixtures.orgA.id);
-      const invoiceNumber = uniqueInvoiceNumber(fixtures.runId);
-      await expectRedirect(
-        createInvoiceAction(
-          { error: null },
-          buildInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, status: "DRAFT" }),
-        ),
-      );
-      const created = await prisma.invoice.findUniqueOrThrow({
-        where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } },
-      });
-      expect(created.paidAt).toBeNull();
-
-      await expectRedirect(
-        updateInvoiceAction(
-          created.id,
-          { error: null },
-          buildInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, status: "PAID" }),
-        ),
-      );
-      const paid = await prisma.invoice.findUniqueOrThrow({ where: { id: created.id } });
-      expect(paid.paidAt).not.toBeNull();
-      const stampedPaidAt = paid.paidAt;
-
-      // A second update — project changes (same organization), status stays
-      // PAID — must leave the already-stamped paidAt untouched.
-      await expectRedirect(
-        updateInvoiceAction(
-          created.id,
-          { error: null },
-          buildInvoiceFormData({ invoiceNumber, projectId: projectA2.id, status: "PAID" }),
-        ),
-      );
-      const stillPaid = await prisma.invoice.findUniqueOrThrow({ where: { id: created.id } });
-      expect(stillPaid.paidAt?.getTime()).toBe(stampedPaidAt?.getTime());
-      expect(stillPaid.projectId).toBe(projectA2.id);
-
-      resetAuthMock();
-    });
-
-    it("paidAt: PAID -> not-PAID clears it", async () => {
-      actAs(fixtures.owner, fixtures.orgA.id);
-      const invoiceNumber = uniqueInvoiceNumber(fixtures.runId);
-      await expectRedirect(
-        createInvoiceAction(
-          { error: null },
-          buildInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, status: "PAID" }),
-        ),
-      );
-      const created = await prisma.invoice.findUniqueOrThrow({
-        where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } },
-      });
-      expect(created.paidAt).not.toBeNull();
-
-      await expectRedirect(
-        updateInvoiceAction(
-          created.id,
-          { error: null },
-          buildInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, status: "SENT" }),
-        ),
-      );
-      const unpaid = await prisma.invoice.findUniqueOrThrow({ where: { id: created.id } });
-      expect(unpaid.paidAt).toBeNull();
 
       resetAuthMock();
     });
@@ -285,22 +234,43 @@ describe("Invoice.organizationId — real production write/read paths", () => {
     it("completion-metrics counts a real PAID and a real CANCELLED invoice, scoped to the correct organization", async () => {
       const before = await getInvoiceCompletionCounts(prisma, fixtures.orgA.id);
 
-      actAs(fixtures.owner, fixtures.orgA.id);
+      // Slice 2b ships no DRAFT -> SENT/PAID/CANCELLED transition (Issue
+      // doesn't exist until Slice 3) — a PAID/CANCELLED row cannot be
+      // produced from a fresh DRAFT through any 2b production action.
+      // Seeded directly via Prisma, matching the same "setup only, not an
+      // authorization claim" exception already established for legacy
+      // non-DRAFT fixtures elsewhere (legacy-compatibility.test.ts) — this
+      // test's own purpose is proving the Analytics read path, not the
+      // status-write path (that's lifecycle-transitions.test.ts's job).
       const paidNumber = uniqueInvoiceNumber(fixtures.runId);
-      await expectRedirect(
-        createInvoiceAction(
-          { error: null },
-          buildInvoiceFormData({ invoiceNumber: paidNumber, projectId: fixtures.project.id, status: "PAID" }),
-        ),
-      );
       const cancelledNumber = uniqueInvoiceNumber(fixtures.runId);
-      await expectRedirect(
-        createInvoiceAction(
-          { error: null },
-          buildInvoiceFormData({ invoiceNumber: cancelledNumber, projectId: fixtures.project.id, status: "CANCELLED" }),
-        ),
-      );
-      resetAuthMock();
+      await prisma.invoice.createMany({
+        data: [
+          {
+            invoiceNumber: paidNumber,
+            status: "PAID",
+            amount: "100.00",
+            subtotal: "100.00",
+            discountAmount: "0.00",
+            taxAmount: "0.00",
+            paidAt: new Date(),
+            projectId: fixtures.project.id,
+            clientId: fixtures.clientA.id,
+            organizationId: fixtures.orgA.id,
+          },
+          {
+            invoiceNumber: cancelledNumber,
+            status: "CANCELLED",
+            amount: "100.00",
+            subtotal: "100.00",
+            discountAmount: "0.00",
+            taxAmount: "0.00",
+            projectId: fixtures.project.id,
+            clientId: fixtures.clientA.id,
+            organizationId: fixtures.orgA.id,
+          },
+        ],
+      });
 
       const after = await getInvoiceCompletionCounts(prisma, fixtures.orgA.id);
       expect(after.paidInvoices).toBe(before.paidInvoices + 1);

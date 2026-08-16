@@ -1,4 +1,5 @@
 import { formatCurrency, formatStatusLabel } from "@/lib/format";
+import { formatInvoiceStatusLabel } from "@/lib/invoices/status-label";
 import type { ActivityAction, ActivityEntityType } from "@/generated/prisma/enums";
 
 export type ActivityDisplayModel = {
@@ -36,6 +37,17 @@ const FIELD_LABELS: Record<string, string> = {
   priority: "priority",
   invoiceNumber: "invoice number",
   amount: "amount",
+  // Invoice System Slice 2b — labels only, never values (see
+  // buildInvoiceUpdatedMetadata's own names-only contract).
+  currency: "currency",
+  issueDate: "issue date",
+  notes: "notes",
+  internalNotes: "internal notes",
+  discountType: "discount type",
+  discountValue: "discount",
+  taxRatePercent: "tax rate",
+  taxLabel: "tax label",
+  lineItems: "line items",
 };
 
 function humanizeFieldName(field: string): string {
@@ -123,10 +135,15 @@ function buildDataEntityModel(
     const from = str(metadata.from);
     const to = str(metadata.to);
     if (!from || !to) return FALLBACK;
+    // INVOICE's SENT enum value renders as "Issued" everywhere in the
+    // staff UI (docs/invoicing-architecture.md §3.1) — scoped to this one
+    // entityType so CLIENT/PROJECT/TASK STATUS_CHANGED events (which share
+    // this same code path) are unaffected.
+    const label = entityType === "INVOICE" ? formatInvoiceStatusLabel : formatStatusLabel;
     return {
       actionLabel: `changed ${noun} ${name} status`,
       entityLabel: name,
-      detailLines: [`${formatStatusLabel(from)} → ${formatStatusLabel(to)}`],
+      detailLines: [`${label(from)} → ${label(to)}`],
     };
   }
 

@@ -20,7 +20,15 @@ export type BreakdownItem = { status: string; count: number };
  * name, count, and percentage are always rendered as text next to it, so
  * nothing here depends on color alone to be understood.
  */
-export function BreakdownCard({ title, items }: { title: string; items: BreakdownItem[] }) {
+export function BreakdownCard({
+  title,
+  items,
+  labelFormatter = formatStatusLabel,
+}: {
+  title: string;
+  items: BreakdownItem[];
+  labelFormatter?: (status: string) => string;
+}) {
   const total = items.reduce((sum, item) => sum + item.count, 0);
 
   return (
@@ -37,7 +45,7 @@ export function BreakdownCard({ title, items }: { title: string; items: Breakdow
             return (
               <li key={item.status}>
                 <div className="flex items-baseline justify-between gap-2 text-sm">
-                  <span className="text-gray-700">{formatStatusLabel(item.status)}</span>
+                  <span className="text-gray-700">{labelFormatter(item.status)}</span>
                   <span className="text-gray-500">
                     {item.count} ({percent}%)
                   </span>

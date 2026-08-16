@@ -7,6 +7,7 @@ import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { BreakdownCard } from "@/components/dashboard/breakdown-card";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { formatInvoiceStatusLabel } from "@/lib/invoices/status-label";
 import { OnboardingCard, ONBOARDING_DISMISS_RETURN_FOCUS_ID } from "@/components/onboarding/onboarding-card";
 import { parseDashboardPeriod, formatDashboardPeriodLabel } from "@/lib/dashboard/period";
 import { getOrganizationOnboardingProgress } from "@/lib/onboarding/progress";
@@ -97,7 +98,7 @@ export default async function DashboardPage({
       <div>
         <h2 className="text-lg font-semibold tracking-tight text-gray-900">Breakdowns</h2>
         <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <BreakdownCard title="Invoice status" items={analytics.breakdowns.invoiceStatus} />
+          <BreakdownCard title="Invoice status" items={analytics.breakdowns.invoiceStatus} labelFormatter={formatInvoiceStatusLabel} />
           <BreakdownCard title="Task status" items={analytics.breakdowns.taskStatus} />
           <BreakdownCard title="Project status" items={analytics.breakdowns.projectStatus} />
         </div>
@@ -182,7 +183,7 @@ export default async function DashboardPage({
                   </Link>
                   <p className="text-sm text-gray-500">{invoice.clientName}</p>
                   <div className="mt-1 flex items-center gap-2">
-                    <StatusBadge status={invoice.status} />
+                    <StatusBadge status={invoice.status} label={formatInvoiceStatusLabel(invoice.status)} />
                     <span className="text-xs text-gray-500">
                       {formatCurrency(invoice.amount, invoice.currency)}
                     </span>

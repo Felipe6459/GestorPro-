@@ -8,14 +8,17 @@ import { actAs, resetAuthMock } from "../../support/auth-mock";
 import { RedirectSignal } from "../../support/navigation-mock";
 
 /**
- * Invoice System Slice 1 — flat invoice dual-write compatibility
- * (docs/invoicing-architecture.md §12 step 3). Proves the real
- * createInvoiceAction/updateInvoiceAction Server Actions (never a fixture
- * that manufactures the new columns directly) write the exact transitional
- * totals contract for every flat invoice: subtotal mirrors amount,
- * discount/tax are zeroed, and no archive/snapshot/line-item field is ever
- * touched — while every pre-existing behavior (paidAt four-case rule,
- * tenant scoping, amount as the canonical total) is unchanged.
+ * Invoice System Slice 1's flat-invoice compatibility contract
+ * (docs/invoicing-architecture.md §12 step 3), proven through Slice 2b's
+ * real createInvoiceAction/updateInvoiceAction — never a fixture that
+ * manufactures the new columns directly. buildFlatInvoiceWriteFields()
+ * (Slice 1) was removed as dead code once both actions began calling
+ * calculateInvoiceTotals() directly (Slice 2b); this file now proves the
+ * identical compatibility fact through that real code path instead: every
+ * flat invoice still writes subtotal = amount, zeroed discount/tax,
+ * taxLabel TAX, and never touches any archive/snapshot/line-item field —
+ * while every pre-existing behavior (paidAt lifecycle, tenant scoping,
+ * amount as the canonical total) remains correct.
  */
 
 const INVOICE_NUMBER_PREFIX = "INV-SLICE1";
@@ -24,21 +27,27 @@ function uniqueInvoiceNumber(runId: string): string {
   return `${INVOICE_NUMBER_PREFIX}-${runId}-${randomUUID().slice(0, 8)}`;
 }
 
-function buildInvoiceFormData(fields: {
+function buildFlatInvoiceFormData(fields: {
   invoiceNumber: string;
   projectId: string;
   amount?: string;
-  status?: string;
   dueDate?: string;
   notes?: string;
 }): FormData {
   const formData = new FormData();
+  formData.set("mode", "flat");
   formData.set("invoiceNumber", fields.invoiceNumber);
   formData.set("projectId", fields.projectId);
   formData.set("amount", fields.amount ?? "100.00");
-  formData.set("status", fields.status ?? "DRAFT");
+  formData.set("currency", "USD");
+  formData.set("issueDate", "2026-01-15");
   formData.set("dueDate", fields.dueDate ?? "");
   formData.set("notes", fields.notes ?? "");
+  formData.set("internalNotes", "");
+  formData.set("discountType", "NONE");
+  formData.set("discountValue", "");
+  formData.set("taxRatePercent", "");
+  formData.set("taxLabel", "TAX");
   return formData;
 }
 
@@ -52,7 +61,7 @@ async function expectRedirect(promise: Promise<unknown>): Promise<void> {
   expect(caught).toBeInstanceOf(RedirectSignal);
 }
 
-describe("Invoice Slice 1 — flat dual-write compatibility", () => {
+describe("Invoice flat dual-write compatibility — through the real Slice 2b actions", () => {
   let fixtures: TestFixtures;
   let projectB: { id: string };
 
@@ -75,14 +84,14 @@ describe("Invoice Slice 1 — flat dual-write compatibility", () => {
     await cleanupTestData(fixtures);
   });
 
-  it("create: writes subtotal = amount, zeroed discount/tax, taxLabel TAX, and no archive/snapshot/line-item field", async () => {
+  it("create: writes subtotal = amount, zeroed discount/tax, taxLabel TAX, DRAFT status, and no archive/snapshot/line-item field", async () => {
     actAs(fixtures.owner, fixtures.orgA.id);
     const invoiceNumber = uniqueInvoiceNumber(fixtures.runId);
 
     await expectRedirect(
       createInvoiceAction(
         { error: null },
-        buildInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, amount: "123.45" }),
+        buildFlatInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, amount: "123.45" }),
       ),
     );
     resetAuthMock();
@@ -92,6 +101,7 @@ describe("Invoice Slice 1 — flat dual-write compatibility", () => {
       include: { lineItems: true, emailAttempts: true },
     });
 
+    expect(created.status).toBe("DRAFT");
     expect(created.amount.toFixed(2)).toBe("123.45");
     expect(created.subtotal?.toFixed(2)).toBe("123.45");
     expect(created.discountType).toBe("NONE");
@@ -107,7 +117,6 @@ describe("Invoice Slice 1 — flat dual-write compatibility", () => {
     expect(created.recipientSnapshot).toBeNull();
     expect(created.pdfStoragePath).toBeNull();
     expect(created.pdfGeneratedAt).toBeNull();
-    expect(created.internalNotes).toBeNull();
     expect(created.lineItems).toEqual([]);
     expect(created.emailAttempts).toEqual([]);
   });
@@ -118,7 +127,7 @@ describe("Invoice Slice 1 — flat dual-write compatibility", () => {
     await expectRedirect(
       createInvoiceAction(
         { error: null },
-        buildInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, amount: "50.00" }),
+        buildFlatInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, amount: "50.00" }),
       ),
     );
     const created = await prisma.invoice.findUniqueOrThrow({
@@ -129,8 +138,9 @@ describe("Invoice Slice 1 — flat dual-write compatibility", () => {
     await expectRedirect(
       updateInvoiceAction(
         created.id,
+        created.updatedAt.toISOString(),
         { error: null },
-        buildInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, amount: "75.50" }),
+        buildFlatInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, amount: "75.50" }),
       ),
     );
     resetAuthMock();
@@ -148,65 +158,13 @@ describe("Invoice Slice 1 — flat dual-write compatibility", () => {
     expect(updated.pdfStoragePath).toBeNull();
   });
 
-  it("paidAt four-case rule is unchanged by the Slice 1 write path", async () => {
-    actAs(fixtures.owner, fixtures.orgA.id);
-    const invoiceNumber = uniqueInvoiceNumber(fixtures.runId);
-    await expectRedirect(
-      createInvoiceAction(
-        { error: null },
-        buildInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, status: "DRAFT" }),
-      ),
-    );
-    const created = await prisma.invoice.findUniqueOrThrow({
-      where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } },
-    });
-    expect(created.paidAt).toBeNull();
-
-    // not-PAID -> PAID stamps a fresh paidAt.
-    await expectRedirect(
-      updateInvoiceAction(
-        created.id,
-        { error: null },
-        buildInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, status: "PAID" }),
-      ),
-    );
-    const paid = await prisma.invoice.findUniqueOrThrow({ where: { id: created.id } });
-    expect(paid.paidAt).not.toBeNull();
-    const stampedPaidAt = paid.paidAt;
-
-    // PAID -> PAID is a no-op on paidAt.
-    await expectRedirect(
-      updateInvoiceAction(
-        created.id,
-        { error: null },
-        buildInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, status: "PAID", amount: "200.00" }),
-      ),
-    );
-    const stillPaid = await prisma.invoice.findUniqueOrThrow({ where: { id: created.id } });
-    expect(stillPaid.paidAt?.getTime()).toBe(stampedPaidAt?.getTime());
-    // The Slice 1 dual-write still applies on this same update.
-    expect(stillPaid.subtotal?.toFixed(2)).toBe("200.00");
-
-    // PAID -> not-PAID clears it.
-    await expectRedirect(
-      updateInvoiceAction(
-        created.id,
-        { error: null },
-        buildInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, status: "SENT" }),
-      ),
-    );
-    resetAuthMock();
-    const unpaid = await prisma.invoice.findUniqueOrThrow({ where: { id: created.id } });
-    expect(unpaid.paidAt).toBeNull();
-  });
-
   it("tenant/project/client scoping is unchanged — a cross-organization project is still rejected", async () => {
     actAs(fixtures.owner, fixtures.orgA.id);
     const invoiceNumber = uniqueInvoiceNumber(fixtures.runId);
 
     const result = await createInvoiceAction(
       { error: null },
-      buildInvoiceFormData({ invoiceNumber, projectId: projectB.id }),
+      buildFlatInvoiceFormData({ invoiceNumber, projectId: projectB.id }),
     );
     resetAuthMock();
 
@@ -221,7 +179,7 @@ describe("Invoice Slice 1 — flat dual-write compatibility", () => {
     await expectRedirect(
       createInvoiceAction(
         { error: null },
-        buildInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, amount: "999.99" }),
+        buildFlatInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id, amount: "999.99" }),
       ),
     );
     resetAuthMock();

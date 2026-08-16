@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
-import { formatCurrency, formatStatusLabel } from "@/lib/format";
+import { formatCurrency } from "@/lib/format";
+import { formatInvoiceStatusLabel } from "@/lib/invoices/status-label";
 import { PAGE_SIZE, getOffset, getTotalPages, type RawSearchParams } from "@/lib/list-params";
 import { DeleteButton } from "@/components/ui/delete-button";
 import { deleteInvoiceAction } from "./actions";
@@ -100,7 +101,7 @@ export default async function InvoicesPage({
                 { value: "", label: "All statuses" },
                 ...INVOICE_STATUSES.map((status) => ({
                   value: status,
-                  label: formatStatusLabel(status),
+                  label: formatInvoiceStatusLabel(status),
                 })),
               ],
             },
@@ -176,7 +177,7 @@ export default async function InvoicesPage({
                     {formatCurrency(Number(invoice.amount), invoice.currency)}
                   </TableCell>
                   <TableCell>
-                    <StatusBadge status={invoice.status} />
+                    <StatusBadge status={invoice.status} label={formatInvoiceStatusLabel(invoice.status)} />
                   </TableCell>
                   <TableCell>
                     {invoice.dueDate
@@ -186,20 +187,32 @@ export default async function InvoicesPage({
                   <TableCell>{invoice.createdAt.toLocaleDateString()}</TableCell>
                   <TableCell align="right">
                     <div className="flex items-center justify-end gap-4">
-                      <Link
-                        href={`/invoices/${invoice.id}/edit`}
-                        className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-                      >
-                        <PencilIcon className="h-3.5 w-3.5" />
-                        Edit
-                      </Link>
-                      <DeleteButton
-                        action={deleteInvoiceAction.bind(null, invoice.id)}
-                        itemName={invoice.invoiceNumber}
-                        confirmTitle="Delete invoice"
-                        confirmDescription={`Delete invoice ${invoice.invoiceNumber}? This action cannot be undone.`}
-                        successMessage="Invoice deleted"
-                      />
+                      {invoice.status === "DRAFT" ? (
+                        <>
+                          <Link
+                            href={`/invoices/${invoice.id}/edit`}
+                            className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                          >
+                            <PencilIcon className="h-3.5 w-3.5" />
+                            Edit
+                          </Link>
+                          <DeleteButton
+                            action={deleteInvoiceAction.bind(null, invoice.id)}
+                            itemName={invoice.invoiceNumber}
+                            confirmTitle="Delete invoice"
+                            confirmDescription={`Delete invoice ${invoice.invoiceNumber}? This action cannot be undone.`}
+                            successMessage="Invoice deleted"
+                            conflictMessage="This invoice can no longer be deleted — it may have already been issued."
+                          />
+                        </>
+                      ) : (
+                        <Link
+                          href={`/invoices/${invoice.id}/edit`}
+                          className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                        >
+                          View
+                        </Link>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

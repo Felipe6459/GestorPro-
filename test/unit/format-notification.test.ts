@@ -77,7 +77,7 @@ describe("formatNotification — one happy path per type", () => {
       projectName: "Website Redesign",
     });
     expect(result.title).toBe("Jane Doe changed invoice INV-042 status");
-    expect(result.detail).toBe("Sent → Paid · Website Redesign");
+    expect(result.detail).toBe("Issued → Paid · Website Redesign");
     expect(result.link).toBe("/invoices/11111111-1111-1111-1111-111111111111/edit");
   });
 
@@ -196,7 +196,7 @@ describe("formatNotification — missing/partial fields degrade the detail line,
       from: "DRAFT",
       to: "SENT",
     });
-    expect(result.detail).toBe("Draft → Sent");
+    expect(result.detail).toBe("Draft → Issued");
   });
 
   it("INVOICE_STATUS_CHANGED with no invoiceNumber at all falls all the way back", () => {

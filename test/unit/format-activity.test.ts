@@ -80,6 +80,28 @@ describe("formatActivity — STATUS_CHANGED across entity types", () => {
     expect(result.detailLines).toEqual(["Draft → Paid"]);
   });
 
+  it("Invoice — SENT renders as Issued, scoped only to the INVOICE entity type", () => {
+    const result = activity("INVOICE", "STATUS_CHANGED", {
+      invoiceNumber: "INV-1",
+      projectName: "Website",
+      from: "SENT",
+      to: "PAID",
+      actorName: "Jane Doe",
+    });
+    expect(result.detailLines).toEqual(["Issued → Paid"]);
+  });
+
+  it("Invoice UPDATED lists the new field-name labels for Slice 2b's fields, never a value", () => {
+    const result = activity("INVOICE", "UPDATED", {
+      invoiceNumber: "INV-1",
+      changedFields: ["currency", "issueDate", "discountType", "discountValue", "taxRatePercent", "taxLabel", "internalNotes", "notes", "lineItems"],
+      actorName: "Jane Doe",
+    });
+    expect(result.detailLines).toEqual([
+      "Changed: currency, issue date, discount type, discount, tax rate, tax label, internal notes, notes, line items",
+    ]);
+  });
+
   it("Invoice CREATED shows a formatted currency amount", () => {
     const result = activity("INVOICE", "CREATED", {
       invoiceNumber: "INV-1",

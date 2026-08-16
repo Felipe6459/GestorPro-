@@ -56,7 +56,7 @@ describe("formatNotificationEmail — one happy path per deliverable type", () =
       projectName: "Website Redesign",
     });
     expect(result.subject).toBe("Invoice INV-042 status changed");
-    expect(result.text).toContain("Jane Doe changed invoice INV-042 (Website Redesign) status from SENT to PAID.");
+    expect(result.text).toContain("Jane Doe changed invoice INV-042 (Website Redesign) status from Issued to Paid.");
   });
 
   it("MENTIONED on a project", () => {

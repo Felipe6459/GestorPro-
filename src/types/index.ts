@@ -38,14 +38,33 @@ export type TaskFormState = {
   >;
 };
 
+// Invoice System Slice 2b (docs/invoicing-architecture.md §5/§14 Slice 2).
+// "status" is deliberately absent — it is never a submitted create/edit
+// form field (DRAFT-only creation; a dedicated lifecycle action owns
+// status for existing non-DRAFT invoices, see status-actions.ts).
+export type InvoiceScalarFieldKey =
+  | "invoiceNumber"
+  | "projectId"
+  | "mode"
+  | "amount"
+  | "currency"
+  | "issueDate"
+  | "dueDate"
+  | "notes"
+  | "internalNotes"
+  | "discountType"
+  | "discountValue"
+  | "taxRatePercent"
+  | "taxLabel"
+  | "lineItems";
+
+export type InvoiceLineItemFieldKey = "description" | "quantity" | "unitPrice";
+
 export type InvoiceFormState = {
   error: string | null;
-  fieldErrors?: Partial<
-    Record<
-      "invoiceNumber" | "projectId" | "amount" | "status" | "dueDate",
-      string
-    >
-  >;
+  fieldErrors?: Partial<Record<InvoiceScalarFieldKey, string>>;
+  /** Keyed by the submitted array index — matches the row order the client rendered. */
+  lineItemErrors?: Record<number, Partial<Record<InvoiceLineItemFieldKey, string>>>;
 };
 
 export type InvitationFormState = {
