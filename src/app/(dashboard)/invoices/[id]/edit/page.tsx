@@ -3,12 +3,11 @@ import Link from "next/link";
 import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { InvoiceForm } from "@/components/invoices/invoice-form";
+import { InvoiceReadOnlyView, buildInvoiceTotalsViewModel } from "@/components/invoices/invoice-read-only-view";
+import { getSupportedInvoiceCurrencies } from "@/lib/invoices/currencies";
+import { formatDateOnly } from "@/lib/invoices/date-only";
 import { updateInvoiceAction } from "./actions";
 import { InvoiceAttachmentsSection } from "./attachments-section";
-
-function toDateInputValue(date: Date | null): string {
-  return date ? date.toISOString().slice(0, 10) : "";
-}
 
 export default async function EditInvoicePage({
   params,
@@ -18,54 +17,115 @@ export default async function EditInvoicePage({
   const { id } = await params;
   const { organizationId } = await getCurrentUserOrganization();
 
-  const [invoice, projects] = await Promise.all([
-    prisma.invoice.findFirst({
-      where: { id, organizationId, project: { organizationId } },
-    }),
-    prisma.project.findMany({
-      where: { organizationId },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, client: { select: { name: true } } },
-    }),
-  ]);
+  // The one shared Invoice fetch, needed by both branches — ordered line
+  // items and Project/Client display, never a duplicate Invoice lookup.
+  // No `attachments` — Invoice has no such relation; attachments are
+  // fetched separately by the existing, unchanged InvoiceAttachmentsSection.
+  const invoice = await prisma.invoice.findFirst({
+    where: { id, organizationId, project: { organizationId } },
+    include: {
+      lineItems: { orderBy: { position: "asc" } },
+      project: { select: { name: true, client: { select: { name: true } } } },
+    },
+  });
 
   if (!invoice) {
     notFound();
   }
 
-  const boundUpdateInvoiceAction = updateInvoiceAction.bind(null, invoice.id);
+  const isDraft = invoice.status === "DRAFT";
+
+  // The full project option list is fetched only for the DRAFT branch —
+  // the read-only view never offers a project-changing control.
+  const projects = isDraft
+    ? await prisma.project.findMany({
+        where: { organizationId },
+        orderBy: { name: "asc" },
+        select: { id: true, name: true, client: { select: { name: true } } },
+      })
+    : null;
+
+  const boundUpdateInvoiceAction = updateInvoiceAction.bind(null, invoice.id, invoice.updatedAt.toISOString());
 
   return (
-    <div className="mx-auto max-w-xl">
+    <div className="mx-auto max-w-2xl">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
-          Edit invoice
+          {isDraft ? "Edit invoice" : "Invoice"}
         </h1>
         <Link
           href="/invoices"
           className="rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
         >
-          Cancel
+          Back
         </Link>
       </div>
       <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <InvoiceForm
-          action={boundUpdateInvoiceAction}
-          projects={projects.map((project) => ({
-            id: project.id,
-            label: `${project.name} — ${project.client.name}`,
-          }))}
-          defaultValues={{
-            invoiceNumber: invoice.invoiceNumber,
-            projectId: invoice.projectId,
-            amount: invoice.amount.toString(),
-            status: invoice.status,
-            dueDate: toDateInputValue(invoice.dueDate),
-            notes: invoice.notes ?? "",
-          }}
-          submitLabel="Save changes"
-          pendingLabel="Saving…"
-        />
+        {isDraft ? (
+          <InvoiceForm
+            action={boundUpdateInvoiceAction}
+            projects={(projects ?? []).map((project) => ({
+              id: project.id,
+              label: `${project.name} — ${project.client.name}`,
+            }))}
+            currencyOptions={getSupportedInvoiceCurrencies()}
+            defaultValues={{
+              invoiceNumber: invoice.invoiceNumber,
+              projectId: invoice.projectId,
+              mode: invoice.lineItems.length > 0 ? "itemized" : "flat",
+              amount: invoice.amount.toString(),
+              lineItems: invoice.lineItems.map((li) => ({
+                description: li.description,
+                quantity: li.quantity.toString(),
+                unitPrice: li.unitPrice.toString(),
+              })),
+              // The invoice row's own persisted currency — never silently
+              // replaced by the current organization default.
+              currency: invoice.currency,
+              issueDate: formatDateOnly(invoice.issueDate),
+              dueDate: invoice.dueDate ? formatDateOnly(invoice.dueDate) : "",
+              notes: invoice.notes ?? "",
+              internalNotes: invoice.internalNotes ?? "",
+              discountType: invoice.discountType,
+              discountValue: invoice.discountValue?.toString() ?? "",
+              taxRatePercent: invoice.taxRatePercent?.toString() ?? "",
+              taxLabel: invoice.taxLabel,
+            }}
+            submitLabel="Save changes"
+            pendingLabel="Saving…"
+          />
+        ) : (
+          <InvoiceReadOnlyView
+            invoiceId={invoice.id}
+            invoiceNumber={invoice.invoiceNumber}
+            status={invoice.status}
+            projectName={invoice.project.name}
+            clientName={invoice.project.client.name}
+            currency={invoice.currency}
+            issueDate={invoice.issueDate}
+            dueDate={invoice.dueDate}
+            paidAt={invoice.paidAt}
+            lineItems={invoice.lineItems.map((li) => ({
+              description: li.description,
+              quantity: li.quantity,
+              unitPrice: li.unitPrice,
+              lineTotal: li.lineTotal,
+            }))}
+            notes={invoice.notes}
+            internalNotes={invoice.internalNotes}
+            totals={buildInvoiceTotalsViewModel({
+              amount: invoice.amount,
+              subtotal: invoice.subtotal,
+              discountType: invoice.discountType,
+              discountAmount: invoice.discountAmount,
+              discountValue: invoice.discountValue,
+              taxRatePercent: invoice.taxRatePercent,
+              taxAmount: invoice.taxAmount,
+              taxLabel: invoice.taxLabel,
+              currency: invoice.currency,
+            })}
+          />
+        )}
         <InvoiceAttachmentsSection invoiceId={invoice.id} organizationId={organizationId} />
       </div>
     </div>

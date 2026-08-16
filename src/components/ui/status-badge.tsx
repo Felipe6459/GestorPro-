@@ -90,13 +90,13 @@ export const STATUS_TONES: Record<string, StatusTone> = {
   READ_ONLY: "danger",
 };
 
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status, label }: { status: string; label?: string }) {
   const tone = STATUS_TONES[status] ?? "neutral";
   return (
     <span
       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[tone]}`}
     >
-      {formatStatusLabel(status)}
+      {label ?? formatStatusLabel(status)}
     </span>
   );
 }

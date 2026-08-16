@@ -27,10 +27,12 @@ import {
 } from "@/lib/activity/task-metadata";
 import {
   diffInvoiceFields,
-  buildInvoiceMetadata,
+  buildInvoiceSnapshotMetadata,
   buildInvoiceStatusChangedMetadata,
   buildInvoiceUpdatedMetadata,
+  type InvoiceTrackedSnapshot,
 } from "@/lib/activity/invoice-metadata";
+import { Prisma } from "@/generated/prisma/browser";
 
 // Every builder below is an allowlist by construction — it only ever
 // returns the fields it explicitly names. These tests lock that contract
@@ -283,61 +285,216 @@ describe("task-metadata", () => {
 });
 
 describe("invoice-metadata", () => {
-  it("diffInvoiceFields compares amount numerically, ignoring string/Decimal shape differences", () => {
-    const before = { invoiceNumber: "INV-1", projectId: "p1", amount: "100.00", status: "DRAFT", dueDate: null };
-    const after = { invoiceNumber: "INV-1", projectId: "p1", amount: 100, status: "DRAFT", dueDate: null };
-    expect(diffInvoiceFields(before, after)).toEqual([]);
-  });
-
-  it("diffInvoiceFields flags a real amount change", () => {
-    const before = { invoiceNumber: "INV-1", projectId: "p1", amount: "100.00", status: "DRAFT", dueDate: null };
-    const after = { invoiceNumber: "INV-1", projectId: "p1", amount: "150.00", status: "DRAFT", dueDate: null };
-    expect(diffInvoiceFields(before, after)).toEqual(["amount"]);
-  });
-
-  it("buildInvoiceMetadata stringifies amount and never includes a raw project id", () => {
-    const metadata = buildInvoiceMetadata(
-      { invoiceNumber: "INV-1", status: "DRAFT", amount: 100, currency: "USD" },
-      "Website",
-      "Jane Doe",
-    );
-    expect(metadata.amount).toBe("100");
-    expect(metadata).not.toHaveProperty("projectId");
-  });
-
-  it("buildInvoiceStatusChangedMetadata carries from/to and never a raw project id", () => {
-    const metadata = buildInvoiceStatusChangedMetadata(
-      { invoiceNumber: "INV-1" },
-      "Website",
-      "DRAFT",
-      "SENT",
-      "Jane Doe",
-    );
-    expect(metadata).toEqual({
+  function baseSnapshot(overrides: Partial<InvoiceTrackedSnapshot> = {}): InvoiceTrackedSnapshot {
+    return {
       invoiceNumber: "INV-1",
-      projectName: "Website",
-      from: "DRAFT",
-      to: "SENT",
-      actorName: "Jane Doe",
-    });
-    expect(metadata).not.toHaveProperty("projectId");
-  });
-
-  it("buildInvoiceUpdatedMetadata stringifies amount and carries changedFields", () => {
-    const metadata = buildInvoiceUpdatedMetadata(
-      { invoiceNumber: "INV-1", status: "SENT", amount: 250, currency: "USD" },
-      "Website",
-      ["dueDate"],
-      "Jane Doe",
-    );
-    expect(metadata).toEqual({
-      invoiceNumber: "INV-1",
-      status: "SENT",
-      amount: "250",
+      projectId: "p1",
+      amount: "100.00",
       currency: "USD",
-      projectName: "Website",
-      changedFields: ["dueDate"],
-      actorName: "Jane Doe",
+      issueDate: new Date("2026-08-16T00:00:00.000Z"),
+      dueDate: null,
+      notes: null,
+      internalNotes: null,
+      discountType: "NONE",
+      discountValue: null,
+      taxRatePercent: null,
+      taxLabel: "TAX",
+      lineItems: [],
+      ...overrides,
+    };
+  }
+
+  describe("diffInvoiceFields", () => {
+    it("compares amount via Decimal, ignoring string/number/Decimal shape differences", () => {
+      const before = baseSnapshot({ amount: "100.00" });
+      const after = baseSnapshot({ amount: new Prisma.Decimal("100.00") });
+      expect(diffInvoiceFields(before, after)).toEqual([]);
+    });
+
+    it("flags a real amount change", () => {
+      const before = baseSnapshot({ amount: "100.00" });
+      const after = baseSnapshot({ amount: "150.00" });
+      expect(diffInvoiceFields(before, after)).toEqual(["amount"]);
+    });
+
+    it("never uses Number() conversion — detects a difference beyond float precision", () => {
+      const before = baseSnapshot({ amount: "10000000.01" });
+      const after = baseSnapshot({ amount: "10000000.02" });
+      expect(diffInvoiceFields(before, after)).toContain("amount");
+    });
+
+    it("compares dates by timestamp", () => {
+      const before = baseSnapshot({ dueDate: new Date("2026-09-01T00:00:00.000Z") });
+      const after = baseSnapshot({ dueDate: new Date("2026-09-01T00:00:00.000Z") });
+      expect(diffInvoiceFields(before, after)).toEqual([]);
+
+      const changed = baseSnapshot({ dueDate: new Date("2026-09-02T00:00:00.000Z") });
+      expect(diffInvoiceFields(before, changed)).toContain("dueDate");
+    });
+
+    it("null dueDate vs a set dueDate is a difference", () => {
+      const before = baseSnapshot({ dueDate: null });
+      const after = baseSnapshot({ dueDate: new Date("2026-09-01T00:00:00.000Z") });
+      expect(diffInvoiceFields(before, after)).toContain("dueDate");
+    });
+
+    it("any line-item difference collapses to exactly one 'lineItems' entry — an add", () => {
+      const before = baseSnapshot({ lineItems: [{ description: "A", quantity: "1", unitPrice: "10.00" }] });
+      const after = baseSnapshot({
+        lineItems: [
+          { description: "A", quantity: "1", unitPrice: "10.00" },
+          { description: "B", quantity: "1", unitPrice: "5.00" },
+        ],
+      });
+      expect(diffInvoiceFields(before, after)).toEqual(["lineItems"]);
+    });
+
+    it("a reorder is detected as a lineItems difference", () => {
+      const before = baseSnapshot({
+        lineItems: [
+          { description: "A", quantity: "1", unitPrice: "10.00" },
+          { description: "B", quantity: "1", unitPrice: "5.00" },
+        ],
+      });
+      const after = baseSnapshot({
+        lineItems: [
+          { description: "B", quantity: "1", unitPrice: "5.00" },
+          { description: "A", quantity: "1", unitPrice: "10.00" },
+        ],
+      });
+      expect(diffInvoiceFields(before, after)).toEqual(["lineItems"]);
+    });
+
+    it("identical line items produce no lineItems diff", () => {
+      const items = [{ description: "A", quantity: "1", unitPrice: "10.00" }];
+      const before = baseSnapshot({ lineItems: items });
+      const after = baseSnapshot({ lineItems: [{ description: "A", quantity: new Prisma.Decimal("1"), unitPrice: new Prisma.Decimal("10.00") }] });
+      expect(diffInvoiceFields(before, after)).toEqual([]);
+    });
+
+    it("internalNotes/notes changes produce only the field name, never the value, in the diff list itself", () => {
+      const before = baseSnapshot({ internalNotes: null, notes: null });
+      const after = baseSnapshot({ internalNotes: "a secret note", notes: "client note" });
+      const diff = diffInvoiceFields(before, after);
+      expect(diff).toContain("internalNotes");
+      expect(diff).toContain("notes");
+      expect(diff.join(",")).not.toContain("secret");
+      expect(diff.join(",")).not.toContain("client note");
+    });
+
+    it("discount/currency/issueDate/discountType/taxRatePercent/taxLabel are all tracked", () => {
+      const before = baseSnapshot();
+      const after = baseSnapshot({
+        currency: "EUR",
+        issueDate: new Date("2026-09-01T00:00:00.000Z"),
+        discountType: "PERCENTAGE",
+        discountValue: "10",
+        taxRatePercent: "8.25",
+        taxLabel: "VAT",
+      });
+      const diff = diffInvoiceFields(before, after);
+      expect(diff).toEqual(
+        expect.arrayContaining(["currency", "issueDate", "discountType", "discountValue", "taxRatePercent", "taxLabel"]),
+      );
+    });
+
+    it("a fully identical snapshot produces no diff at all (no-op detection)", () => {
+      const snapshot = baseSnapshot({ dueDate: new Date("2026-09-01T00:00:00.000Z"), lineItems: [{ description: "A", quantity: "1", unitPrice: "10.00" }] });
+      expect(diffInvoiceFields(snapshot, { ...snapshot })).toEqual([]);
+    });
+
+    it("never includes status — that is always its own STATUS_CHANGED event", () => {
+      const before = baseSnapshot();
+      const after = baseSnapshot({ invoiceNumber: "INV-2" });
+      expect(diffInvoiceFields(before, after)).not.toContain("status");
+    });
+  });
+
+  describe("buildInvoiceSnapshotMetadata — CREATED/DELETED, shared, null-safe", () => {
+    it("stringifies amount and never includes a raw project/client id", () => {
+      const metadata = buildInvoiceSnapshotMetadata(
+        { invoiceNumber: "INV-1", status: "DRAFT", amount: 100, currency: "USD", subtotal: "100.00", discountType: "NONE", discountAmount: "0.00", taxRatePercent: null, taxAmount: "0.00", taxLabel: "TAX" },
+        0,
+        "Website",
+        "Jane Doe",
+      );
+      expect(metadata.amount).toBe("100");
+      expect(metadata.lineItemCount).toBe(0);
+      expect(metadata).not.toHaveProperty("projectId");
+      expect(metadata).not.toHaveProperty("clientId");
+      expect(metadata).not.toHaveProperty("organizationId");
+    });
+
+    it("records the correct itemized line-item count", () => {
+      const metadata = buildInvoiceSnapshotMetadata(
+        { invoiceNumber: "INV-1", status: "DRAFT", amount: "300.00", currency: "USD", subtotal: "300.00", discountType: "NONE", discountAmount: "0.00", taxRatePercent: null, taxAmount: "0.00", taxLabel: "TAX" },
+        3,
+        "Website",
+        "Jane Doe",
+      );
+      expect(metadata.lineItemCount).toBe(3);
+    });
+
+    it("is null-safe for a legacy row with unbackfilled nullable totals", () => {
+      const metadata = buildInvoiceSnapshotMetadata(
+        { invoiceNumber: "INV-1", status: "DRAFT", amount: "100.00", currency: "USD", subtotal: null, discountType: "NONE", discountAmount: null, taxRatePercent: null, taxAmount: null, taxLabel: "TAX" },
+        0,
+        "Website",
+        "Jane Doe",
+      );
+      expect(metadata.subtotal).toBeNull();
+      expect(metadata.discountAmount).toBeNull();
+      expect(metadata.taxAmount).toBeNull();
+      expect(metadata.amount).toBe("100.00");
+    });
+
+    it("never includes notes, internalNotes, or any line-item description/quantity/unitPrice value", () => {
+      const metadata = buildInvoiceSnapshotMetadata(
+        { invoiceNumber: "INV-1", status: "DRAFT", amount: "100.00", currency: "USD", subtotal: "100.00", discountType: "NONE", discountAmount: "0.00", taxRatePercent: null, taxAmount: "0.00", taxLabel: "TAX" },
+        2,
+        "Website",
+        "Jane Doe",
+      );
+      const serialized = JSON.stringify(metadata);
+      expect(metadata).not.toHaveProperty("notes");
+      expect(metadata).not.toHaveProperty("internalNotes");
+      expect(metadata).not.toHaveProperty("lineItems");
+      expect(serialized).not.toContain("description");
+    });
+  });
+
+  describe("buildInvoiceStatusChangedMetadata", () => {
+    it("carries from/to and never a raw project id", () => {
+      const metadata = buildInvoiceStatusChangedMetadata(
+        { invoiceNumber: "INV-1" },
+        "Website",
+        "DRAFT",
+        "SENT",
+        "Jane Doe",
+      );
+      expect(metadata).toEqual({
+        invoiceNumber: "INV-1",
+        projectName: "Website",
+        from: "DRAFT",
+        to: "SENT",
+        actorName: "Jane Doe",
+      });
+      expect(metadata).not.toHaveProperty("projectId");
+    });
+  });
+
+  describe("buildInvoiceUpdatedMetadata — names only", () => {
+    it("carries only changed field names — never a value", () => {
+      const metadata = buildInvoiceUpdatedMetadata("INV-1", ["dueDate", "internalNotes"], "Website", "Jane Doe");
+      expect(metadata).toEqual({
+        invoiceNumber: "INV-1",
+        projectName: "Website",
+        changedFields: ["dueDate", "internalNotes"],
+        actorName: "Jane Doe",
+      });
+      expect(metadata).not.toHaveProperty("amount");
+      expect(metadata).not.toHaveProperty("status");
+      expect(metadata).not.toHaveProperty("currency");
     });
   });
 });

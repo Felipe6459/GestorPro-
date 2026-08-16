@@ -1,5 +1,6 @@
 import type { NotificationType } from "@/generated/prisma/enums";
 import { buildEmailLegalFooterHtml, buildEmailLegalFooterText } from "@/lib/email/legal-footer";
+import { formatInvoiceStatusLabel } from "@/lib/invoices/status-label";
 
 export type NotificationEmailContent = {
   subject: string;
@@ -123,7 +124,7 @@ function buildInvoiceStatusChanged(metadata: Record<string, unknown>): PartialCo
   const from = str(metadata.from);
   const to = str(metadata.to);
   const projectName = str(metadata.projectName);
-  const change = from && to ? ` from ${from} to ${to}` : "";
+  const change = from && to ? ` from ${formatInvoiceStatusLabel(from)} to ${formatInvoiceStatusLabel(to)}` : "";
   const project = projectName ? ` (${projectName})` : "";
 
   return {

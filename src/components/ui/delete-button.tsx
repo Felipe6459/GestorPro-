@@ -5,19 +5,25 @@ import { TrashIcon } from "@/components/ui/icons";
 import { ConfirmDialog, type ConfirmDialogHandle } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/toast/toast-provider";
 
+/** A void-returning action's success is unconditional (every existing caller); a result-aware action can report a controlled failure instead of throwing (Invoice's DRAFT-only guard, e.g.). */
+export type DeleteButtonActionResult = void | { ok: boolean };
+
 export function DeleteButton({
   action,
   itemName,
   confirmTitle,
   confirmDescription,
   successMessage,
+  conflictMessage = `Failed to delete ${itemName}.`,
 }: {
-  /** A bound, zero-argument server action (e.g. deleteClientAction.bind(null, id)). */
-  action: () => Promise<void>;
+  /** A bound, zero-argument server action (e.g. deleteClientAction.bind(null, id)). May resolve void (existing behavior, unconditional success) or { ok: boolean } (a controlled guard result). */
+  action: () => Promise<DeleteButtonActionResult>;
   itemName: string;
   confirmTitle: string;
   confirmDescription: string;
   successMessage: string;
+  /** Shown instead of successMessage when a result-aware action resolves { ok: false }. Defaults to the same generic text the catch branch already used. */
+  conflictMessage?: string;
 }) {
   const dialogRef = useRef<ConfirmDialogHandle>(null);
   const { showToast } = useToast();
@@ -26,8 +32,12 @@ export function DeleteButton({
   async function handleConfirm() {
     setPending(true);
     try {
-      await action();
-      showToast(successMessage);
+      const result = await action();
+      if (result && "ok" in result && !result.ok) {
+        showToast(conflictMessage, "error");
+      } else {
+        showToast(successMessage);
+      }
     } catch {
       showToast(`Failed to delete ${itemName}.`, "error");
     } finally {

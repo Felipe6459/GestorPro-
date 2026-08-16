@@ -3,15 +3,26 @@ import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { InvoiceForm } from "@/components/invoices/invoice-form";
 import { EmptyState } from "@/components/ui/empty-state";
+import { getCompanyProfile } from "@/lib/organization-setup/company-profile";
+import { resolveInvoiceCurrencyDefault, getSupportedInvoiceCurrencies } from "@/lib/invoices/currencies";
+import { formatDateOnly } from "@/lib/invoices/date-only";
 import { createInvoiceAction } from "./actions";
 
 export default async function NewInvoicePage() {
+  // Authentication resolved first, standalone — organizationId is never
+  // referenced inside a Promise.all that is still awaiting this.
   const { organizationId } = await getCurrentUserOrganization();
-  const projects = await prisma.project.findMany({
-    where: { organizationId },
-    orderBy: { name: "asc" },
-    select: { id: true, name: true, client: { select: { name: true } } },
-  });
+
+  const [projects, companyProfile] = await Promise.all([
+    prisma.project.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, client: { select: { name: true } } },
+    }),
+    getCompanyProfile(organizationId),
+  ]);
+
+  const currencyDefault = resolveInvoiceCurrencyDefault(companyProfile.currency);
 
   return (
     <div className="mx-auto max-w-xl">
@@ -48,6 +59,19 @@ export default async function NewInvoicePage() {
               id: project.id,
               label: `${project.name} — ${project.client.name}`,
             }))}
+            currencyOptions={getSupportedInvoiceCurrencies()}
+            currencyFallbackNotice={
+              currencyDefault.isFallback && currencyDefault.organizationCurrency
+                ? `Your organization's currency (${currencyDefault.organizationCurrency}) isn't supported for invoices — defaulted to USD.`
+                : undefined
+            }
+            defaultValues={{
+              mode: "flat",
+              currency: currencyDefault.currency,
+              issueDate: formatDateOnly(new Date()),
+              discountType: "NONE",
+              taxLabel: "TAX",
+            }}
           />
         </div>
       )}

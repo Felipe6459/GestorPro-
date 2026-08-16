@@ -4,22 +4,22 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUserOrganization } from "@/lib/current-user";
-import { parseInvoiceForm } from "@/lib/validation/invoice";
+import { parseInvoiceForm, mapInvoiceCalculationError } from "@/lib/validation/invoice";
 import { withToast } from "@/lib/toast-url";
 import { createActivity } from "@/lib/activity/create-activity";
-import { buildInvoiceMetadata } from "@/lib/activity/invoice-metadata";
-import { buildFlatInvoiceWriteFields } from "@/lib/invoices/calculations";
+import { buildInvoiceSnapshotMetadata } from "@/lib/activity/invoice-metadata";
+import { calculateInvoiceTotals } from "@/lib/invoices/calculations";
 import type { InvoiceFormState } from "@/types";
 
 export async function createInvoiceAction(
   _prevState: InvoiceFormState,
   formData: FormData,
 ): Promise<InvoiceFormState> {
-  const { values, fieldErrors } = parseInvoiceForm(formData);
-
-  if (Object.keys(fieldErrors).length > 0) {
-    return { error: null, fieldErrors };
+  const parsed = parseInvoiceForm(formData);
+  if (!parsed.ok) {
+    return { error: null, fieldErrors: parsed.fieldErrors, lineItemErrors: parsed.lineItemErrors };
   }
+  const { values } = parsed;
 
   const { user, organizationId } = await getCurrentUserOrganization();
 
@@ -34,10 +34,24 @@ export async function createInvoiceAction(
   });
 
   if (!project) {
-    return {
-      error: null,
-      fieldErrors: { projectId: "Select a valid project." },
-    };
+    return { error: null, fieldErrors: { projectId: "Select a valid project." } };
+  }
+
+  const calc = calculateInvoiceTotals({
+    subtotalSource:
+      values.mode === "flat"
+        ? { mode: "flat", amount: values.amount ?? "" }
+        : { mode: "lineItems", lineItems: values.lineItems ?? [] },
+    discount:
+      values.discountType === "NONE"
+        ? { type: "NONE" }
+        : { type: values.discountType, value: values.discountValue ?? "" },
+    taxRatePercent: values.taxRatePercent,
+  });
+
+  if (!calc.ok) {
+    const mapped = mapInvoiceCalculationError(calc.error, values.mode);
+    return { error: null, fieldErrors: mapped.fieldErrors, lineItemErrors: mapped.lineItemErrors };
   }
 
   try {
@@ -48,41 +62,59 @@ export async function createInvoiceAction(
       const invoice = await tx.invoice.create({
         data: {
           invoiceNumber: values.invoiceNumber,
-          amount: values.amount,
-          status: values.status,
+          // Forced — never from formData. Direct creation in any other
+          // status is forbidden (docs/invoicing-architecture.md §3.1).
+          status: "DRAFT",
+          paidAt: null,
+          // The server always recomputes every total and discards any
+          // client-submitted total — calc.total/subtotal/discountAmount/
+          // taxAmount are the only values ever written here.
+          amount: calc.total,
+          subtotal: calc.subtotal,
+          discountAmount: calc.discountAmount,
+          taxAmount: calc.taxAmount,
+          discountType: values.discountType,
+          discountValue: values.discountType === "NONE" ? null : values.discountValue,
+          taxRatePercent: values.taxRatePercent,
+          taxLabel: values.taxLabel,
+          currency: values.currency,
+          issueDate: values.issueDate,
           dueDate: values.dueDate,
           notes: values.notes,
+          internalNotes: values.internalNotes,
           projectId: project.id,
           // Derived from the project, never a form field — keeps the two
           // FKs from ever disagreeing about which client this invoice bills.
           clientId: project.clientId,
           // Also derived from the verified project (the findFirst above
           // already matched project.organizationId === organizationId), not
-          // from formData — the invoice's own organizationId must never
-          // drift from the project it's actually scoped through.
+          // from formData.
           organizationId,
-          // Server-set, never from formData — the form does allow creating
-          // an invoice directly in PAID status (no restriction to DRAFT),
-          // so that case must record a real paidAt from the start, same as
-          // any later DRAFT/SENT -> PAID transition would.
-          paidAt: values.status === "PAID" ? new Date() : null,
-          // Invoice System Slice 1 dual-write compatibility
-          // (docs/invoicing-architecture.md §12 step 3) — no itemized UI
-          // exists yet, so every invoice created through this form is flat
-          // by construction: subtotal mirrors amount, discount/tax are
-          // zeroed. Never writes finalizedAt/snapshots/pdfStoragePath/line
-          // items.
-          ...buildFlatInvoiceWriteFields(values.amount),
+          lineItems:
+            values.mode === "itemized"
+              ? {
+                  create: calc.lineItems.map((lineItem, index) => ({
+                    description: lineItem.description,
+                    quantity: lineItem.quantity,
+                    unitPrice: lineItem.unitPrice,
+                    lineTotal: lineItem.lineTotal,
+                    position: index,
+                  })),
+                }
+              : undefined,
         },
       });
 
+      // INVOICE/CREATED has no entry in notification-rules.ts's RULES
+      // table — only STATUS_CHANGED ever fans out to a Notification. No
+      // notification rule is invented here.
       await createActivity(tx, {
         organizationId,
         actorId: user.id,
         entityType: "INVOICE",
         entityId: invoice.id,
         action: "CREATED",
-        metadata: buildInvoiceMetadata(invoice, project.name, user.name),
+        metadata: buildInvoiceSnapshotMetadata(invoice, calc.lineItems.length, project.name, user.name),
       });
     });
   } catch (err) {
