@@ -26,15 +26,32 @@ export type InvoiceLineItemFormValue = {
  * A conservative, bounded ceiling on the raw JSON string's length, checked
  * BEFORE `JSON.parse` is ever called — so an arbitrarily large adversarial
  * payload is never parsed merely to discover it exceeds `MAX_LINE_ITEMS`.
- * 131072 (128 KiB) UTF-16 code units comfortably fits the largest
- * legitimate payload (`MAX_LINE_ITEMS` items, each up to
- * `MAX_DESCRIPTION_LENGTH`-ish characters of description plus JSON
- * struct/quoting overhead and short quantity/unitPrice strings — roughly
- * 200 × ~600 bytes ≈ 120 KB in the worst realistic case) while still
- * rejecting a payload orders of magnitude larger than anything a real
- * itemized invoice could ever need.
+ *
+ * Measured in JavaScript string `.length` (UTF-16 code units), not bytes.
+ * This matters because `JSON.stringify`/`JSON.parse` can expand a single
+ * source character into up to six UTF-16 code units of encoded JSON text
+ * (a `\uXXXX` escape — e.g. a NUL or lone-surrogate-style character), and
+ * `calculateInvoiceTotals()` neither forbids such characters in a
+ * description nor treats them as invalid — only `MAX_DESCRIPTION_LENGTH`
+ * (a count of *decoded* characters) bounds description length. A transport
+ * limit sized only for "ordinary" characters would therefore reject a
+ * payload that is still entirely valid under that semantic contract.
+ *
+ * 786432 (768 KiB) UTF-16 code units is sized for the worst case, not the
+ * typical one: `MAX_LINE_ITEMS` entries, each with a description of
+ * exactly `MAX_DESCRIPTION_LENGTH` characters where every character is
+ * escaped at the maximum six-code-unit rate, plus ordinary
+ * quantity/unitPrice strings and JSON structural overhead (field names,
+ * quotes, commas, braces, the enclosing array brackets). This comfortably
+ * exceeds that worst-case size while still rejecting a payload orders of
+ * magnitude larger than anything a real itemized invoice could ever need.
+ *
+ * This bound is a pre-parse SHAPE/SIZE limit only — whether a given
+ * description, quantity, or unitPrice is itself semantically valid
+ * (length, numeric format, range) remains exclusively
+ * `calculateInvoiceTotals()`'s responsibility.
  */
-export const MAX_RAW_LINE_ITEMS_PAYLOAD_LENGTH = 131072;
+export const MAX_RAW_LINE_ITEMS_PAYLOAD_LENGTH = 786432;
 
 export type DecodeLineItemsError =
   | { code: "PAYLOAD_TOO_LARGE" }

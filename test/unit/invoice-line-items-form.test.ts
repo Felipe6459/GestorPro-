@@ -5,7 +5,10 @@ import {
   MAX_RAW_LINE_ITEMS_PAYLOAD_LENGTH,
   type InvoiceLineItemFormValue,
 } from "@/lib/invoices/line-items-form";
-import { MAX_LINE_ITEMS } from "@/lib/invoices/calculations";
+import { MAX_LINE_ITEMS, MAX_DESCRIPTION_LENGTH } from "@/lib/invoices/calculations";
+
+/** The old, now-corrected transport ceiling — used only to prove the new limit's regression fixture would have been wrongly rejected under it. */
+const OLD_MAX_RAW_LINE_ITEMS_PAYLOAD_LENGTH = 131072;
 
 function makeItems(count: number): InvoiceLineItemFormValue[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -67,6 +70,36 @@ describe("decodeInvoiceLineItemsFormValue", () => {
       // content would produce MALFORMED_JSON instead — PAYLOAD_TOO_LARGE
       // here is direct proof of the required ordering.
       expect(result).toEqual({ ok: false, error: { code: "PAYLOAD_TOO_LARGE" } });
+    });
+  });
+
+  describe("worst-case JSON-escaping regression — a semantically valid fixture must not be rejected on size", () => {
+    it(`accepts MAX_LINE_ITEMS entries whose descriptions are exactly MAX_DESCRIPTION_LENGTH characters, each escaped at JSON's maximum 6-code-unit rate (\\u0000)`, () => {
+      const items = Array.from({ length: MAX_LINE_ITEMS }, () => ({
+        description: "\u0000".repeat(MAX_DESCRIPTION_LENGTH),
+        quantity: "1",
+        unitPrice: "1.00",
+      }));
+      const encoded = encodeInvoiceLineItemsFormValue(items);
+
+      // This is exactly the fixture the old 131072 limit would have wrongly
+      // rejected, even though every field is within calculateInvoiceTotals()'s
+      // own semantic bounds (MAX_LINE_ITEMS items, MAX_DESCRIPTION_LENGTH
+      // descriptions) — proving the old limit was too tight.
+      expect(encoded.length).toBeGreaterThan(OLD_MAX_RAW_LINE_ITEMS_PAYLOAD_LENGTH);
+      // The corrected limit must still comfortably admit it.
+      expect(encoded.length).toBeLessThanOrEqual(MAX_RAW_LINE_ITEMS_PAYLOAD_LENGTH);
+
+      const result = decodeInvoiceLineItemsFormValue(encoded);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.lineItems).toHaveLength(MAX_LINE_ITEMS);
+        for (const item of result.lineItems) {
+          expect(item.description).toHaveLength(MAX_DESCRIPTION_LENGTH);
+        }
+      }
+      // Deliberately not passed to calculateInvoiceTotals() — this test is
+      // transport/shape testing only, per this decoder's own documented scope.
     });
   });
 
