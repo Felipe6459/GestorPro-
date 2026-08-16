@@ -26,7 +26,11 @@ test("a real UI action (creating a client) produces a visible entry on /activity
 
   try {
     await page.goto("/clients/new");
-    await page.getByLabel("Name").fill(clientName);
+    // exact: true — the Client form's Billing details subsection (Invoice
+    // System Slice 1) added a "Billing legal name" field whose accessible
+    // name also contains "Name", making the default substring match
+    // ambiguous.
+    await page.getByRole("textbox", { name: "Name", exact: true }).fill(clientName);
     await Promise.all([
       page.waitForResponse((r) => r.url().includes("/clients/new") && r.request().method() === "POST"),
       page.getByRole("button", { name: "Create client" }).click(),

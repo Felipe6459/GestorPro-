@@ -53,7 +53,10 @@ test("Client create → edit → delete works end to end, and the dashboard metr
   // Create.
   await page.goto("/clients/new");
   const clientName = `E2E Test Client ${fixtures.runId}`;
-  await page.getByLabel("Name").fill(clientName);
+  // exact: true — the Client form's Billing details subsection (Invoice
+  // System Slice 1) added a "Billing legal name" field, making the
+  // default substring match for "Name" ambiguous.
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill(clientName);
   await Promise.all([
     page.waitForResponse((r) => r.url().includes("/clients/new") && r.request().method() === "POST"),
     page.getByRole("button", { name: "Create client" }).click(),
@@ -76,7 +79,7 @@ test("Client create → edit → delete works end to end, and the dashboard metr
     await createdRow.getByRole("link", { name: "Edit" }).click();
     await expect(page).toHaveURL(new RegExp(`/clients/${created.id}/edit`));
     const updatedName = `${clientName} (updated)`;
-    await page.getByLabel("Name").fill(updatedName);
+    await page.getByRole("textbox", { name: "Name", exact: true }).fill(updatedName);
     await Promise.all([
       page.waitForResponse((r) => r.request().method() === "POST"),
       page.getByRole("button", { name: "Save changes" }).click(),

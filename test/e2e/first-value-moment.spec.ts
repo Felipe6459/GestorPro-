@@ -196,7 +196,10 @@ test.describe("OWNER can create first entities from the empty-state CTA", () => 
       await gotoAndSettle(page, `${baseURL}/clients`);
       await page.getByRole("link", { name: "Create your first client" }).click();
       await page.waitForURL(/\/clients\/new/);
-      await page.getByLabel("Name").fill("First Value Client");
+      // exact: true — the Client form's Billing details subsection
+      // (Invoice System Slice 1) added a "Billing legal name" field,
+      // making the default substring match for "Name" ambiguous.
+      await page.getByRole("textbox", { name: "Name", exact: true }).fill("First Value Client");
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/clients/new") && r.request().method() === "POST"),
         page.getByRole("button", { name: "Create client" }).click(),
@@ -262,7 +265,10 @@ test.describe("Permissions unchanged", () => {
 
       await page.getByRole("link", { name: "Create your first client" }).click();
       await page.waitForURL(/\/clients\/new/);
-      await page.getByLabel("Name").fill("Member Created Client");
+      // exact: true — the Client form's Billing details subsection
+      // (Invoice System Slice 1) added a "Billing legal name" field,
+      // making the default substring match for "Name" ambiguous.
+      await page.getByRole("textbox", { name: "Name", exact: true }).fill("Member Created Client");
       await Promise.all([
         page.waitForResponse((r) => r.url().includes("/clients/new") && r.request().method() === "POST"),
         page.getByRole("button", { name: "Create client" }).click(),
