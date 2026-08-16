@@ -38,14 +38,22 @@
   self-verifying check that migration set as this repo's precedent for a
   backfill with real consequences if silently wrong.
 
-  This migration deliberately contains NO explicit top-level BEGIN/COMMIT,
-  for the exact reason already documented (and empirically verified against
-  this repo's exact toolchain — Prisma 7.9.1 via a real `prisma migrate
-  deploy` subprocess against a PGlite-backed Postgres instance) in
-  `20260911090000_repair_invoice_organization_scope`'s own header comment:
-  Prisma Migrate already wraps every migration.sql file in its own
-  transaction, and an explicit BEGIN/COMMIT only degrades the error message
-  surfaced on failure without adding any additional safety.
+  This migration deliberately contains NO explicit top-level BEGIN/COMMIT.
+  This follows the same choice `20260911090000_repair_invoice_organization_scope`
+  already made for its own guarded/backfilling migration — see that
+  migration's own header comment for the exact, one-time empirical
+  reproduction behind it (Prisma 7.9.1, a real `prisma migrate deploy`
+  subprocess against a PGlite-backed Postgres instance): for that specific
+  reproduction, Prisma Migrate wrapped that migration.sql file's
+  statements in its own transaction, and adding an explicit BEGIN/COMMIT
+  there was found to only degrade the surfaced error message without
+  adding any additional safety. This migration reuses that same
+  conclusion rather than repeating the reproduction here — it is NOT a
+  general guarantee that every Prisma version, migration file, or
+  deployment environment wraps migrations in a transaction identically;
+  a real deployment against any actual target database remains a
+  separate, controlled operator step (§12) that should confirm this
+  behavior in that environment rather than assume it.
 
   Explicitly NOT part of this migration (out of Slice 1's scope, per
   docs/invoicing-architecture.md §12/§14):

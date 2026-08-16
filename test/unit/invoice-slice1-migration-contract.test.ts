@@ -28,7 +28,7 @@ function indexOfOrThrow(haystack: string, needle: string): number {
 }
 
 describe("20260912090000_add_invoice_system_slice1_foundation — migration contract", () => {
-  it("contains no explicit BEGIN/COMMIT — Prisma Migrate already wraps this file in its own transaction", () => {
+  it("contains no explicit BEGIN/COMMIT — follows the same choice already verified, once, for 20260911090000's exact reproduction (not a claim about every migration/environment)", () => {
     expect(migrationSql).not.toMatch(/^\s*BEGIN;\s*$/m);
     expect(migrationSql).not.toMatch(/^\s*COMMIT;\s*$/m);
   });

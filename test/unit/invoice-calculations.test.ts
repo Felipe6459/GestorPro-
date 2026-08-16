@@ -275,10 +275,14 @@ describe("calculateInvoiceTotals", () => {
   });
 
   describe("per-line rounding before summation", () => {
-    it("rounds each line total independently before summing (not the pre-rounded raw sum)", () => {
-      // 1.005 * 3 lines, each raw = 1.005 -> rounds to 1.01 each -> sum = 3.03,
-      // NOT round(3 x 1.005) = round(3.015) = 3.02 — proves rounding happens
-      // per-line, before the sum, not on the aggregate.
+    it("does NOT prove per-line rounding — an over-precise unitPrice (3 decimal places) is rejected before any calculation happens", () => {
+      // This does not demonstrate independent per-line rounding: a
+      // unitPrice of "1.005" has 3 decimal places, which unitPrice's own
+      // <= 2-decimal-place validation rejects outright (UNIT_PRICE_TOO_PRECISE)
+      // before quantity x unitPrice is ever computed for any line. The
+      // actual proof of per-line ROUND_HALF_UP-before-summation is the
+      // next test below, which uses a valid 2-decimal-place unitPrice
+      // whose raw product still lands on a rounding boundary.
       const result = calculateInvoiceTotals({
         subtotalSource: {
           mode: "lineItems",
@@ -291,12 +295,10 @@ describe("calculateInvoiceTotals", () => {
         discount: { type: "NONE" },
         taxRatePercent: null,
       });
-      // unitPrice itself must be <= 2 decimal places, so express the same
-      // rounding case via quantity x unitPrice instead.
       expect(result).toEqual({ ok: false, error: { code: "UNIT_PRICE_TOO_PRECISE", index: 0 } });
     });
 
-    it("two lines with a .5-cent raw total each round independently: 3.335 -> 3.34 twice, not 6.67 as one sum", () => {
+    it("proves per-line rounding: two lines with a .5-cent raw total each round independently: 3.335 -> 3.34 twice, not 6.67 as one sum", () => {
       const result = calculateInvoiceTotals({
         subtotalSource: {
           mode: "lineItems",

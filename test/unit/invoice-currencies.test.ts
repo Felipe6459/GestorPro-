@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { Prisma } from "@/generated/prisma/client";
 import {
   isSupportedInvoiceCurrency,
   getSupportedInvoiceCurrencies,
@@ -124,6 +125,7 @@ describe("formatInvoiceCurrencyAmount", () => {
   it("returns null for a non-finite amount", () => {
     expect(formatInvoiceCurrencyAmount(Number.NaN, "USD")).toBeNull();
     expect(formatInvoiceCurrencyAmount(Number.POSITIVE_INFINITY, "USD")).toBeNull();
+    expect(formatInvoiceCurrencyAmount(Number.NEGATIVE_INFINITY, "USD")).toBeNull();
   });
 
   it("returns null for a non-numeric string amount", () => {
@@ -151,5 +153,70 @@ describe("formatInvoiceCurrencyAmount", () => {
 
   it("normalizes currency case when formatting", () => {
     expect(formatInvoiceCurrencyAmount(10, "usd")).toBe(formatInvoiceCurrencyAmount(10, "USD"));
+  });
+
+  describe("Decimal(10,2) boundary hardening — parses/validates through Prisma.Decimal, never a bare Number() conversion", () => {
+    it("accepts a Prisma.Decimal input directly", () => {
+      const viaDecimal = formatInvoiceCurrencyAmount(new Prisma.Decimal("1234.50"), "USD");
+      const viaString = formatInvoiceCurrencyAmount("1234.50", "USD");
+      expect(viaDecimal).not.toBeNull();
+      expect(viaDecimal).toBe(viaString);
+    });
+
+    it("rejects an empty string — never silently treated as zero", () => {
+      expect(formatInvoiceCurrencyAmount("", "USD")).toBeNull();
+    });
+
+    it("rejects a whitespace-only string — never silently treated as zero", () => {
+      expect(formatInvoiceCurrencyAmount("   ", "USD")).toBeNull();
+      expect(formatInvoiceCurrencyAmount("\t\n", "USD")).toBeNull();
+    });
+
+    it("rejects a malformed/non-decimal numeric string such as hex (\"0x10\")", () => {
+      expect(formatInvoiceCurrencyAmount("0x10", "USD")).toBeNull();
+    });
+
+    it("rejects exponential notation, even though it's valid JS/Decimal syntax", () => {
+      expect(formatInvoiceCurrencyAmount("1e2", "USD")).toBeNull();
+    });
+
+    it("rejects the literal string forms \"NaN\" and \"Infinity\"", () => {
+      expect(formatInvoiceCurrencyAmount("NaN", "USD")).toBeNull();
+      expect(formatInvoiceCurrencyAmount("Infinity", "USD")).toBeNull();
+      expect(formatInvoiceCurrencyAmount("-Infinity", "USD")).toBeNull();
+    });
+
+    it("rejects a negative amount, as a string, number, and Prisma.Decimal", () => {
+      expect(formatInvoiceCurrencyAmount("-0.01", "USD")).toBeNull();
+      expect(formatInvoiceCurrencyAmount(-0.01, "USD")).toBeNull();
+      expect(formatInvoiceCurrencyAmount(new Prisma.Decimal("-0.01"), "USD")).toBeNull();
+    });
+
+    it("rejects a value with more than 2 decimal places", () => {
+      expect(formatInvoiceCurrencyAmount("1.005", "USD")).toBeNull();
+      expect(formatInvoiceCurrencyAmount(new Prisma.Decimal("1.005"), "USD")).toBeNull();
+    });
+
+    it("rejects a value above the Decimal(10,2) ceiling of 99,999,999.99", () => {
+      expect(formatInvoiceCurrencyAmount("100000000.00", "USD")).toBeNull();
+      expect(formatInvoiceCurrencyAmount(100000000, "USD")).toBeNull();
+    });
+
+    it("accepts zero", () => {
+      expect(formatInvoiceCurrencyAmount("0", "USD")).not.toBeNull();
+      expect(formatInvoiceCurrencyAmount(0, "USD")).not.toBeNull();
+      expect(formatInvoiceCurrencyAmount(new Prisma.Decimal(0), "USD")).not.toBeNull();
+    });
+
+    it("accepts exactly the Decimal(10,2) ceiling of 99,999,999.99", () => {
+      const formatted = formatInvoiceCurrencyAmount("99999999.99", "USD");
+      expect(formatted).not.toBeNull();
+
+      const parts = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).formatToParts(99999999.99);
+      const integer = parts.filter((p) => p.type === "integer").map((p) => p.value).join("");
+      const fraction = parts.find((p) => p.type === "fraction")?.value;
+      expect(integer).toBe("99999999");
+      expect(fraction).toBe("99");
+    });
   });
 });

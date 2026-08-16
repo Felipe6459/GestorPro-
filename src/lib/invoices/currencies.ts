@@ -1,3 +1,5 @@
+import { Prisma } from "@/generated/prisma/client";
+
 /**
  * Invoice System Slice 1 — bounded invoice currency contract
  * (docs/invoicing-architecture.md §6). Deliberately narrower than
@@ -68,22 +70,90 @@ export function resolveInvoiceCurrencyDefault(organizationCurrency: string | nul
   return { currency: "USD", isFallback: true, organizationCurrency: normalized };
 }
 
+export type CurrencyAmountInput = Prisma.Decimal | string | number;
+
+// Decimal(10,2) ceiling — mirrors src/lib/invoices/calculations.ts's own
+// MONEY_MAX/precision boundary exactly (this app's invoice money columns
+// are all Decimal(10,2)). Duplicated here rather than imported, so this
+// module's own Decimal boundary stays self-contained and independently
+// testable, matching this codebase's own stated per-module-copy
+// convention (see currencies.ts's own header comment on
+// Intl.supportedValuesOf reuse).
+const MONEY_MAX = new Prisma.Decimal("99999999.99");
+const MONEY_DECIMAL_PLACES = 2;
+
+// Accepts only plain, non-exponential decimal syntax: an optional leading
+// minus sign, at least one integer digit, and an optional fractional
+// part. Deliberately stricter than a bare `new Prisma.Decimal(x)` call,
+// which otherwise happily parses hex ("0x10" -> 16), exponential
+// notation ("1e2" -> 100), and the literal words "Infinity"/"NaN" as
+// valid decimals — none of which is a legitimate invoice-amount string.
+const STRICT_DECIMAL_STRING_PATTERN = /^-?\d+(\.\d+)?$/;
+
+/**
+ * Parses and validates a monetary amount against the exact Decimal(10,2)
+ * boundary every invoice money column uses — never a bare `Number()`
+ * conversion, which would accept a blank string as `0`, silently drop
+ * precision, or let a value outside the column's real range through.
+ * Returns `null` for anything that isn't a non-negative, at-most-2-
+ * decimal-place value no greater than 99,999,999.99.
+ */
+function parseMoneyDecimal(input: CurrencyAmountInput): Prisma.Decimal | null {
+  let decimal: Prisma.Decimal;
+
+  if (input instanceof Prisma.Decimal) {
+    decimal = input;
+  } else if (typeof input === "number") {
+    if (!Number.isFinite(input)) return null;
+    decimal = new Prisma.Decimal(input);
+  } else {
+    const trimmed = input.trim();
+    if (!STRICT_DECIMAL_STRING_PATTERN.test(trimmed)) return null;
+    try {
+      decimal = new Prisma.Decimal(trimmed);
+    } catch {
+      return null;
+    }
+  }
+
+  if (!decimal.isFinite()) return null;
+  if (decimal.isNegative()) return null;
+  if (decimal.decimalPlaces() > MONEY_DECIMAL_PLACES) return null;
+  if (decimal.greaterThan(MONEY_MAX)) return null;
+
+  return decimal;
+}
+
 /**
  * Formats a monetary amount for a supported invoice currency. Validates
- * the currency (and that `amount` is finite) BEFORE ever calling
- * `Intl.NumberFormat` — never throws for rejected input, returns `null`
- * instead, so a caller can't accidentally crash a render path on a bad
- * currency/amount.
+ * the currency AND parses/validates `amount` through `Prisma.Decimal`
+ * against the exact Decimal(10,2) boundary (see `parseMoneyDecimal`)
+ * BEFORE ever calling `Intl.NumberFormat` — never throws for rejected
+ * input, returns `null` instead, so a caller can't accidentally crash a
+ * render path on a bad currency/amount, and can't have a blank or
+ * malformed value silently rendered as `$0.00`.
  */
 export function formatInvoiceCurrencyAmount(
-  amount: number | string,
+  amount: CurrencyAmountInput,
   currency: string,
   locale: string = REFERENCE_LOCALE,
 ): string | null {
   if (!isSupportedInvoiceCurrency(currency)) return null;
 
-  const numeric = typeof amount === "number" ? amount : Number(amount);
-  if (!Number.isFinite(numeric)) return null;
+  const decimal = parseMoneyDecimal(amount);
+  if (decimal === null) return null;
 
-  return new Intl.NumberFormat(locale, { style: "currency", currency: currency.trim().toUpperCase() }).format(numeric);
+  // Only convert to a JS `number` here, at the final Intl.NumberFormat
+  // display boundary — never earlier, and never used for any comparison
+  // or validation above. Safe specifically because `decimal` has already
+  // been validated against the Decimal(10,2) ceiling: the largest
+  // possible accepted value, 99,999,999.99, has 10 significant digits —
+  // even read as a whole number of cents (9,999,999,999) it stays far
+  // inside the range of integers a JS double can represent exactly (every
+  // integer up to 2^53 - 1, i.e. 16 significant digits) — so this
+  // conversion can never lose precision for any value this function
+  // actually accepts.
+  return new Intl.NumberFormat(locale, { style: "currency", currency: currency.trim().toUpperCase() }).format(
+    decimal.toNumber(),
+  );
 }
