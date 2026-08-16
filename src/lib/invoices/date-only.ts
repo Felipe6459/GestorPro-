@@ -64,8 +64,10 @@ export function formatDateOnly(date: Date): string {
 
 /**
  * Human-readable display for a date-only value (issueDate/dueDate) —
- * NEVER for a real timestamp like paidAt/createdAt, which must keep
- * reading in the viewer's own local timezone.
+ * NEVER for real timestamps such as paidAt/createdAt. This helper is
+ * specifically for persisted date-only values; timestamp fields
+ * deliberately retain their existing formatting semantics and are outside
+ * this correction.
  *
  * A date-only value is persisted as midnight UTC on its calendar date
  * (see parseDateOnly's own contract above). Calling `.toLocaleDateString()`
