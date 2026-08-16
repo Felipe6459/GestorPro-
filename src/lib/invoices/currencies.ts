@@ -1,4 +1,16 @@
-import { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/browser";
+
+/**
+ * `@/generated/prisma/browser`'s own namespace exports `Decimal` as a
+ * value only (no companion `export type Decimal = ...`), so `Prisma.Decimal`
+ * cannot be written in a TYPE position here — see the identical, longer
+ * comment in src/lib/invoices/calculations.ts. `InstanceType<typeof
+ * Prisma.Decimal>` recovers the instance type. Every TYPE-position Decimal
+ * in this file uses this local alias; every VALUE-position use (`new
+ * Prisma.Decimal(...)`, `Prisma.Decimal.isDecimal(...)`) still reads
+ * `Prisma.Decimal` directly.
+ */
+type Decimal = InstanceType<typeof Prisma.Decimal>;
 
 /**
  * Invoice System Slice 1 — bounded invoice currency contract
@@ -70,7 +82,7 @@ export function resolveInvoiceCurrencyDefault(organizationCurrency: string | nul
   return { currency: "USD", isFallback: true, organizationCurrency: normalized };
 }
 
-export type CurrencyAmountInput = Prisma.Decimal | string | number;
+export type CurrencyAmountInput = Decimal | string | number;
 
 // Decimal(10,2) ceiling — mirrors src/lib/invoices/calculations.ts's own
 // MONEY_MAX/precision boundary exactly (this app's invoice money columns
@@ -98,10 +110,21 @@ const STRICT_DECIMAL_STRING_PATTERN = /^-?\d+(\.\d+)?$/;
  * Returns `null` for anything that isn't a non-negative, at-most-2-
  * decimal-place value no greater than 99,999,999.99.
  */
-function parseMoneyDecimal(input: CurrencyAmountInput): Prisma.Decimal | null {
-  let decimal: Prisma.Decimal;
+function parseMoneyDecimal(input: CurrencyAmountInput): Decimal | null {
+  let decimal: Decimal;
 
-  if (input instanceof Prisma.Decimal) {
+  // Prisma.Decimal.isDecimal(), not `instanceof` — this module imports
+  // Prisma.Decimal from `@/generated/prisma/browser` (required for Client
+  // Component bundling), but a caller may hold a Decimal constructed via
+  // `@/generated/prisma/client` (still used by Server Action code
+  // elsewhere in this app). Empirically verified (throwaway Vitest spec,
+  // not assumed) that under this repo's actual Vitest module resolution
+  // these are NOT the same class reference, so `instanceof` silently
+  // rejects a perfectly valid Decimal from the other entry point.
+  // `Decimal.isDecimal()` is decimal.js's own duck-typing cross-instance
+  // check, built exactly for this scenario — see the identical, longer
+  // comment on `toDecimal()` in src/lib/invoices/calculations.ts.
+  if (Prisma.Decimal.isDecimal(input)) {
     decimal = input;
   } else if (typeof input === "number") {
     if (!Number.isFinite(input)) return null;
