@@ -451,16 +451,22 @@ a weaker "read-only so it's fine" version of them.
 - **Membership**: calling `getCurrentUserOrganization()` *is* the membership
   check (§0.2) — no separate authorization step is layered on top, matching
   `attachments/[id]/download/route.ts`'s own reliance on exactly this.
-- **A scoping-convention inconsistency to resolve deliberately, not
-  accidentally**: `Task` and `Invoice` both carry a direct (nullable)
-  `organizationId` column *and* reach one through `Project`. The existing
-  `buildTaskWhere`/`buildInvoiceWhere` scope by `project: { organizationId }`
-  — Search's own Task/Invoice queries must follow that **same** convention,
-  not the direct column, to avoid a subtle two-conventions-for-one-fact bug
-  where a Task/Invoice whose own `organizationId` column happens to be null
-  (allowed by the schema) is silently excluded or, worse, matched against
-  the wrong org. This is a concrete Stage 2 implementation note, not an open
-  question — the existing query files already show the correct answer.
+- **A scoping-convention distinction between Task and Invoice**: `Task`
+  still carries a direct, nullable `organizationId` column that isn't
+  guaranteed populated — `buildTaskWhere` scopes by `project: { organizationId }`
+  only, and Search's own Task query must follow that same convention, not
+  the direct column, to avoid a Task whose own `organizationId` happens to
+  be null being silently excluded or, worse, matched against the wrong org.
+  `Invoice` is different: since migration
+  `20260911090000_repair_invoice_organization_scope` (see
+  `docs/invoicing-architecture.md`), `Invoice.organizationId` is a
+  required column kept consistent with `Project.organizationId` by every
+  write path, and is now the canonical direct tenant predicate —
+  `buildInvoiceWhere`/`searchInvoices` scope by it directly, retaining
+  `project: { organizationId }` (and, for Search, `client: { organizationId }`)
+  only as defense in depth, not as the primary mechanism. This is a
+  concrete implementation note, not an open question — the existing query
+  files already show the correct answer for each.
 - **Portal isolation**: a `PortalUser`-only session must never receive a
   result. `getOrCreateUser()` already redirects such an identity to
   `/portal` before any `organizationId` resolves — but a `fetch()` call from
