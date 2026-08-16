@@ -197,4 +197,26 @@ describe("createInvoiceAction — DRAFT creation, flat and itemized", () => {
     });
     expect(created.lineItems).toEqual([]);
   });
+
+  it("an invalid mode value creates no Invoice and no Activity", async () => {
+    actAs(fixtures.owner, fixtures.orgA.id);
+    const invoiceNumber = uniqueInvoiceNumber(fixtures.runId);
+
+    const activitiesBefore = await prisma.activity.count({ where: { organizationId: fixtures.orgA.id, entityType: "INVOICE" } });
+
+    const result = await createInvoiceAction(
+      { error: null },
+      buildFormData(invoiceNumber, fixtures.project.id, { mode: "bogus" }),
+    );
+    resetAuthMock();
+
+    expect(result.error).toBeNull();
+    expect(result.fieldErrors?.mode).toBeTruthy();
+
+    const created = await prisma.invoice.findFirst({ where: { invoiceNumber } });
+    expect(created).toBeNull();
+
+    const activitiesAfter = await prisma.activity.count({ where: { organizationId: fixtures.orgA.id, entityType: "INVOICE" } });
+    expect(activitiesAfter).toBe(activitiesBefore);
+  });
 });

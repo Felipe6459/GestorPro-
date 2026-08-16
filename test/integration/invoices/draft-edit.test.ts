@@ -215,4 +215,29 @@ describe("updateInvoiceAction — DRAFT editing", () => {
     expect(JSON.stringify(metadata)).not.toContain("secret note");
     expect(metadata).not.toHaveProperty("amount");
   });
+
+  it("an invalid mode value changes no Invoice field, no line items, and creates no Activity", async () => {
+    const lineItems = encodeInvoiceLineItemsFormValue([{ description: "Original", quantity: "1", unitPrice: "10.00" }]);
+    const created = await createDraft(fixtures, { mode: "itemized", lineItems });
+    actAs(fixtures.owner, fixtures.orgA.id);
+
+    const result = await updateInvoiceAction(
+      created.id,
+      created.updatedAt.toISOString(),
+      { error: null },
+      buildFormData(created.invoiceNumber, fixtures.project.id, { mode: "bogus" }),
+    );
+    resetAuthMock();
+
+    expect(result.error).toBeNull();
+    expect(result.fieldErrors?.mode).toBeTruthy();
+
+    const after = await prisma.invoice.findUniqueOrThrow({ where: { id: created.id }, include: { lineItems: true } });
+    expect(after.updatedAt.getTime()).toBe(created.updatedAt.getTime());
+    expect(after.lineItems).toHaveLength(1);
+    expect(after.lineItems[0].description).toBe("Original");
+
+    const activityCount = await prisma.activity.count({ where: { entityId: created.id, action: "UPDATED" } });
+    expect(activityCount).toBe(0);
+  });
 });

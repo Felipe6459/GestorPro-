@@ -2,6 +2,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatInvoiceStatusLabel } from "@/lib/invoices/status-label";
 import { formatInvoiceCurrencyAmount } from "@/lib/invoices/currencies";
+import { formatDateOnlyForDisplay } from "@/lib/invoices/date-only";
 import { InvoiceLifecycleControls } from "./invoice-lifecycle-controls";
 import { InvoiceInternalNotesForm } from "./invoice-internal-notes-form";
 import type { InvoiceStatusValue } from "@/lib/validation/invoice";
@@ -123,11 +124,11 @@ export function InvoiceReadOnlyView({
         </div>
         <div>
           <dt className="text-gray-500">Issue date</dt>
-          <dd className="mt-0.5 text-gray-900">{issueDate.toLocaleDateString()}</dd>
+          <dd className="mt-0.5 text-gray-900">{formatDateOnlyForDisplay(issueDate)}</dd>
         </div>
         <div>
           <dt className="text-gray-500">Due date</dt>
-          <dd className="mt-0.5 text-gray-900">{dueDate ? dueDate.toLocaleDateString() : "—"}</dd>
+          <dd className="mt-0.5 text-gray-900">{dueDate ? formatDateOnlyForDisplay(dueDate) : "—"}</dd>
         </div>
         <div>
           <dt className="text-gray-500">Paid date</dt>

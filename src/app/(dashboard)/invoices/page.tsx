@@ -3,6 +3,7 @@ import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { formatCurrency } from "@/lib/format";
 import { formatInvoiceStatusLabel } from "@/lib/invoices/status-label";
+import { formatDateOnlyForDisplay } from "@/lib/invoices/date-only";
 import { PAGE_SIZE, getOffset, getTotalPages, type RawSearchParams } from "@/lib/list-params";
 import { DeleteButton } from "@/components/ui/delete-button";
 import { deleteInvoiceAction } from "./actions";
@@ -181,7 +182,7 @@ export default async function InvoicesPage({
                   </TableCell>
                   <TableCell>
                     {invoice.dueDate
-                      ? invoice.dueDate.toLocaleDateString()
+                      ? formatDateOnlyForDisplay(invoice.dueDate)
                       : "—"}
                   </TableCell>
                   <TableCell>{invoice.createdAt.toLocaleDateString()}</TableCell>

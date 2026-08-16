@@ -131,8 +131,20 @@ export async function updateInvoiceAction(
         return { status: "noop" as const };
       }
 
-      // The guard's updatedAt is the PAGE-PROVIDED expected version —
-      // never existing.updatedAt.
+      // The guard's WHERE updatedAt is the PAGE-PROVIDED expected version —
+      // never existing.updatedAt. The DATA updatedAt is an explicitly
+      // computed, strictly-monotonic replacement for Prisma's implicit
+      // @updatedAt behavior: a JS/Prisma timestamp is millisecond-granular,
+      // so "a successful UPDATE always produces a value different from
+      // expectedDate" is not a safe assumption on its own (two edits
+      // completing within the same millisecond, or a clock that hasn't
+      // advanced, could otherwise leave updatedAt unchanged or even appear
+      // to move backwards relative to a caller's expectation). Taking the
+      // max of the real current time and expectedDate + 1ms guarantees the
+      // new value is always strictly greater than the page version this
+      // edit was guarded against, regardless of wall-clock behavior.
+      const nextUpdatedAt = new Date(Math.max(Date.now(), expectedDate.getTime() + 1));
+
       const result = await tx.invoice.updateMany({
         where: { id: invoiceId, organizationId, project: { organizationId }, status: "DRAFT", updatedAt: expectedDate },
         data: {
@@ -153,6 +165,7 @@ export async function updateInvoiceAction(
           projectId: project.id,
           clientId: project.clientId,
           organizationId,
+          updatedAt: nextUpdatedAt,
         },
       });
 

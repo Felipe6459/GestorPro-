@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDateOnly, formatDateOnly } from "@/lib/invoices/date-only";
+import { parseDateOnly, formatDateOnly, formatDateOnlyForDisplay } from "@/lib/invoices/date-only";
 
 describe("parseDateOnly / formatDateOnly", () => {
   it("rejects year 0000", () => {
@@ -69,4 +69,38 @@ describe("parseDateOnly / formatDateOnly", () => {
   // No process.env.TZ mutation anywhere in this file — every assertion
   // relies exclusively on the function's own UTC* methods, which are
   // timezone-independent by construction.
+});
+
+describe("formatDateOnlyForDisplay", () => {
+  // A midnight-UTC fixture — exactly what parseDateOnly() itself produces
+  // for "2026-01-05" — with an explicit locale, so the assertion is
+  // deterministic regardless of the machine's own default locale/timezone.
+  // No process.env.TZ mutation anywhere in this file: pinning
+  // `timeZone: "UTC"` inside the implementation is what makes the result
+  // timezone-independent, not a test-environment hack.
+  const midnightUtcFixture = new Date(Date.UTC(2026, 0, 5, 0, 0, 0, 0));
+
+  it("renders the same calendar date parseDateOnly/formatDateOnly agree on, in an explicit locale", () => {
+    expect(formatDateOnlyForDisplay(midnightUtcFixture, "en-US")).toBe("1/5/2026");
+  });
+
+  it("never drifts to the previous day regardless of the caller's own local timezone", () => {
+    // Without a UTC-pinned timeZone, a negative-offset environment renders
+    // this same instant as "1/4/2026" — the very drift this helper exists
+    // to prevent. Asserting the exact positive-day string directly proves
+    // the fix, without needing to simulate a specific host timezone.
+    expect(formatDateOnlyForDisplay(midnightUtcFixture, "en-US")).not.toBe("1/4/2026");
+  });
+
+  it("round-trips consistently with parseDateOnly for the same source string", () => {
+    const parsed = parseDateOnly("2026-01-05");
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(formatDateOnlyForDisplay(parsed.date, "en-US")).toBe("1/5/2026");
+    }
+  });
+
+  it("respects a different explicit locale's formatting convention", () => {
+    expect(formatDateOnlyForDisplay(midnightUtcFixture, "en-GB")).toBe("05/01/2026");
+  });
 });

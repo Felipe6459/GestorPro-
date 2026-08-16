@@ -61,3 +61,26 @@ export function formatDateOnly(date: Date): string {
   const d = String(date.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
+
+/**
+ * Human-readable display for a date-only value (issueDate/dueDate) —
+ * NEVER for a real timestamp like paidAt/createdAt, which must keep
+ * reading in the viewer's own local timezone.
+ *
+ * A date-only value is persisted as midnight UTC on its calendar date
+ * (see parseDateOnly's own contract above). Calling `.toLocaleDateString()`
+ * directly on such a Date, with no `timeZone` option, renders it in the
+ * *caller's* local timezone — which silently shows the previous calendar
+ * day for any negative-UTC-offset environment (most of the Americas).
+ * Explicitly pinning `timeZone: "UTC"` (still via the standard
+ * `Intl.DateTimeFormat` machinery `toLocaleDateString` itself calls into)
+ * is what keeps the displayed calendar date identical to the one
+ * `formatDateOnly()`/`parseDateOnly()` agree on, regardless of where this
+ * runs. `locale` defaults to the runtime's own default locale — the same
+ * as every other bare `.toLocaleDateString()` call already in this
+ * codebase — and is only ever overridden explicitly by a test that needs
+ * a deterministic, locale-independent assertion.
+ */
+export function formatDateOnlyForDisplay(date: Date, locale?: string): string {
+  return date.toLocaleDateString(locale, { timeZone: "UTC" });
+}

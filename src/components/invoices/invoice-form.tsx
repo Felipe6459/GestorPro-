@@ -159,7 +159,7 @@ export function InvoiceForm({
         </Select>
       </FormField>
 
-      <fieldset>
+      <fieldset aria-describedby={fieldErrors.mode ? "mode-error" : undefined}>
         <legend className="block text-sm font-medium text-gray-700">Invoice type</legend>
         <div className="mt-1 flex gap-4">
           <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -187,6 +187,11 @@ export function InvoiceForm({
             Itemized
           </label>
         </div>
+        {fieldErrors.mode && (
+          <p id="mode-error" role="alert" className="mt-1 text-sm text-red-600">
+            {fieldErrors.mode}
+          </p>
+        )}
       </fieldset>
 
       {mode === "flat" ? (

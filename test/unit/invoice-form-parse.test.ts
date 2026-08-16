@@ -2,6 +2,24 @@ import { describe, expect, it } from "vitest";
 import { parseInvoiceForm, hasInvoiceFormErrors, INVOICE_NOTES_MAX_LENGTH } from "@/lib/validation/invoice";
 import { encodeInvoiceLineItemsFormValue } from "@/lib/invoices/line-items-form";
 
+/** Constructs a valid flat submission's FormData with the "mode" key entirely absent — never even set to "". */
+function flatFormDataWithoutModeKey(): FormData {
+  const fd = new FormData();
+  fd.set("invoiceNumber", "INV-1");
+  fd.set("projectId", "11111111-1111-4111-8111-111111111111");
+  fd.set("amount", "100.00");
+  fd.set("currency", "USD");
+  fd.set("issueDate", "2026-08-16");
+  fd.set("dueDate", "");
+  fd.set("notes", "");
+  fd.set("internalNotes", "");
+  fd.set("discountType", "NONE");
+  fd.set("discountValue", "");
+  fd.set("taxRatePercent", "");
+  fd.set("taxLabel", "TAX");
+  return fd;
+}
+
 function baseFlatFormData(overrides: Record<string, string> = {}): FormData {
   const fd = new FormData();
   const fields: Record<string, string> = {
@@ -190,6 +208,46 @@ describe("parseInvoiceForm — itemized mode", () => {
       expect(result.lineItemErrors?.[1]).toBeTruthy();
       expect(result.lineItemErrors?.[0]).toBeUndefined();
     }
+  });
+});
+
+describe("parseInvoiceForm — strict mode validation", () => {
+  it("accepts exactly 'flat'", () => {
+    const result = parseInvoiceForm(baseFlatFormData({ mode: "flat" }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.values.mode).toBe("flat");
+  });
+
+  it("accepts exactly 'itemized'", () => {
+    const lineItems = encodeInvoiceLineItemsFormValue([{ description: "A", quantity: "1", unitPrice: "1.00" }]);
+    const result = parseInvoiceForm(baseFlatFormData({ mode: "itemized", lineItems }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.values.mode).toBe("itemized");
+  });
+
+  it("rejects a missing mode field (never even submitted) with fieldErrors.mode, never reaching an ok:true result", () => {
+    const result = parseInvoiceForm(flatFormDataWithoutModeKey());
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.fieldErrors.mode).toBeTruthy();
+  });
+
+  it("rejects an empty mode value", () => {
+    const result = parseInvoiceForm(baseFlatFormData({ mode: "" }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.fieldErrors.mode).toBeTruthy();
+  });
+
+  it.each(["FLAT", "Itemized", "bogus"])("rejects a forged/mis-cased value: %s", (value) => {
+    const result = parseInvoiceForm(baseFlatFormData({ mode: value }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.fieldErrors.mode).toBeTruthy();
+  });
+
+  it("an invalid mode still produces a well-formed rejected result — no crash, no ok:true", () => {
+    const result = parseInvoiceForm(baseFlatFormData({ mode: "bogus" }));
+    expect(result).toEqual(
+      expect.objectContaining({ ok: false, fieldErrors: expect.objectContaining({ mode: expect.any(String) }) }),
+    );
   });
 });
 

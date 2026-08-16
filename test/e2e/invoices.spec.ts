@@ -317,3 +317,64 @@ test.describe("staff Invoice list — DRAFT vs non-DRAFT row actions, read-only 
     await dbQuery("invoice", "deleteMany", { where: { invoiceNumber: `E2E-KBD-${fixtures.runId}` } });
   });
 });
+
+test.describe("date-only display — no local-timezone drift", () => {
+  // issueDate/dueDate are rendered by a Server Component, in the Node.js
+  // process running the app (via formatDateOnlyForDisplay) — NOT by the
+  // browser, so a Playwright context's own locale/timezoneId options have
+  // no effect on this text at all (those only govern client-side JS).
+  // Rather than guessing the server's own default-locale digit/separator
+  // convention (which legitimately varies by machine/CI image), the
+  // expected string is computed here with the exact same expression
+  // production uses (Intl-based, timeZone pinned to "UTC", no explicit
+  // locale) — since the Playwright test runner and the webServer it
+  // drives are both plain Node processes on the same machine, this
+  // reproduces the server's real rendered string exactly. What this test
+  // actually proves is the absence of drift (the wrong calendar day),
+  // not any one locale's particular formatting.
+  let dateFixtureId: string;
+  const dateFixtureNumber = `E2E-DATEDRIFT-${Date.now()}`;
+  const fixtureIssueDate = new Date("2026-01-05T00:00:00.000Z");
+  const fixtureDueDate = new Date("2026-01-06T00:00:00.000Z");
+  const expectedIssueDateText = fixtureIssueDate.toLocaleDateString(undefined, { timeZone: "UTC" });
+  const expectedDueDateText = fixtureDueDate.toLocaleDateString(undefined, { timeZone: "UTC" });
+
+  test.beforeAll(async () => {
+    const created = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: dateFixtureNumber,
+        status: "SENT",
+        amount: "10.00",
+        subtotal: "10.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        issueDate: fixtureIssueDate,
+        dueDate: fixtureDueDate,
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+    dateFixtureId = created.id;
+  });
+
+  test.afterAll(async () => {
+    await dbQuery("invoice", "deleteMany", { where: { id: dateFixtureId } });
+  });
+
+  test.beforeEach(async ({ context, baseURL }) => {
+    await injectTestSession(context, { id: fixtures.owner.id, email: fixtures.owner.email }, baseURL!);
+  });
+
+  test("the read-only view shows the correct calendar day for issueDate and dueDate — no previous-day drift", async ({ page }) => {
+    await page.goto(`/invoices/${dateFixtureId}/edit`);
+    await expect(page.getByText(expectedIssueDateText, { exact: true })).toBeVisible();
+    await expect(page.getByText(expectedDueDateText, { exact: true })).toBeVisible();
+  });
+
+  test("the Invoice list shows the correct calendar day for dueDate — no previous-day drift", async ({ page }) => {
+    await page.goto("/invoices");
+    const row = page.getByRole("row", { name: new RegExp(dateFixtureNumber) });
+    await expect(row.getByText(expectedDueDateText, { exact: true })).toBeVisible();
+  });
+});

@@ -16,6 +16,15 @@ import { RedirectSignal } from "../../support/navigation-mock";
  * starts) — never from a value either call reads for itself — so the
  * test is deterministic regardless of which of Postgres's two `UPDATE`s
  * actually runs first. No sleeps, barriers, or production test hooks.
+ *
+ * The winning write's new `updatedAt` is computed explicitly by the
+ * action itself as `max(Date.now(), expectedDate + 1ms)` — never Prisma's
+ * implicit `@updatedAt` behavior alone — so the loser's guarded `WHERE
+ * updatedAt = T0` is deterministically guaranteed to match zero rows once
+ * the winner commits, regardless of millisecond-level clock granularity
+ * or Prisma happening to pick a distinct timestamp. The dedicated
+ * "strictly monotonic" test below proves this directly by starting from
+ * an updatedAt set *ahead* of the real wall clock.
  */
 
 const INVOICE_NUMBER_PREFIX = "INV-CONFLICT";
@@ -102,6 +111,9 @@ describe("updateInvoiceAction — page-version concurrency", () => {
 
     const final = await prisma.invoice.findUniqueOrThrow({ where: { id: draft.id } });
     expect(["111.00", "222.00"]).toContain(final.amount.toFixed(2));
+    // Deterministically strictly greater — guaranteed by the action's own
+    // explicit max(Date.now(), expectedDate+1ms) computation, not by
+    // Prisma happening to pick a distinct millisecond for the two writes.
     expect(final.updatedAt.getTime()).toBeGreaterThan(draft.updatedAt.getTime());
 
     const activities = await prisma.activity.count({ where: { entityId: draft.id, action: "UPDATED" } });
@@ -109,6 +121,41 @@ describe("updateInvoiceAction — page-version concurrency", () => {
 
     const lineItems = await prisma.invoiceLineItem.count({ where: { invoiceId: draft.id } });
     expect(lineItems).toBe(0); // both submissions were flat — no partial itemized leftovers either way
+  });
+
+  it("the new updatedAt is strictly greater than the page version even when the real clock is behind it", async () => {
+    const draft = await createDraft(fixtures);
+    // A version deliberately set AHEAD of the real wall clock — proves
+    // "a successful UPDATE always produces a value different from
+    // expectedDate" is not being assumed from Prisma's implicit
+    // @updatedAt behavior (which would just stamp the current,
+    // real-clock time — itself BEHIND this fixture's T0, and therefore
+    // NOT strictly greater). Only the action's own explicit
+    // max(Date.now(), expectedDate + 1ms) computation guarantees
+    // monotonicity here.
+    const farFutureT0 = new Date(Date.now() + 10 * 60 * 60 * 1000);
+    await prisma.invoice.update({ where: { id: draft.id }, data: { updatedAt: farFutureT0 } });
+
+    actAs(fixtures.owner, fixtures.orgA.id);
+    await expectRedirect(
+      updateInvoiceAction(
+        draft.id,
+        farFutureT0.toISOString(),
+        { error: null },
+        buildFormData(draft.invoiceNumber, fixtures.project.id, { amount: "321.00" }),
+      ),
+    );
+    resetAuthMock();
+
+    const after = await prisma.invoice.findUniqueOrThrow({ where: { id: draft.id } });
+    expect(after.amount.toFixed(2)).toBe("321.00");
+    expect(after.updatedAt.getTime()).toBeGreaterThan(farFutureT0.getTime());
+    // Real Date.now() at commit time is still behind farFutureT0 — proves
+    // the value came from expectedDate+1ms, not from the real clock alone.
+    expect(after.updatedAt.getTime()).toBeGreaterThan(Date.now());
+
+    const activities = await prisma.activity.count({ where: { entityId: draft.id, action: "UPDATED" } });
+    expect(activities).toBe(1);
   });
 
   it("a stale T0 submitted after a prior edit already committed returns a conflict", async () => {

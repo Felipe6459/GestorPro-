@@ -13,6 +13,9 @@ export const INVOICE_STATUSES = [
 ] as const;
 export type InvoiceStatusValue = (typeof INVOICE_STATUSES)[number];
 
+export const INVOICE_MODES = ["flat", "itemized"] as const;
+export type InvoiceModeValue = (typeof INVOICE_MODES)[number];
+
 export const INVOICE_DISCOUNT_TYPES = ["NONE", "PERCENTAGE", "FIXED"] as const;
 export type InvoiceDiscountTypeValue = (typeof INVOICE_DISCOUNT_TYPES)[number];
 
@@ -90,8 +93,7 @@ function mergeLineItemError(
  * could accidentally trust one, since the parser never looks for them.
  */
 export function parseInvoiceForm(formData: FormData): ParseInvoiceFormResult {
-  const modeRaw = String(formData.get("mode") ?? "flat");
-  const mode: "flat" | "itemized" = modeRaw === "itemized" ? "itemized" : "flat";
+  const modeRaw = String(formData.get("mode") ?? "");
 
   const invoiceNumber = String(formData.get("invoiceNumber") ?? "").trim();
   const projectId = String(formData.get("projectId") ?? "").trim();
@@ -116,6 +118,18 @@ export function parseInvoiceForm(formData: FormData): ParseInvoiceFormResult {
   if (!projectId) {
     fieldErrors.projectId = "Select a project.";
   }
+
+  // Only the exact runtime values "flat"/"itemized" are accepted — a
+  // missing, empty, differently-cased, or forged value (e.g. "bogus") is
+  // rejected, never silently mapped to "flat". The "flat" fallback below
+  // exists solely so the rest of this function can finish building a
+  // well-typed rejected result (mirroring discountType/taxLabel's own
+  // fallback pattern) — it never makes `ok` true when mode was invalid.
+  const isValidMode = (INVOICE_MODES as readonly string[]).includes(modeRaw);
+  if (!isValidMode) {
+    fieldErrors.mode = "Select a valid invoice type.";
+  }
+  const mode: InvoiceModeValue = isValidMode ? (modeRaw as InvoiceModeValue) : "flat";
 
   // amount is parsed/used only in flat mode — an irrelevant submitted
   // value in itemized mode is simply never read.
