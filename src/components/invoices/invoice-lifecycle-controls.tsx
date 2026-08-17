@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useTransition } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, type ConfirmDialogHandle } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/toast/toast-provider";
@@ -18,11 +19,15 @@ const TRANSITION_LABELS: Partial<Record<string, string>> = {
 };
 
 /**
- * Invoice System Slice 2b — lifecycle transition buttons for an existing
- * non-DRAFT invoice, plus Cancel (the same CANCELLED transition, behind a
- * confirmation dialog, never a separate business implementation — §3.2).
- * No status dropdown anywhere. Reuses changeInvoiceStatusAction for every
- * button, including Cancel.
+ * Invoice System Slice 2b/2c — lifecycle transition buttons for an
+ * existing non-DRAFT invoice, plus Cancel (the same CANCELLED transition,
+ * behind a confirmation dialog, never a separate business implementation
+ * — §3.2), plus a Duplicate-as-new-DRAFT navigation link for a terminal
+ * CANCELLED invoice (the remaining piece of official Slice 2, completing
+ * §3.2's "Cancel + Duplicate-as-new-DRAFT" correction flow). No status
+ * dropdown anywhere. Reuses changeInvoiceStatusAction for every status
+ * button, including Cancel — Duplicate is deliberately a plain `<Link>`,
+ * never a Server Action, since opening it performs zero mutation.
  */
 export function InvoiceLifecycleControls({
   invoiceId,
@@ -40,8 +45,12 @@ export function InvoiceLifecycleControls({
   const allTargets = ALLOWED_STATUS_TRANSITIONS[status];
   const targets = allTargets.filter((target) => target !== "CANCELLED");
   const canCancel = allTargets.includes("CANCELLED");
+  // CANCELLED is terminal (no entries in ALLOWED_STATUS_TRANSITIONS), but
+  // it is the one status Duplicate is available for — the early return
+  // below must not collapse this component to nothing for it.
+  const canDuplicate = status === "CANCELLED";
 
-  if (targets.length === 0 && !canCancel) return null;
+  if (targets.length === 0 && !canCancel && !canDuplicate) return null;
 
   function runTransition(target: string) {
     startTransition(async () => {
@@ -87,6 +96,14 @@ export function InvoiceLifecycleControls({
             onConfirm={() => runTransition("CANCELLED")}
           />
         </>
+      )}
+      {canDuplicate && (
+        <Link
+          href={`/invoices/${invoiceId}/duplicate`}
+          className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+        >
+          Duplicate as new draft
+        </Link>
       )}
     </div>
   );

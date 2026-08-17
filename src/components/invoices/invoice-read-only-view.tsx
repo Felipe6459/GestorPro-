@@ -71,8 +71,9 @@ export type InvoiceReadOnlyLineItem = { description: string; quantity: MoneyValu
  * pdfStoragePath are both null by construction, since nothing writes them
  * until Slice 3. This view never claims a PDF/archive exists, never
  * fabricates a line item for a flat invoice, and renders no editable
- * frozen field, Delete, Duplicate, Issue, Send, PDF/download, or email
- * control.
+ * frozen field, Issue, Send, PDF/download, or email control. Duplicate
+ * (via InvoiceLifecycleControls, §3.2) is the one exception — available
+ * only for a terminal CANCELLED invoice, never for SENT/PAID/OVERDUE.
  */
 export function InvoiceReadOnlyView({
   invoiceId,

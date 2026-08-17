@@ -318,6 +318,410 @@ test.describe("staff Invoice list — DRAFT vs non-DRAFT row actions, read-only 
   });
 });
 
+test.describe("Duplicate-as-new-DRAFT — completing official Invoice System Slice 2", () => {
+  // Slice 2c: only a CANCELLED invoice ever exposes "Duplicate as new
+  // draft" (docs/invoicing-architecture.md §3.2). No Slice-2b production
+  // action can reach CANCELLED, SENT, PAID, or OVERDUE, so every source
+  // invoice below is seeded directly via dbQuery, exactly like the
+  // existing SENT `legacyInvoiceId` fixture above. Opening the duplicate
+  // route itself must never write — every write assertion here is scoped
+  // to a unique invoiceNumber/id, never a global count.
+  let itemizedCancelledId: string;
+  let flatCancelledId: string;
+  let sentId: string;
+  let orgBProjectId: string;
+  let orgBCancelledId: string;
+  let keyboardCancelledId: string;
+
+  function todayUtcDateOnly(): string {
+    const now = new Date();
+    return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+  }
+
+  type InvoiceSnapshot = {
+    id: string;
+    invoiceNumber: string;
+    status: string;
+    updatedAt: string;
+    lineItems: { id: string; description: string; quantity: string; unitPrice: string; position: number }[];
+    activity: { id: string; action: string }[];
+  };
+
+  /**
+   * A full, exact-scope source-of-truth snapshot for one Invoice — used
+   * to prove an invoice genuinely never changes across a Duplicate flow
+   * (id/invoiceNumber/status/updatedAt, every ordered line item, every
+   * Activity row for that entity). Decimal/Date values are normalized to
+   * strings once here via String(), so two captures compare deterministically
+   * regardless of any JSON-transport serialization quirk in dbQuery's own
+   * HTTP round-trip (test/support/e2e-db-client.ts).
+   */
+  async function captureInvoiceSnapshot(invoiceId: string, organizationId: string): Promise<InvoiceSnapshot> {
+    const invoice = await dbQuery<{ id: string; invoiceNumber: string; status: string; updatedAt: string }>(
+      "invoice",
+      "findUniqueOrThrow",
+      { where: { id: invoiceId } },
+    );
+    const lineItems = await dbQuery<{ id: string; description: string; quantity: string; unitPrice: string; position: number }[]>(
+      "invoiceLineItem",
+      "findMany",
+      { where: { invoiceId }, orderBy: { position: "asc" } },
+    );
+    const activity = await dbQuery<{ id: string; action: string }[]>("activity", "findMany", {
+      where: { organizationId, entityType: "INVOICE", entityId: invoiceId },
+      orderBy: { createdAt: "asc" },
+    });
+    return {
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      status: invoice.status,
+      updatedAt: String(invoice.updatedAt),
+      lineItems: lineItems.map((li) => ({
+        id: li.id,
+        description: li.description,
+        quantity: String(li.quantity),
+        unitPrice: String(li.unitPrice),
+        position: li.position,
+      })),
+      activity: activity.map((a) => ({ id: a.id, action: a.action })),
+    };
+  }
+
+  test.beforeAll(async () => {
+    const itemized = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-DUP-ITM-${fixtures.runId}`,
+        status: "CANCELLED",
+        amount: "922.49",
+        subtotal: "922.49",
+        discountType: "PERCENTAGE",
+        discountValue: "10",
+        discountAmount: "92.25",
+        taxRatePercent: "8.25",
+        taxAmount: "68.49",
+        currency: "USD",
+        notes: "Original client-visible note",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+        lineItems: {
+          create: [
+            { description: "Design work", quantity: "10.5", unitPrice: "85.00", lineTotal: "892.50", position: 0 },
+            { description: "Hosting", quantity: "1", unitPrice: "29.99", lineTotal: "29.99", position: 1 },
+          ],
+        },
+      },
+    });
+    itemizedCancelledId = itemized.id;
+
+    const flat = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-DUP-FLAT-${fixtures.runId}`,
+        status: "CANCELLED",
+        amount: "777.00",
+        subtotal: "777.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        currency: "USD",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+    flatCancelledId = flat.id;
+
+    const sent = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-DUP-SENT-${fixtures.runId}`,
+        status: "SENT",
+        amount: "50.00",
+        subtotal: "50.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+    sentId = sent.id;
+
+    const orgBProject = await dbQuery<{ id: string }>("project", "create", {
+      data: {
+        name: `E2E Duplicate Org B Project ${fixtures.runId}`,
+        clientId: fixtures.clientB.id,
+        organizationId: fixtures.orgB.id,
+        ownerId: fixtures.orgBOwner.id,
+        status: "IN_PROGRESS",
+      },
+    });
+    orgBProjectId = orgBProject.id;
+
+    const orgBCancelled = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-DUP-ORGB-${fixtures.runId}`,
+        status: "CANCELLED",
+        amount: "40.00",
+        subtotal: "40.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: orgBProjectId,
+        clientId: fixtures.clientB.id,
+        organizationId: fixtures.orgB.id,
+      },
+    });
+    orgBCancelledId = orgBCancelled.id;
+
+    // normalizedCurrencyId/unsupportedCurrencyId are deliberately NOT
+    // seeded here — an unnormalized/unsupported currency also breaks the
+    // existing, unrelated /invoices LIST page's own plain formatCurrency()
+    // call (it renders every org invoice, with no normalization of its
+    // own) whenever any other test in this block navigates there. Scoped
+    // to the currency test's own body instead, so the malformed-currency
+    // row only exists for the moment that one test needs it.
+
+    const keyboardSource = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-DUP-KBD-${fixtures.runId}`,
+        status: "CANCELLED",
+        amount: "20.00",
+        subtotal: "20.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+    keyboardCancelledId = keyboardSource.id;
+  });
+
+  test.afterAll(async () => {
+    // Covers every seeded source (E2E-DUP-*-${runId}) AND every duplicate
+    // a test created (E2E-DUP-*-${runId}-R1) in one scoped sweep — both
+    // shapes start with "E2E-DUP-" and contain this run's unique id;
+    // InvoiceLineItem rows cascade-delete with their parent Invoice.
+    await dbQuery("invoice", "deleteMany", {
+      where: { invoiceNumber: { startsWith: "E2E-DUP-", contains: fixtures.runId } },
+    });
+    await dbQuery("project", "deleteMany", { where: { id: orgBProjectId } });
+  });
+
+  test.beforeEach(async ({ context, baseURL }) => {
+    await injectTestSession(context, { id: fixtures.owner.id, email: fixtures.owner.email }, baseURL!);
+  });
+
+  test("itemized CANCELLED source: full flow from the read-only view through explicit submit", async ({ page }) => {
+    const suggestedNumber = `E2E-DUP-ITM-${fixtures.runId}-R1`;
+
+    // Exact source snapshot, captured before opening or navigating away
+    // from the source at all — invoiceNumber/status/updatedAt plus every
+    // ordered line item and every Activity row scoped to this entity.
+    // Decimal/date values are normalized to strings once here (String())
+    // and compared as strings throughout, since the JSON transport this
+    // suite's dbQuery already uses (test/support/e2e-db-client.ts) is not
+    // guaranteed to round-trip a Decimal/Date the same way twice on its
+    // own.
+    const sourceBefore = await captureInvoiceSnapshot(itemizedCancelledId, fixtures.orgA.id);
+    expect(sourceBefore.lineItems).toHaveLength(2);
+
+    await page.goto(`/invoices/${itemizedCancelledId}/edit`);
+    const duplicateLink = page.getByRole("link", { name: "Duplicate as new draft" });
+    await expect(duplicateLink).toHaveCount(1);
+
+    const dateBefore = todayUtcDateOnly();
+    await duplicateLink.click();
+    const dateAfter = todayUtcDateOnly();
+
+    await expect(page).toHaveURL(new RegExp(`/invoices/${itemizedCancelledId}/duplicate$`));
+
+    const invoiceNumberField = page.getByLabel("Invoice number");
+    await expect(invoiceNumberField).toHaveValue(suggestedNumber);
+    await expect(invoiceNumberField).toBeEditable();
+
+    await expect(page.getByRole("radio", { name: "Itemized" })).toBeChecked();
+    const row1 = page.getByRole("group", { name: "Line item 1" });
+    await expect(row1.getByLabel("Description")).toHaveValue("Design work");
+    await expect(row1.getByLabel("Qty")).toHaveValue("10.5");
+    await expect(row1.getByLabel("Unit price")).toHaveValue("85"); // Decimal.toString() trims trailing zeros
+    const row2 = page.getByRole("group", { name: "Line item 2" });
+    await expect(row2.getByLabel("Description")).toHaveValue("Hosting");
+
+    await expect(page.getByLabel("Discount type")).toHaveValue("PERCENTAGE");
+    await expect(page.getByLabel("Discount (%)")).toHaveValue("10");
+    await expect(page.getByLabel("Tax rate (%)")).toHaveValue("8.25");
+    await expect(page.getByLabel("Currency")).toHaveValue("USD");
+
+    const issueDateValue = await page.getByLabel("Issue date").inputValue();
+    expect([dateBefore, dateAfter]).toContain(issueDateValue);
+    await expect(page.getByLabel("Due date")).toHaveValue("");
+    await expect(page.getByLabel("Internal notes")).toHaveValue("");
+    await expect(page.getByLabel("Notes", { exact: true })).toHaveValue("Original client-visible note");
+
+    // Zero-write proof, scoped to this exact suggested number in the
+    // source's own Client scope — nothing has been submitted yet — plus a
+    // full re-read proving the source itself is still exactly as
+    // captured above (including updatedAt, its ordered line items, and
+    // its Activity state).
+    const beforeSubmit = await dbQuery<unknown[]>("invoice", "findMany", {
+      where: { invoiceNumber: suggestedNumber, clientId: fixtures.clientA.id },
+    });
+    expect(beforeSubmit).toHaveLength(0);
+    const sourceAfterOpen = await captureInvoiceSnapshot(itemizedCancelledId, fixtures.orgA.id);
+    expect(sourceAfterOpen).toEqual(sourceBefore);
+
+    await page.getByRole("button", { name: "Create duplicate" }).click();
+    await expect(page.getByText("Invoice created")).toBeVisible();
+
+    const created = await dbQuery<{ id: string; status: string }[]>("invoice", "findMany", {
+      where: { invoiceNumber: suggestedNumber, clientId: fixtures.clientA.id },
+    });
+    expect(created).toHaveLength(1);
+    expect(created[0].status).toBe("DRAFT");
+
+    const row = page.getByRole("row", { name: new RegExp(suggestedNumber) });
+    await expect(row.getByRole("link", { name: "Edit" })).toBeVisible();
+    await expect(row.getByRole("button", { name: "Delete" })).toBeVisible();
+
+    // Source remains byte-for-byte unchanged after a real duplicate was
+    // created — same invoiceNumber/status/updatedAt, same ordered line
+    // items, same Activity rows.
+    const sourceAfterSubmit = await captureInvoiceSnapshot(itemizedCancelledId, fixtures.orgA.id);
+    expect(sourceAfterSubmit).toEqual(sourceBefore);
+
+    // The new invoice, and only the new invoice, has its own exactly one
+    // CREATED Activity row.
+    const newInvoiceActivity = await dbQuery<{ id: string; action: string }[]>("activity", "findMany", {
+      where: { organizationId: fixtures.orgA.id, entityType: "INVOICE", entityId: created[0].id },
+    });
+    expect(newInvoiceActivity).toHaveLength(1);
+    expect(newInvoiceActivity[0].action).toBe("CREATED");
+
+    await page.goto(`/invoices/${itemizedCancelledId}/edit`);
+    await expect(page.getByText("Cancelled")).toBeVisible();
+    await expect(page.getByLabel("Invoice number")).toHaveCount(0);
+  });
+
+  test("negative route eligibility: SENT shows no link, direct SENT and cross-org routes are unavailable", async ({ page }) => {
+    await page.goto(`/invoices/${sentId}/edit`);
+    await expect(page.getByRole("link", { name: "Duplicate as new draft" })).toHaveCount(0);
+
+    await page.goto(`/invoices/${sentId}/duplicate`);
+    await expect(page.getByText("Page not found")).toBeVisible();
+
+    await page.goto(`/invoices/${orgBCancelledId}/duplicate`);
+    await expect(page.getByText("Page not found")).toBeVisible();
+  });
+
+  test("legacy flat CANCELLED source: flat mode, amount prefilled, no fabricated line item", async ({ page }) => {
+    await page.goto(`/invoices/${flatCancelledId}/edit`);
+    await page.getByRole("link", { name: "Duplicate as new draft" }).click();
+    await expect(page).toHaveURL(new RegExp(`/invoices/${flatCancelledId}/duplicate$`));
+
+    await expect(page.getByRole("radio", { name: "Flat amount" })).toBeChecked();
+    // "Amount" alone is ambiguous against the "Flat amount" radio's own
+    // accessible name (getByLabel substring-matches) — exact: true
+    // disambiguates, matching this suite's own established convention.
+    await expect(page.getByRole("textbox", { name: "Amount", exact: true })).toHaveValue("777"); // Decimal.toString() trims trailing zeros
+    await expect(page.getByRole("group", { name: /Line item/ })).toHaveCount(0);
+    await expect(page.getByLabel("Invoice number")).toHaveValue(`E2E-DUP-FLAT-${fixtures.runId}-R1`);
+  });
+
+  test("currency: a normalized-supported source opens the ordinary form; an unsupported source is blocked, no writes", async ({ page }) => {
+    // Seeded and torn down entirely within this one test — an
+    // un-normalized/unsupported currency also breaks the existing,
+    // unrelated /invoices LIST page's own plain formatCurrency() call
+    // (it renders every org invoice, with no normalization of its own)
+    // if left behind for any other test's navigation to see.
+    const normalizedCurrency = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-DUP-NORMCUR-${fixtures.runId}`,
+        status: "CANCELLED",
+        amount: "60.00",
+        subtotal: "60.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        currency: " usd ",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+    const unsupportedCurrency = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-DUP-BADCUR-${fixtures.runId}`,
+        status: "CANCELLED",
+        amount: "80.00",
+        subtotal: "80.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        currency: "JPY",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+
+    try {
+      // Exact-scope snapshots for BOTH sources, captured before either
+      // navigation — never a global organization-wide count, which could
+      // be affected by unrelated test activity running in the same org.
+      const normalizedBefore = await captureInvoiceSnapshot(normalizedCurrency.id, fixtures.orgA.id);
+      const unsupportedBefore = await captureInvoiceSnapshot(unsupportedCurrency.id, fixtures.orgA.id);
+
+      await page.goto(`/invoices/${normalizedCurrency.id}/duplicate`);
+      await expect(page.getByLabel("Currency")).toHaveValue("USD");
+      await expect(page.getByRole("button", { name: "Create duplicate" })).toBeVisible();
+
+      await page.goto(`/invoices/${unsupportedCurrency.id}/duplicate`);
+      await expect(page.getByText(/can.t duplicate this invoice automatically/i)).toBeVisible();
+      await expect(page.getByText(/JPY/)).toBeVisible();
+      await expect(page.getByRole("button", { name: "Create duplicate" })).toHaveCount(0);
+      // No InvoiceForm is ever constructed on the blocked branch — not
+      // just no submit button, no invoice-number input either.
+      await expect(page.getByLabel("Invoice number")).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "View original invoice" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Add invoice" })).toBeVisible();
+
+      // Neither navigation wrote anything — both sources are exactly as
+      // captured above (id/invoiceNumber/status/updatedAt, line items,
+      // Activity), and neither's suggested -R1 duplicate number exists in
+      // the source's own Client scope.
+      const normalizedAfter = await captureInvoiceSnapshot(normalizedCurrency.id, fixtures.orgA.id);
+      const unsupportedAfter = await captureInvoiceSnapshot(unsupportedCurrency.id, fixtures.orgA.id);
+      expect(normalizedAfter).toEqual(normalizedBefore);
+      expect(unsupportedAfter).toEqual(unsupportedBefore);
+
+      const suggestedForNormalized = await dbQuery<unknown[]>("invoice", "findMany", {
+        where: { invoiceNumber: `${normalizedBefore.invoiceNumber}-R1`, clientId: fixtures.clientA.id },
+      });
+      expect(suggestedForNormalized).toHaveLength(0);
+      const suggestedForUnsupported = await dbQuery<unknown[]>("invoice", "findMany", {
+        where: { invoiceNumber: `${unsupportedBefore.invoiceNumber}-R1`, clientId: fixtures.clientA.id },
+      });
+      expect(suggestedForUnsupported).toHaveLength(0);
+    } finally {
+      await dbQuery("invoice", "deleteMany", { where: { id: { in: [normalizedCurrency.id, unsupportedCurrency.id] } } });
+    }
+  });
+
+  test("keyboard: the Duplicate link is reachable and activatable by keyboard; the duplicate route has no horizontal overflow at 320/375/768", async ({ page }) => {
+    await page.goto(`/invoices/${keyboardCancelledId}/edit`);
+    await page.getByRole("link", { name: "Duplicate as new draft" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`/invoices/${keyboardCancelledId}/duplicate$`));
+
+    for (const width of [320, 375, 768]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`/invoices/${keyboardCancelledId}/duplicate`);
+      const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      }));
+      expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+    }
+  });
+});
+
 test.describe("date-only display — no local-timezone drift", () => {
   // issueDate/dueDate are rendered by a Server Component, in the Node.js
   // process running the app (via formatDateOnlyForDisplay) — NOT by the
