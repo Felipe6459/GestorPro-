@@ -96,6 +96,62 @@ if (existsSync(storageFile)) {
     !storageContent.includes("getPublicUrl"),
     "",
   ) && ok;
+
+  // 8b. uploadInvoicePdfObject()/removeInvoicePdfObject() each destructure
+  // a structured `identity`, never a raw caller-supplied `path` — a
+  // correction-pass invariant: a TypeScript-only branded-string contract
+  // would still let a caller pass an arbitrary string at runtime, so the
+  // actual exported function signatures themselves are inspected here,
+  // not just a doc comment's claim about them.
+  const uploadSigMatch = storageContent.match(/export async function uploadInvoicePdfObject\(\s*\{([^}]*)\}/);
+  const removeSigMatch = storageContent.match(/export async function removeInvoicePdfObject\(\s*\{([^}]*)\}/);
+  const uploadSig = uploadSigMatch ? uploadSigMatch[1] : "";
+  const removeSig = removeSigMatch ? removeSigMatch[1] : "";
+  ok = report(
+    "uploadInvoicePdfObject()'s own parameter destructures { identity, body }, never a raw path",
+    /\bidentity\b/.test(uploadSig) && !/\bpath\s*:/.test(uploadSig) && !/^\s*path\b/.test(uploadSig),
+    uploadSig,
+  ) && ok;
+  ok = report(
+    "removeInvoicePdfObject()'s own parameter destructures { identity }, never a raw path",
+    /\bidentity\b/.test(removeSig) && !/\bpath\s*:/.test(removeSig) && !/^\s*path\b/.test(removeSig),
+    removeSig,
+  ) && ok;
+
+  // 8c. Both functions actually reconstruct the path from that identity
+  // via buildInvoicePdfStoragePath() — an identity accepted but never
+  // used to rebuild the path would defeat the whole point.
+  const uploadBodyEnd = storageContent.indexOf("export async function removeInvoicePdfObject");
+  const uploadBody = uploadSigMatch ? storageContent.slice(storageContent.indexOf(uploadSigMatch[0]), uploadBodyEnd === -1 ? undefined : uploadBodyEnd) : "";
+  const removeBody = removeSigMatch ? storageContent.slice(storageContent.indexOf(removeSigMatch[0])) : "";
+  ok = report(
+    "uploadInvoicePdfObject() rebuilds the path via buildInvoicePdfStoragePath(identity)",
+    /buildInvoicePdfStoragePath\(identity\)/.test(uploadBody),
+    "",
+  ) && ok;
+  ok = report(
+    "removeInvoicePdfObject() rebuilds the path via buildInvoicePdfStoragePath(identity)",
+    /buildInvoicePdfStoragePath\(identity\)/.test(removeBody),
+    "",
+  ) && ok;
+}
+
+// 8d. The Issue service's own calls to deps.upload/deps.remove pass an
+// `identity`, never a raw `path` — the caller side of the same boundary.
+if (existsSync(serviceFile)) {
+  const serviceContent = readFileSync(serviceFile, "utf8");
+  const uploadCallMatch = serviceContent.match(/deps\.upload\(\{([^}]*)\}\)/);
+  const removeCallMatches = [...serviceContent.matchAll(/deps\.remove\(\{([^}]*)\}\)/g)];
+  ok = report(
+    "issue-invoice.ts's own deps.upload(...) call passes { identity, body }, never a raw path",
+    !!uploadCallMatch && /\bidentity\b/.test(uploadCallMatch[1]) && !/\bpath\s*:/.test(uploadCallMatch[1]),
+    uploadCallMatch ? uploadCallMatch[1] : "deps.upload(...) call not found",
+  ) && ok;
+  ok = report(
+    "every issue-invoice.ts deps.remove(...) call passes { identity }, never a raw path",
+    removeCallMatches.length > 0 && removeCallMatches.every(([, args]) => /\bidentity\b/.test(args) && !/\bpath\s*:/.test(args)),
+    removeCallMatches.map(([, args]) => args).join(" | ") || "deps.remove(...) call not found",
+  ) && ok;
 }
 
 // 9. The public Issue result contract (IssueInvoiceSuccess) has no

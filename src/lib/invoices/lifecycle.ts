@@ -1,12 +1,16 @@
 import type { InvoiceStatus, Role } from "@/generated/prisma/browser";
 
 /**
- * Invoice System Slice 2a — pure lifecycle helpers and a type-only Slice 3
- * contract (docs/invoicing-architecture.md §3.1/§14 Slice 2). Nothing in
- * this module is wired into any live route, Server Action, or component
- * yet — that wiring is Slice 2b's job. This file exists now so Slice 2b
- * can import a single, already-tested source of truth instead of
- * re-deriving the transition matrix inline a second time.
+ * Invoice System Slice 2a — pure lifecycle helpers, plus the live Slice 3
+ * Issue contract (docs/invoicing-architecture.md §3.1/§8.1/§14). The
+ * transition-matrix helpers below are wired into the ordinary status-change
+ * Server Action (src/app/(dashboard)/invoices/[id]/status-actions.ts, Slice
+ * 2b); `computePaidAtUpdate()` is likewise live there. The Issue contract
+ * types are implemented for real by src/lib/invoices/pdf/issue-invoice.ts
+ * (Slice 3, sub-PR 3b) — see that file's own header comment for the actual
+ * pipeline. This file remains the single, already-tested source of truth
+ * both callers import from, rather than re-deriving either rule set
+ * inline a second time.
  *
  * No I/O, no Prisma Client import, no `new Date()` call anywhere in this
  * file — every function here is a pure function of its arguments.
@@ -14,8 +18,9 @@ import type { InvoiceStatus, Role } from "@/generated/prisma/browser";
 
 /**
  * The exact transition matrix from docs/invoicing-architecture.md §3.1.
- * `DRAFT` transitions to nothing here: `DRAFT -> SENT` is the future
- * Slice 3 Issue operation (not a status-change action, see
+ * `DRAFT` transitions to nothing here: `DRAFT -> SENT` is the dedicated
+ * Slice 3 Issue operation (issueInvoice() in
+ * src/lib/invoices/pdf/issue-invoice.ts — not a status-change action, see
  * `IssueInvoiceResult` below), and `DRAFT -> CANCELLED`/`PAID`/`OVERDUE`
  * are all forbidden outright (abandoning a draft that was never issued is
  * a plain delete, never a status transition). `CANCELLED` is terminal.
@@ -55,12 +60,10 @@ export function isTransitionAllowed(from: InvoiceStatus, to: InvoiceStatus): boo
 export type PaidAtUpdate = { paidAt?: Date | null };
 
 /**
- * Reproduces the exact 4-case `paidAt` rule already inline in
- * `src/app/(dashboard)/invoices/[id]/edit/actions.ts` today — this
- * function is not yet called by that file (Slice 2b rewires it); it exists
- * now, independently tested against the same 4 cases, so Slice 2b has a
- * single already-correct implementation to switch to rather than
- * re-deriving the rule a second time.
+ * The exact 4-case `paidAt` rule, live in
+ * `src/app/(dashboard)/invoices/[id]/status-actions.ts` (Slice 2b) — that
+ * Server Action calls this function directly rather than re-deriving the
+ * rule inline.
  *
  * `now` is an explicit, injected parameter — never `new Date()` internally
  * — so this function is genuinely deterministic and unit-testable without

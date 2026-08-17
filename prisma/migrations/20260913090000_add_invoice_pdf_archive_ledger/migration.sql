@@ -52,7 +52,7 @@ CREATE INDEX "InvoicePdfArchiveObject_status_createdAt_idx" ON "InvoicePdfArchiv
 CREATE INDEX "InvoicePdfArchiveObject_status_cleanupLockedAt_idx" ON "InvoicePdfArchiveObject"("status", "cleanupLockedAt");
 
 -- AddForeignKey
-ALTER TABLE "InvoicePdfArchiveObject" ADD CONSTRAINT "InvoicePdfArchiveObject_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "InvoicePdfArchiveObject" ADD CONSTRAINT "InvoicePdfArchiveObject_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "InvoicePdfArchiveObject" ADD CONSTRAINT "InvoicePdfArchiveObject_invoiceId_fkey" FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE SET NULL ON UPDATE CASCADE;

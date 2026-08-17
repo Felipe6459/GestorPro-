@@ -120,9 +120,12 @@ describe("20260913090000_add_invoice_pdf_archive_ledger — migration contract",
   });
 
   describe("foreign keys", () => {
-    it("organizationId cascades on Organization delete", () => {
+    it("organizationId restricts Organization delete — the durable ledger must never be silently erased by deleting its Organization", () => {
       expect(migrationSql).toContain(
-        'ALTER TABLE "InvoicePdfArchiveObject" ADD CONSTRAINT "InvoicePdfArchiveObject_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;',
+        'ALTER TABLE "InvoicePdfArchiveObject" ADD CONSTRAINT "InvoicePdfArchiveObject_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;',
+      );
+      expect(migrationSql).not.toMatch(
+        /InvoicePdfArchiveObject_organizationId_fkey.*ON DELETE CASCADE/,
       );
     });
 

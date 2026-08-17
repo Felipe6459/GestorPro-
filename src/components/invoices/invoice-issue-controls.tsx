@@ -34,7 +34,19 @@ export function InvoiceIssueControls({
 
   function runIssue() {
     startTransition(async () => {
-      const result = await issueInvoiceAction(invoiceId, expectedUpdatedAt);
+      let result: Awaited<ReturnType<typeof issueInvoiceAction>>;
+      try {
+        result = await issueInvoiceAction(invoiceId, expectedUpdatedAt);
+      } catch {
+        // A rejected Server Action call (e.g. a network/transport error
+        // reaching the server at all) is indistinguishable from any other
+        // safe failure here — same generic message, no thrown detail ever
+        // surfaced, no automatic retry. useTransition's own pending state
+        // still resolves to false once this async callback returns, so
+        // the button is never left stuck in a permanently pending state.
+        showToast("Could not issue this invoice — try again.", "error");
+        return;
+      }
 
       if (result.ok) {
         showToast("Invoice issued");

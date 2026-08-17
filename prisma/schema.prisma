@@ -847,8 +847,15 @@ model InvoicePdfArchiveObject {
   // ids that could drift out of sync with each other.
   id String @id @db.Uuid
 
+  // Restrict, not Cascade: this ledger is the durable evidence trail for
+  // archived Invoice PDFs — deleting an Organization must never silently
+  // erase the only database record of an object that may still exist in
+  // private Storage. No code path in this application ever deletes an
+  // Organization row while archive-object rows for it still exist; this
+  // constraint exists to make that failure loud (a DB error) rather than
+  // a silent, unrecoverable data loss.
   organizationId String       @db.Uuid
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   // Nullable + SetNull: an Invoice DRAFT can be deleted (deleteInvoiceAction
   // requires status DRAFT) concurrently with an in-flight Issue attempt —

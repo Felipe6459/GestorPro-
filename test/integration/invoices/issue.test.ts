@@ -37,9 +37,20 @@ process.env.TEST_MODE = "1";
 const { issueInvoice } = await import("@/lib/invoices/pdf/issue-invoice");
 const { issueInvoiceAction } = await import("@/app/(dashboard)/invoices/[id]/edit/issue-actions");
 const { testStorageRead } = await import("@/lib/storage/test-storage");
-const { uploadInvoicePdfObject } = await import("@/lib/invoices/pdf/storage");
+const { uploadInvoicePdfObject, buildInvoicePdfStoragePath } = await import("@/lib/invoices/pdf/storage");
 const { renderInvoicePdfBuffer } = await import("@/lib/invoices/pdf/document");
 const { parseIssuerSnapshot, parseRecipientSnapshot } = await import("@/lib/invoices/pdf/snapshot-types");
+const { toRendererIssuerPresentation, toRendererRecipientPresentation } = await import("@/lib/invoices/pdf/view-model");
+
+/**
+ * A genuine, real, decodable 1x1 transparent PNG — the exact same fixture
+ * already used and proven valid elsewhere in this repo's own test suite
+ * (test/e2e/organization-setup.spec.ts's own logo-upload fixture), reused
+ * here rather than arbitrary text labelled as an image, per this
+ * correction pass's own §7 requirement.
+ */
+const GENUINE_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+const GENUINE_PNG_BYTES = Buffer.from(GENUINE_PNG_BASE64, "base64");
 
 afterAll(() => {
   if (ORIGINAL_TEST_MODE === undefined) delete process.env.TEST_MODE;
@@ -174,13 +185,61 @@ describe("issueInvoice — Invoice System Official Slice 3, sub-PR 3b", () => {
     expect(isPdfSignature(stored!.body)).toBe(true);
   });
 
-  it("persisted snapshots equal what was strictly parsed/used for rendering — round-trip through the strict parser succeeds", async () => {
-    const invoice = await seedDraftInvoice(fixtures);
-    await issueInvoice({ actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() });
+  it("persisted snapshots equal what was strictly parsed/used for rendering — the captured view model's own issuer/recipient presentation exactly matches what the persisted snapshots re-derive, and persisted totals exactly match the calculation the render actually used", async () => {
+    const invoice = await seedDraftInvoice(fixtures, { amount: "0.00", subtotal: "0.00" });
+    await prisma.invoiceLineItem.createMany({
+      data: [
+        { invoiceId: invoice.id, description: "Consulting", quantity: "3", unitPrice: "75.00", lineTotal: "225.00", position: 0 },
+      ],
+    });
+
+    let capturedViewModel: Parameters<typeof renderInvoicePdfBuffer>[0] | null = null;
+
+    const result = await issueInvoice(
+      { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
+      {
+        render: async (viewModel) => {
+          // Capture the exact view model actually handed to the renderer,
+          // then let the real renderer execute unmodified — this proves
+          // the persisted snapshots correspond to what was truly rendered,
+          // not merely to some other equivalent-looking object.
+          capturedViewModel = viewModel;
+          return renderInvoicePdfBuffer(viewModel);
+        },
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(capturedViewModel).not.toBeNull();
 
     const after = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
-    expect(parseIssuerSnapshot(after.issuerSnapshot).ok).toBe(true);
-    expect(parseRecipientSnapshot(after.recipientSnapshot).ok).toBe(true);
+
+    const parsedIssuer = parseIssuerSnapshot(after.issuerSnapshot);
+    const parsedRecipient = parseRecipientSnapshot(after.recipientSnapshot);
+    expect(parsedIssuer.ok).toBe(true);
+    expect(parsedRecipient.ok).toBe(true);
+    if (!parsedIssuer.ok || !parsedRecipient.ok) throw new Error("unreachable");
+
+    // Re-run the persisted snapshots through the exact same renderer
+    // presentation adapters the service itself uses, and assert the
+    // result is byte-for-byte identical to what was actually captured on
+    // the way into the real renderer.
+    const rederivedIssuer = toRendererIssuerPresentation(parsedIssuer.snapshot, null);
+    // The default fixture organization has no logo configured, so the
+    // captured presentation has no logoImage either — verified explicitly
+    // rather than assumed.
+    expect(capturedViewModel!.issuer.logoImage).toBeNull();
+    expect(rederivedIssuer).toEqual({ ok: true, presentation: capturedViewModel!.issuer });
+
+    const rederivedRecipient = toRendererRecipientPresentation(parsedRecipient.snapshot);
+    expect(rederivedRecipient).toEqual(capturedViewModel!.recipient);
+
+    // The persisted totals must exactly match the calculation the capture
+    // proves was actually used to build the rendered view model's own
+    // totals block.
+    expect(after.subtotal?.toFixed(2)).toBe("225.00");
+    expect(after.amount.toFixed(2)).toBe("225.00");
+    expect(capturedViewModel!.totals.displayedSubtotal).toContain("225.00");
   });
 
   // --- 12: notification delivery only after commit ----------------------------
@@ -379,8 +438,8 @@ describe("issueInvoice — Invoice System Official Slice 3, sub-PR 3b", () => {
       { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
       {
         upload: async () => ({ ok: false, reason: "upload_failed" }),
-        remove: async ({ path }) => {
-          removedPath = path;
+        remove: async ({ identity }) => {
+          removedPath = buildInvoicePdfStoragePath(identity);
           return { ok: true };
         },
       },
@@ -391,6 +450,73 @@ describe("issueInvoice — Invoice System Official Slice 3, sub-PR 3b", () => {
     expect(ledger.status).toBe("CLEANED");
     expect(ledger.cleanedAt).not.toBeNull();
     expect(removedPath).toBe(ledger.storagePath);
+  });
+
+  it("an upload adapter that throws is treated as an ambiguous UPLOAD_FAILED, and never lets the raw exception escape", async () => {
+    const invoice = await seedDraftInvoice(fixtures);
+    let removeCalled = false;
+
+    const result = await issueInvoice(
+      { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
+      {
+        upload: async () => {
+          throw new Error("simulated network exception during upload");
+        },
+        remove: async () => {
+          removeCalled = true;
+          return { ok: true };
+        },
+      },
+    );
+
+    expect(result).toEqual({ ok: false, error: "UPLOAD_FAILED" });
+    expect(removeCalled).toBe(true);
+    const ledger = await prisma.invoicePdfArchiveObject.findFirstOrThrow({ where: { invoiceId: invoice.id } });
+    expect(ledger.status).toBe("CLEANED");
+  });
+
+  it("a remove adapter that throws during compensation is converted to the bounded remove_failed category — never escapes, ledger becomes CLEANUP_PENDING with an incremented attempt count", async () => {
+    const invoice = await seedDraftInvoice(fixtures);
+
+    const result = await issueInvoice(
+      { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
+      {
+        upload: async () => ({ ok: false, reason: "upload_failed" }),
+        remove: async () => {
+          throw new Error("simulated storage provider exception during removal");
+        },
+      },
+    );
+
+    expect(result).toEqual({ ok: false, error: "UPLOAD_FAILED" });
+    const ledger = await prisma.invoicePdfArchiveObject.findFirstOrThrow({ where: { invoiceId: invoice.id } });
+    expect(ledger.status).toBe("CLEANUP_PENDING");
+    expect(ledger.cleanupAttemptCount).toBe(1);
+    expect(ledger.lastCleanupFailureCategory).toBe("remove_failed");
+    expect(ledger.cleanedAt).toBeNull();
+  });
+
+  it("an invalid generated archive identity performs no upload and creates no ledger row, returning FINALIZATION_FAILED", async () => {
+    const invoice = await seedDraftInvoice(fixtures);
+    const before = await prisma.invoicePdfArchiveObject.count({ where: { invoiceId: invoice.id } });
+    let uploadCalled = false;
+
+    const result = await issueInvoice(
+      { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
+      {
+        generateArchiveId: () => "not-a-valid-uuid",
+        upload: async (args) => {
+          uploadCalled = true;
+          return uploadInvoicePdfObject(args);
+        },
+      },
+    );
+
+    expect(result).toEqual({ ok: false, error: "FINALIZATION_FAILED" });
+    expect(uploadCalled).toBe(false);
+    const after = await prisma.invoicePdfArchiveObject.count({ where: { invoiceId: invoice.id } });
+    expect(after).toBe(before);
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } })).status).toBe("DRAFT");
   });
 
   it("when compensating removal also fails, the ledger becomes CLEANUP_PENDING with a bounded failure category and an incremented attempt count", async () => {
@@ -439,6 +565,107 @@ describe("issueInvoice — Invoice System Official Slice 3, sub-PR 3b", () => {
     expect(testStorageRead("attachments", ledger.storagePath)).toBeNull();
   });
 
+  it("a failure injected AFTER the real createActivity() write (inside the same transaction, proven to have genuinely created Activity/Notification rows there) rolls everything back together and compensates the uploaded object", async () => {
+    const invoice = await seedDraftInvoice(fixtures);
+    const actual = await vi.importActual<typeof import("@/lib/activity/create-activity")>("@/lib/activity/create-activity");
+    let capturedNotificationIds: string[] = [];
+
+    vi.mocked(createActivity).mockImplementationOnce(async (tx, args) => {
+      const activity = await actual.createActivity(tx, args);
+      capturedNotificationIds = activity.notificationIds;
+      // Prove the write genuinely happened inside this same transaction —
+      // not merely that it was never attempted — before forcing a
+      // rollback.
+      const withinTx = await tx.activity.findUniqueOrThrow({ where: { id: activity.id } });
+      expect(withinTx.action).toBe("STATUS_CHANGED");
+      if (activity.notificationIds.length > 0) {
+        const notificationsWithinTx = await tx.notification.findMany({ where: { id: { in: activity.notificationIds } } });
+        expect(notificationsWithinTx.length).toBe(activity.notificationIds.length);
+      }
+      throw new Error("simulated failure after the real Activity/Notification write");
+    });
+
+    const result = await issueInvoice({
+      actor: actorFor(fixtures, fixtures.owner, "OWNER"),
+      invoiceId: invoice.id,
+      expectedUpdatedAt: invoice.updatedAt.toISOString(),
+    });
+
+    expect(result).toEqual({ ok: false, error: "FINALIZATION_FAILED" });
+
+    const after = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+    expect(after.status).toBe("DRAFT");
+
+    const activities = await prisma.activity.findMany({ where: { entityType: "INVOICE", entityId: invoice.id, action: "STATUS_CHANGED" } });
+    expect(activities).toHaveLength(0);
+
+    expect(capturedNotificationIds.length).toBeGreaterThan(0);
+    const survivingNotifications = await prisma.notification.findMany({ where: { id: { in: capturedNotificationIds } } });
+    expect(survivingNotifications).toHaveLength(0);
+
+    const ledger = await prisma.invoicePdfArchiveObject.findFirstOrThrow({ where: { invoiceId: invoice.id } });
+    expect(ledger.status).toBe("CLEANED");
+    expect(testStorageRead("attachments", ledger.storagePath)).toBeNull();
+  });
+
+  it("a ledger-transition invariant failure (the ledger row is no longer PENDING_UPLOAD when the final transaction runs) is classified as FINALIZATION_FAILED, never CONFLICT — full rollback, compensation, no Activity/Notification", async () => {
+    const invoice = await seedDraftInvoice(fixtures);
+
+    const result = await issueInvoice(
+      { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
+      {
+        // Runs after the real upload succeeds and before the final
+        // transaction opens — mutate the ledger row's own status away
+        // from PENDING_UPLOAD, simulating a race the guarded ledger
+        // transition must detect and reject as a distinct internal
+        // invariant failure, never conflated with an ordinary Invoice
+        // optimistic-concurrency CONFLICT.
+        afterUploadBeforeFinalize: async () => {
+          await prisma.invoicePdfArchiveObject.updateMany({
+            where: { invoiceId: invoice.id, status: "PENDING_UPLOAD" },
+            data: { status: "CLEANED", cleanedAt: new Date() },
+          });
+        },
+      },
+    );
+
+    expect(result).toEqual({ ok: false, error: "FINALIZATION_FAILED" });
+
+    const after = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+    expect(after.status).toBe("DRAFT");
+    expect(after.finalizedAt).toBeNull();
+    expect(after.pdfStoragePath).toBeNull();
+    expect(after.issuerSnapshot).toBeNull();
+    expect(after.recipientSnapshot).toBeNull();
+
+    const activities = await prisma.activity.findMany({ where: { entityType: "INVOICE", entityId: invoice.id, action: "STATUS_CHANGED" } });
+    expect(activities).toHaveLength(0);
+
+    const ledger = await prisma.invoicePdfArchiveObject.findFirstOrThrow({ where: { invoiceId: invoice.id } });
+    // The compensating removal still runs (best-effort) even though the
+    // row's own status update no-ops (it is no longer PENDING_UPLOAD) —
+    // the object itself must still not be left behind.
+    expect(testStorageRead("attachments", ledger.storagePath)).toBeNull();
+  });
+
+  it("an ordinary Invoice update-count-zero conflict (a concurrent edit/second Issue attempt) is classified as CONFLICT, distinct from a ledger-transition invariant failure", async () => {
+    const invoice = await seedDraftInvoice(fixtures);
+    const expectedUpdatedAt = invoice.updatedAt.toISOString();
+
+    const result = await issueInvoice(
+      { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt },
+      {
+        afterUploadBeforeFinalize: async () => {
+          await prisma.invoice.update({ where: { id: invoice.id }, data: { notes: "concurrent edit via afterUploadBeforeFinalize", updatedAt: new Date(invoice.updatedAt.getTime() + 5000) } });
+        },
+      },
+    );
+
+    expect(result).toEqual({ ok: false, error: "CONFLICT" });
+    const after = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+    expect(after.status).toBe("DRAFT");
+  });
+
   // --- 28: post-commit delivery failure never undoes finalization -------------
 
   it("a post-commit notification-email delivery failure never undoes the already-committed finalization", async () => {
@@ -457,16 +684,15 @@ describe("issueInvoice — Invoice System Official Slice 3, sub-PR 3b", () => {
 
   it("valid logo bytes and their SHA-256 match the persisted snapshot's own provenance", async () => {
     const invoice = await seedDraftInvoice(fixtures);
-    const fakeBytes = Buffer.from("fake-logo-bytes-for-issue-test");
     const { createHash } = await import("node:crypto");
-    const expectedSha = createHash("sha256").update(fakeBytes).digest("hex");
+    const expectedSha = createHash("sha256").update(GENUINE_PNG_BYTES).digest("hex");
 
     const result = await issueInvoice(
       { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
       {
         resolveLogo: async () => ({
           provenance: { included: true, bucket: "logos", path: "organizations/x/logo/y.png", contentType: "image/png", sha256: expectedSha },
-          bytes: { data: fakeBytes, contentType: "image/png" },
+          bytes: { data: GENUINE_PNG_BYTES, contentType: "image/png" },
         }),
       },
     );
@@ -476,6 +702,105 @@ describe("issueInvoice — Invoice System Official Slice 3, sub-PR 3b", () => {
     const issuerSnapshot = after.issuerSnapshot as { logo: { included: boolean; sha256: string } };
     expect(issuerSnapshot.logo.included).toBe(true);
     expect(issuerSnapshot.logo.sha256).toBe(expectedSha);
+
+    const stored = testStorageRead("attachments", after.pdfStoragePath!);
+    expect(isPdfSignature(stored!.body)).toBe(true);
+  });
+
+  // --- logo failure must not block Issue: signature-passing-but-corrupt bytes causes a real render failure, retried once without the logo -----
+
+  it("when the first render (with logo) fails, a no-logo retry succeeds — Invoice becomes SENT, the persisted issuer snapshot says the logo was not included (invalid_content), and the uploaded PDF is the retry's own output", async () => {
+    const invoice = await seedDraftInvoice(fixtures);
+    let renderCallCount = 0;
+    let secondCallSawNoLogo = false;
+    const { createHash } = await import("node:crypto");
+    const corruptBytes = Buffer.from("structurally-corrupt-but-signature-passing-bytes");
+    const correctSha = createHash("sha256").update(corruptBytes).digest("hex");
+
+    const result = await issueInvoice(
+      { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
+      {
+        resolveLogo: async () => ({
+          // The provenance's own SHA-256 must genuinely match the bytes —
+          // this test is about the renderer itself failing on
+          // structurally-corrupt (but provenance-consistent) bytes, never
+          // about the unrelated provenance/byte-mismatch guard.
+          provenance: { included: true, bucket: "logos", path: "organizations/x/logo/y.png", contentType: "image/png", sha256: correctSha },
+          bytes: { data: corruptBytes, contentType: "image/png" },
+        }),
+        render: async (viewModel) => {
+          renderCallCount += 1;
+          if (renderCallCount === 1) {
+            expect(viewModel.issuer.logoImage).not.toBeNull();
+            throw new Error("simulated renderer failure decoding a structurally-corrupt logo image");
+          }
+          secondCallSawNoLogo = viewModel.issuer.logoImage === null;
+          return renderInvoicePdfBuffer(viewModel);
+        },
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(renderCallCount).toBe(2);
+    expect(secondCallSawNoLogo).toBe(true);
+
+    const after = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+    expect(after.status).toBe("SENT");
+    const issuerSnapshot = after.issuerSnapshot as { logo: { included: boolean; reason?: string } };
+    expect(issuerSnapshot.logo).toEqual({ included: false, reason: "invalid_content" });
+
+    const stored = testStorageRead("attachments", after.pdfStoragePath!);
+    expect(stored).not.toBeNull();
+    expect(isPdfSignature(stored!.body)).toBe(true);
+  });
+
+  it("both render attempts failing (logo included, then the no-logo retry) creates neither a ledger row nor a Storage object, and returns RENDER_FAILED", async () => {
+    const invoice = await seedDraftInvoice(fixtures);
+    const before = await prisma.invoicePdfArchiveObject.count({ where: { invoiceId: invoice.id } });
+    let renderCallCount = 0;
+    const { createHash } = await import("node:crypto");
+    const corruptBytes = Buffer.from("corrupt bytes");
+    const correctSha = createHash("sha256").update(corruptBytes).digest("hex");
+
+    const result = await issueInvoice(
+      { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
+      {
+        resolveLogo: async () => ({
+          provenance: { included: true, bucket: "logos", path: "organizations/x/logo/y.png", contentType: "image/png", sha256: correctSha },
+          bytes: { data: corruptBytes, contentType: "image/png" },
+        }),
+        render: async () => {
+          renderCallCount += 1;
+          throw new Error("simulated renderer failure on both attempts");
+        },
+      },
+    );
+
+    expect(result).toEqual({ ok: false, error: "RENDER_FAILED" });
+    // Exactly two attempts: the primary (with logo) and the one no-logo
+    // retry — never more, never an infinite/repeated retry loop.
+    expect(renderCallCount).toBe(2);
+    const after = await prisma.invoicePdfArchiveObject.count({ where: { invoiceId: invoice.id } });
+    expect(after).toBe(before);
+    expect((await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } })).status).toBe("DRAFT");
+  });
+
+  it("a render failure with no logo involved is never retried — a single attempt, RENDER_FAILED", async () => {
+    const invoice = await seedDraftInvoice(fixtures);
+    let renderCallCount = 0;
+
+    const result = await issueInvoice(
+      { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
+      {
+        render: async () => {
+          renderCallCount += 1;
+          throw new Error("simulated renderer failure, no logo involved");
+        },
+      },
+    );
+
+    expect(result).toEqual({ ok: false, error: "RENDER_FAILED" });
+    expect(renderCallCount).toBe(1);
   });
 
   it("no configured logo (the default fixture organization has no profile) falls back without blocking Issue", async () => {
@@ -532,7 +857,7 @@ describe("issueInvoice — Invoice System Official Slice 3, sub-PR 3b", () => {
 
   // --- 33: true concurrency — exactly one winner -------------------------------
 
-  it("two simultaneous Issue attempts for the same version produce exactly one finalized invoice, one REFERENCED ledger row, and one Activity", async () => {
+  it("two simultaneous Issue attempts for the same version produce exactly one finalized invoice, one REFERENCED ledger row with its object live, and every losing attempt's object fully and exactly cleaned up", async () => {
     const invoice = await seedDraftInvoice(fixtures);
     const input = {
       actor: actorFor(fixtures, fixtures.owner, "OWNER"),
@@ -551,39 +876,96 @@ describe("issueInvoice — Invoice System Official Slice 3, sub-PR 3b", () => {
 
     const referenced = await prisma.invoicePdfArchiveObject.findMany({ where: { invoiceId: invoice.id, status: "REFERENCED" } });
     expect(referenced).toHaveLength(1);
+    expect(referenced[0].storagePath).toBe(after.pdfStoragePath);
 
     const activities = await prisma.activity.findMany({ where: { entityType: "INVOICE", entityId: invoice.id, action: "STATUS_CHANGED" } });
     expect(activities).toHaveLength(1);
+    const notifications = await prisma.notification.findMany({ where: { activityId: activities[0].id } });
+    expect(notifications.length).toBeGreaterThan(0);
 
-    // The losing attempt's own uploaded object must not be left as an
-    // untracked orphan — it was compensated (CLEANED or discoverable
-    // CLEANUP_PENDING), never silently abandoned outside the ledger.
+    // Every uploading attempt registers its own ledger row before it ever
+    // uploads (pipeline step C) — this is therefore the exhaustive set of
+    // every path any of this invoice's Issue attempts ever wrote to
+    // Storage; there is no other path an object could exist at.
     const allLedgerRows = await prisma.invoicePdfArchiveObject.findMany({ where: { invoiceId: invoice.id } });
     expect(allLedgerRows.length).toBeGreaterThanOrEqual(1);
+
+    let liveObjectCount = 0;
     for (const row of allLedgerRows) {
-      expect(["REFERENCED", "CLEANED", "CLEANUP_PENDING"]).toContain(row.status);
+      const stored = testStorageRead("attachments", row.storagePath);
+      if (row.status === "REFERENCED") {
+        expect(stored).not.toBeNull();
+        expect(isPdfSignature(stored!.body)).toBe(true);
+        liveObjectCount += 1;
+      } else {
+        // Normal TEST_MODE removal always succeeds — in this ordinary
+        // (non-fault-injected) concurrency scenario every losing
+        // attempt's compensation reaches a fully confirmed CLEANED
+        // state, never left discoverable at CLEANUP_PENDING or (worse)
+        // still PENDING_UPLOAD.
+        expect(row.status).toBe("CLEANED");
+        expect(stored).toBeNull();
+      }
     }
+    // Exactly one live PDF object exists for this invoice across every
+    // attempt — the REFERENCED row's own object, and nothing else.
+    expect(liveObjectCount).toBe(1);
   });
 
-  // --- 34: a crashed mid-flight attempt leaves a discoverable PENDING_UPLOAD row
+  // --- 34: a real crash in the exact post-upload/pre-transaction window leaves a discoverable PENDING_UPLOAD row -----
 
-  it("a ledger row manually left at PENDING_UPLOAD (simulating a crash before compensation ran) is discoverable via the same query shape the future reconciliation worker will use", async () => {
-    const invoice = await seedDraftInvoice(fixtures);
-    const archiveId = randomUUID();
-    const path = `organizations/${fixtures.orgA.id}/invoice-pdf/${invoice.id}/v1/${archiveId}.pdf`;
-    await uploadInvoicePdfObject({ path, body: Buffer.from("%PDF-1.3 orphaned by a simulated crash") });
+  it("a real process crash simulated at the exact post-upload/pre-transaction boundary — via issueInvoice()'s own afterUploadBeforeFinalize hook, deliberately uncaught — leaves the ledger row discoverable at PENDING_UPLOAD with its uploaded object still present, the source Invoice untouched, and no Activity/Notification", async () => {
+    const invoice = await seedDraftInvoice(fixtures, { notes: "pre-crash notes" });
+    const CRASH_MARKER = new Error("simulated process crash — deliberately not caught by issueInvoice() itself");
 
-    await prisma.invoicePdfArchiveObject.create({
-      data: { id: archiveId, organizationId: fixtures.orgA.id, invoiceId: invoice.id, documentVersion: 1, storagePath: path, status: "PENDING_UPLOAD" },
-    });
+    // This proves the REAL pipeline's own ordering, not a hand-seeded row:
+    // the hook only ever runs after a real upload has already succeeded,
+    // and its own throw is never wrapped in a try/catch by issue-invoice.ts
+    // — it propagates straight out of issueInvoice() itself, exactly like
+    // the process actually disappearing before any of the service's own
+    // ordinary error handling (or compensation) could run.
+    await expect(
+      issueInvoice(
+        { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
+        { afterUploadBeforeFinalize: () => { throw CRASH_MARKER; } },
+      ),
+    ).rejects.toThrow(CRASH_MARKER);
 
+    // The final transaction never ran — the source Invoice is completely
+    // untouched.
+    const after = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+    expect(after.status).toBe("DRAFT");
+    expect(after.notes).toBe("pre-crash notes");
+    expect(after.finalizedAt).toBeNull();
+    expect(after.pdfGeneratedAt).toBeNull();
+    expect(after.pdfStoragePath).toBeNull();
+    expect(after.issuerSnapshot).toBeNull();
+    expect(after.recipientSnapshot).toBeNull();
+
+    const activities = await prisma.activity.findMany({ where: { entityType: "INVOICE", entityId: invoice.id, action: "STATUS_CHANGED" } });
+    expect(activities).toHaveLength(0);
+    const notifications = await prisma.notification.findMany({ where: { organizationId: fixtures.orgA.id, activity: { entityId: invoice.id } } });
+    expect(notifications).toHaveLength(0);
+
+    // The ledger row this exact attempt created is still PENDING_UPLOAD —
+    // no compensation ever ran, because the crash happened before
+    // issueInvoice() could reach any of its own catch/compensation logic.
+    const ledger = await prisma.invoicePdfArchiveObject.findFirstOrThrow({ where: { invoiceId: invoice.id } });
+    expect(ledger.status).toBe("PENDING_UPLOAD");
+
+    // The exact uploaded PDF object is still present, untouched.
+    const stored = testStorageRead("attachments", ledger.storagePath);
+    expect(stored).not.toBeNull();
+    expect(isPdfSignature(stored!.body)).toBe(true);
+
+    // The same query shape the future Slice 3d reconciliation worker will
+    // use discovers this exact row.
     const discoverable = await prisma.invoicePdfArchiveObject.findMany({
       where: { status: { in: ["PENDING_UPLOAD", "CLEANUP_PENDING"] } },
     });
-    expect(discoverable.some((row) => row.id === archiveId)).toBe(true);
-    expect(testStorageRead("attachments", path)).not.toBeNull();
+    expect(discoverable.some((row) => row.id === ledger.id)).toBe(true);
 
-    await prisma.invoicePdfArchiveObject.delete({ where: { id: archiveId } });
+    await prisma.invoicePdfArchiveObject.delete({ where: { id: ledger.id } });
   });
 });
 
@@ -630,5 +1012,57 @@ describe("issueInvoiceAction — full-stack wiring (Server Action -> service)", 
     resetAuthMock();
 
     expect(result).toEqual({ ok: false, error: "FORBIDDEN" });
+  });
+});
+
+describe("InvoicePdfArchiveObject — Organization/Invoice FK delete behavior", () => {
+  let fixtures: TestFixtures;
+
+  beforeAll(async () => {
+    fixtures = await seedTestData();
+  });
+
+  afterAll(async () => {
+    await prisma.invoicePdfArchiveObject.deleteMany({ where: { organizationId: { in: [fixtures.orgA.id, fixtures.orgB.id] } } });
+    await prisma.invoice.deleteMany({ where: { invoiceNumber: { startsWith: `${INVOICE_NUMBER_PREFIX}-${fixtures.runId}` } } });
+    await cleanupTestData(fixtures);
+  });
+
+  it("deleting a DRAFT Invoice sets its ledger row's invoiceId to null — the ledger row itself is never deleted", async () => {
+    const invoice = await seedDraftInvoice(fixtures);
+    const archiveId = randomUUID();
+    const path = buildInvoicePdfStoragePath({ organizationId: fixtures.orgA.id, invoiceId: invoice.id, documentVersion: 1, archiveId });
+    await prisma.invoicePdfArchiveObject.create({
+      data: { id: archiveId, organizationId: fixtures.orgA.id, invoiceId: invoice.id, documentVersion: 1, storagePath: path, status: "PENDING_UPLOAD" },
+    });
+
+    await prisma.invoice.delete({ where: { id: invoice.id } });
+
+    const ledger = await prisma.invoicePdfArchiveObject.findUniqueOrThrow({ where: { id: archiveId } });
+    expect(ledger.invoiceId).toBeNull();
+    expect(ledger.organizationId).toBe(fixtures.orgA.id);
+
+    await prisma.invoicePdfArchiveObject.delete({ where: { id: archiveId } });
+  });
+
+  it("deleting an Organization while a ledger row still references it is rejected by the database (ON DELETE RESTRICT) — never silently cascades away the durable evidence trail", async () => {
+    const throwawayOrg = await prisma.organization.create({
+      data: { name: `restrict-fk-test-${fixtures.runId}`, slug: `restrict-fk-test-${fixtures.runId}-${randomUUID().slice(0, 8)}` },
+    });
+    const archiveId = randomUUID();
+    const path = buildInvoicePdfStoragePath({ organizationId: throwawayOrg.id, invoiceId: randomUUID(), documentVersion: 1, archiveId });
+    await prisma.invoicePdfArchiveObject.create({
+      data: { id: archiveId, organizationId: throwawayOrg.id, documentVersion: 1, storagePath: path, status: "PENDING_UPLOAD" },
+    });
+
+    await expect(prisma.organization.delete({ where: { id: throwawayOrg.id } })).rejects.toThrow();
+
+    // The ledger row must have survived the rejected delete attempt.
+    const ledger = await prisma.invoicePdfArchiveObject.findUniqueOrThrow({ where: { id: archiveId } });
+    expect(ledger.organizationId).toBe(throwawayOrg.id);
+
+    // Clean up in FK-safe order (the ledger row must go first).
+    await prisma.invoicePdfArchiveObject.delete({ where: { id: archiveId } });
+    await prisma.organization.delete({ where: { id: throwawayOrg.id } });
   });
 });

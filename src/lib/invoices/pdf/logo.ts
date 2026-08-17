@@ -17,9 +17,9 @@ import type { AllowedLogoContentType, InvoiceLogoProvenanceV1 } from "./snapshot
  * stored logoUrl string reused verbatim.
  *
  * Any failure (no logo configured, invalid URL/path, wrong origin/bucket,
- * fetch failure/timeout, redirect, invalid MIME, oversized body) resolves
- * to `{ included: false, reason }` + null bytes — never throws, never
- * fails the Issue operation on its own.
+ * fetch failure/timeout, redirect, invalid MIME, MIME/byte-signature
+ * mismatch, oversized body) resolves to `{ included: false, reason }` +
+ * null bytes — never throws, never fails the Issue operation on its own.
  */
 
 const ALLOWED_LOGO_CONTENT_TYPES: readonly AllowedLogoContentType[] = ["image/png", "image/jpeg", "image/webp"];
@@ -28,6 +28,34 @@ const FETCH_TIMEOUT_MS = 5000;
 
 function isAllowedContentType(value: string | null | undefined): value is AllowedLogoContentType {
   return !!value && (ALLOWED_LOGO_CONTENT_TYPES as readonly string[]).includes(value);
+}
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/**
+ * Real magic-byte signature validation, checked against the claimed
+ * content type — never trusted merely because a Content-Type header or a
+ * TEST_MODE-stored contentType string says so. This is a first line of
+ * defense only (a genuine header/format check, not a full image decode —
+ * this module never parses pixel data): it catches arbitrary bytes
+ * mislabelled as an image outright, before they can ever reach the PDF
+ * renderer. A structurally corrupt-but-signature-passing image is still
+ * possible; issue-invoice.ts's own render-failure retry (never involving
+ * this module) is the second line of defense for that residual case.
+ */
+function hasValidImageSignature(data: Buffer, contentType: AllowedLogoContentType): boolean {
+  if (contentType === "image/png") {
+    return data.length >= PNG_SIGNATURE.length && data.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE);
+  }
+  if (contentType === "image/jpeg") {
+    return data.length >= 3 && data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff;
+  }
+  // WebP: a RIFF container whose form type (bytes 8-11) is "WEBP".
+  return (
+    data.length >= 12 &&
+    data.subarray(0, 4).toString("latin1") === "RIFF" &&
+    data.subarray(8, 12).toString("latin1") === "WEBP"
+  );
 }
 
 /** organizations/<organizationId>/logo/<uuid>.<png|jpg|jpeg|webp> — matches buildLogoStoragePath()'s own exact shape. */
@@ -57,6 +85,7 @@ function invalidContent(): ResolvedInvoiceLogo {
 function finalize(data: Buffer, contentType: string, path: string): ResolvedInvoiceLogo {
   if (!isAllowedContentType(contentType)) return invalidContent();
   if (data.length === 0 || data.length > MAX_LOGO_BYTES) return invalidContent();
+  if (!hasValidImageSignature(data, contentType)) return invalidContent();
 
   const sha256 = createHash("sha256").update(data).digest("hex");
   return {

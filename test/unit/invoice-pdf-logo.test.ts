@@ -15,6 +15,33 @@ function sha256Hex(data: Buffer): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
+/**
+ * A genuine, real, decodable 1x1 transparent PNG — the exact same fixture
+ * already proven valid elsewhere in this repo's own test suite
+ * (test/e2e/organization-setup.spec.ts's own logo-upload fixture).
+ */
+const GENUINE_PNG_BYTES = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
+/**
+ * Genuine JPEG (SOI + JFIF APP0 marker) and WebP (RIFF/WEBP container)
+ * magic-byte signatures, each followed by a minimal synthetic payload.
+ * logo.ts's own signature check only inspects these leading bytes — it
+ * never decodes pixel data — so this exercises the real signature-
+ * validation boundary genuinely (authentic header structure, not
+ * arbitrary text mislabelled as an image) without depending on a
+ * fully spec-complete decodable bitstream.
+ */
+const GENUINE_JPEG_BYTES = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from("minimal-jpeg-payload-for-signature-testing")]);
+const GENUINE_WEBP_BYTES = Buffer.concat([
+  Buffer.from("RIFF", "latin1"),
+  Buffer.from([0, 0, 0, 0]),
+  Buffer.from("WEBP", "latin1"),
+  Buffer.from("VP8 minimal-payload-for-signature-testing"),
+]);
+
 describe("resolveInvoiceLogo — TEST_MODE (zero network)", () => {
   const originalTestMode = process.env.TEST_MODE;
   const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -50,7 +77,7 @@ describe("resolveInvoiceLogo — TEST_MODE (zero network)", () => {
     const { resolveInvoiceLogo } = await import("@/lib/invoices/pdf/logo");
     const { testStorageUpload } = await import("@/lib/storage/test-storage");
 
-    const pngBytes = Buffer.from("fake-png-bytes");
+    const pngBytes = GENUINE_PNG_BYTES;
     const path = `organizations/${ORG_ID}/logo/${LOGO_UUID}.png`;
     testStorageUpload("logos", path, pngBytes, "image/png");
 
@@ -67,7 +94,10 @@ describe("resolveInvoiceLogo — TEST_MODE (zero network)", () => {
     vi.unstubAllGlobals();
   });
 
-  it.each(["image/jpeg", "image/webp"] as const)("a valid %s logo resolves successfully", async (contentType) => {
+  it.each([
+    ["image/jpeg", GENUINE_JPEG_BYTES] as const,
+    ["image/webp", GENUINE_WEBP_BYTES] as const,
+  ])("a valid %s logo resolves successfully", async (contentType, bytes) => {
     const { resolveInvoiceLogo } = await import("@/lib/invoices/pdf/logo");
     const { testStorageUpload } = await import("@/lib/storage/test-storage");
 
@@ -75,11 +105,38 @@ describe("resolveInvoiceLogo — TEST_MODE (zero network)", () => {
     const uuid = "33333333-3333-4333-8333-333333333333";
     const path = `organizations/${ORG_ID}/logo/${uuid}.${ext}`;
     const url = `${SUPABASE_URL}/storage/v1/object/public/logos/${path}`;
-    const bytes = Buffer.from(`fake-${ext}-bytes`);
     testStorageUpload("logos", path, bytes, contentType);
 
     const result = await resolveInvoiceLogo({ organizationId: ORG_ID, logoUrl: url });
     expect(result.provenance).toEqual({ included: true, bucket: "logos", path, contentType, sha256: sha256Hex(bytes) });
+  });
+
+  it("bytes with the wrong magic-byte signature for their claimed content type resolve to invalid_content, never included", async () => {
+    const { resolveInvoiceLogo } = await import("@/lib/invoices/pdf/logo");
+    const { testStorageUpload } = await import("@/lib/storage/test-storage");
+
+    // A genuine JPEG signature, but stored/labelled as image/png — the
+    // signature and the claimed MIME type must agree.
+    const uuid = "44444444-4444-4444-8444-444444444444";
+    const path = `organizations/${ORG_ID}/logo/${uuid}.png`;
+    const url = `${SUPABASE_URL}/storage/v1/object/public/logos/${path}`;
+    testStorageUpload("logos", path, GENUINE_JPEG_BYTES, "image/png");
+
+    const result = await resolveInvoiceLogo({ organizationId: ORG_ID, logoUrl: url });
+    expect(result).toEqual({ provenance: { included: false, reason: "invalid_content" }, bytes: null });
+  });
+
+  it("arbitrary text bytes labelled as image/png (no genuine signature at all) resolve to invalid_content", async () => {
+    const { resolveInvoiceLogo } = await import("@/lib/invoices/pdf/logo");
+    const { testStorageUpload } = await import("@/lib/storage/test-storage");
+
+    const uuid = "55555555-5555-4555-8555-555555555555";
+    const path = `organizations/${ORG_ID}/logo/${uuid}.png`;
+    const url = `${SUPABASE_URL}/storage/v1/object/public/logos/${path}`;
+    testStorageUpload("logos", path, Buffer.from("this is plain text, not an image"), "image/png");
+
+    const result = await resolveInvoiceLogo({ organizationId: ORG_ID, logoUrl: url });
+    expect(result).toEqual({ provenance: { included: false, reason: "invalid_content" }, bytes: null });
   });
 
   it("a path belonging to a different organization is rejected as invalid_content", async () => {
@@ -124,7 +181,7 @@ describe("resolveInvoiceLogo — TEST_MODE (zero network)", () => {
     const { buildIssuerSnapshotV1 } = await import("@/lib/invoices/pdf/snapshot-types");
 
     const path = `organizations/${ORG_ID}/logo/${LOGO_UUID}.png`;
-    testStorageUpload("logos", path, Buffer.from("real-bytes"), "image/png");
+    testStorageUpload("logos", path, GENUINE_PNG_BYTES, "image/png");
     const resolved = await resolveInvoiceLogo({ organizationId: ORG_ID, logoUrl: OWNED_LOGO_URL });
     expect(resolved.provenance.included).toBe(true);
 
@@ -169,7 +226,7 @@ describe("resolveInvoiceLogo — production fetch path", () => {
   }
 
   it("a successful fetch of an allowed MIME type resolves included:true with the correct SHA-256", async () => {
-    const bytes = Buffer.from("real-png-bytes-from-network");
+    const bytes = GENUINE_PNG_BYTES;
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(bodyResponse(bytes, { headers: { "content-type": "image/png", "content-length": String(bytes.length) } })),

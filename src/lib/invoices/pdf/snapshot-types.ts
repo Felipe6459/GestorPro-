@@ -10,8 +10,9 @@ import "server-only";
  * because a database wrote it) and never throw.
  *
  * `import "server-only"` is present because this module is exclusively
- * reachable from the future Issue/Archive-Legacy service layer (3b/3c) —
- * it has no reason to ever be imported by a Client Component, even though
+ * reachable from the Issue service layer (src/lib/invoices/pdf/issue-
+ * invoice.ts, sub-PR 3b) and the future Legacy Archive service (3c) — it
+ * has no reason to ever be imported by a Client Component, even though
  * nothing in it is Node-only or secret-bearing on its own.
  */
 
