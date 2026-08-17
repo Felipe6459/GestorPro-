@@ -37,10 +37,13 @@ process.env.TEST_MODE = "1";
 const { issueInvoice } = await import("@/lib/invoices/pdf/issue-invoice");
 const { issueInvoiceAction } = await import("@/app/(dashboard)/invoices/[id]/edit/issue-actions");
 const { testStorageRead } = await import("@/lib/storage/test-storage");
-const { uploadInvoicePdfObject, buildInvoicePdfStoragePath } = await import("@/lib/invoices/pdf/storage");
+const { uploadInvoicePdfObject, removeInvoicePdfObject, buildInvoicePdfStoragePath } = await import("@/lib/invoices/pdf/storage");
 const { renderInvoicePdfBuffer } = await import("@/lib/invoices/pdf/document");
 const { parseIssuerSnapshot, parseRecipientSnapshot } = await import("@/lib/invoices/pdf/snapshot-types");
 const { toRendererIssuerPresentation, toRendererRecipientPresentation } = await import("@/lib/invoices/pdf/view-model");
+const { calculateInvoiceTotals } = await import("@/lib/invoices/calculations");
+const { buildInvoiceTotalsViewModel } = await import("@/lib/invoices/totals-view-model");
+const { formatInvoiceCurrencyAmount } = await import("@/lib/invoices/currencies");
 
 /**
  * A genuine, real, decodable 1x1 transparent PNG — the exact same fixture
@@ -69,6 +72,9 @@ type DraftInvoiceOverrides = {
   amount?: string;
   subtotal?: string;
   notes?: string;
+  discountType?: "NONE" | "PERCENTAGE" | "FIXED";
+  discountValue?: string;
+  taxRatePercent?: string;
 };
 
 async function seedDraftInvoice(fixtures: TestFixtures, overrides: DraftInvoiceOverrides = {}) {
@@ -185,11 +191,24 @@ describe("issueInvoice — Invoice System Official Slice 3, sub-PR 3b", () => {
     expect(isPdfSignature(stored!.body)).toBe(true);
   });
 
-  it("persisted snapshots equal what was strictly parsed/used for rendering — the captured view model's own issuer/recipient presentation exactly matches what the persisted snapshots re-derive, and persisted totals exactly match the calculation the render actually used", async () => {
-    const invoice = await seedDraftInvoice(fixtures, { amount: "0.00", subtotal: "0.00" });
+  it("persisted snapshots equal what was strictly parsed/used for rendering — the captured view model's own issuer/recipient presentation exactly matches what the persisted snapshots re-derive, and persisted totals/line items exactly match the authoritative calculation the render actually used (recomputed from quantity/unitPrice, never the stale persisted lineTotal)", async () => {
+    const invoice = await seedDraftInvoice(fixtures, {
+      amount: "0.00",
+      subtotal: "0.00",
+      discountType: "PERCENTAGE",
+      discountValue: "10",
+      taxRatePercent: "8",
+    });
+    // Deliberately wrong persisted lineTotal on both rows — real
+    // quantity * unitPrice is 120.00 and 31.00 respectively; the stored
+    // lineTotal values below are neither of those. If the service ever
+    // trusted the persisted lineTotal instead of recomputing from
+    // quantity/unitPrice, the assertions below (derived from the real
+    // primitives) would fail.
     await prisma.invoiceLineItem.createMany({
       data: [
-        { invoiceId: invoice.id, description: "Consulting", quantity: "3", unitPrice: "75.00", lineTotal: "225.00", position: 0 },
+        { invoiceId: invoice.id, description: "Design", quantity: "3", unitPrice: "40.00", lineTotal: "999.99", position: 0 },
+        { invoiceId: invoice.id, description: "Hosting", quantity: "2", unitPrice: "15.50", lineTotal: "1.00", position: 1 },
       ],
     });
 
@@ -234,12 +253,70 @@ describe("issueInvoice — Invoice System Official Slice 3, sub-PR 3b", () => {
     const rederivedRecipient = toRendererRecipientPresentation(parsedRecipient.snapshot);
     expect(rederivedRecipient).toEqual(capturedViewModel!.recipient);
 
-    // The persisted totals must exactly match the calculation the capture
-    // proves was actually used to build the rendered view model's own
-    // totals block.
-    expect(after.subtotal?.toFixed(2)).toBe("225.00");
-    expect(after.amount.toFixed(2)).toBe("225.00");
-    expect(capturedViewModel!.totals.displayedSubtotal).toContain("225.00");
+    // The one authoritative calculation, derived here from the exact same
+    // persisted primitives (description/quantity/unitPrice, discount,
+    // taxRatePercent) the service itself reads — never a second,
+    // independently hand-computed set of money values. This is the same
+    // helper the production pipeline calls; using it here (rather than
+    // duplicating the arithmetic in the test) is what lets the assertions
+    // below prove "the persisted values equal the authoritative
+    // calculation" instead of merely "the persisted values equal what I
+    // assumed they'd be."
+    const expectedCalculation = calculateInvoiceTotals({
+      subtotalSource: {
+        mode: "lineItems",
+        lineItems: [
+          { description: "Design", quantity: "3", unitPrice: "40.00" },
+          { description: "Hosting", quantity: "2", unitPrice: "15.50" },
+        ],
+      },
+      discount: { type: "PERCENTAGE", value: "10" },
+      taxRatePercent: "8",
+    });
+    expect(expectedCalculation.ok).toBe(true);
+    if (!expectedCalculation.ok) throw new Error("unreachable");
+
+    // Sanity: this fixture genuinely exercises non-zero subtotal,
+    // discount, tax, and total — not a degenerate all-zero case.
+    expect(expectedCalculation.subtotal.toFixed(2)).toBe("151.00");
+    expect(expectedCalculation.discountAmount.toFixed(2)).toBe("15.10");
+    expect(expectedCalculation.taxAmount.toFixed(2)).toBe("10.87");
+    expect(expectedCalculation.total.toFixed(2)).toBe("146.77");
+
+    // Persisted Invoice fields exactly match the authoritative
+    // calculation — never the stale persisted lineTotal, never a second
+    // independently-derived total.
+    expect(after.subtotal?.toFixed(2)).toBe(expectedCalculation.subtotal.toFixed(2));
+    expect(after.discountAmount?.toFixed(2)).toBe(expectedCalculation.discountAmount.toFixed(2));
+    expect(after.taxAmount?.toFixed(2)).toBe(expectedCalculation.taxAmount.toFixed(2));
+    expect(after.amount.toFixed(2)).toBe(expectedCalculation.total.toFixed(2));
+
+    // The captured render view model's own totals block, re-derived
+    // through the exact same formatting helper the service itself calls
+    // (buildInvoiceTotalsViewModel), from the exact same calculation.
+    const expectedTotals = buildInvoiceTotalsViewModel({
+      amount: expectedCalculation.total,
+      subtotal: expectedCalculation.subtotal,
+      discountType: "PERCENTAGE",
+      discountAmount: expectedCalculation.discountAmount,
+      discountValue: "10",
+      taxRatePercent: "8",
+      taxAmount: expectedCalculation.taxAmount,
+      taxLabel: "TAX",
+      currency: "USD",
+    });
+    expect(capturedViewModel!.totals).toEqual(expectedTotals);
+
+    // Every rendered line item's own quantity/unitPrice/lineTotal —
+    // recomputed from the persisted primitives (never the stale
+    // persisted lineTotal above), formatted through the exact same
+    // currency helper the service itself calls.
+    const format = (value: string) => formatInvoiceCurrencyAmount(value, "USD", "en-US");
+    expect(capturedViewModel!.lineItems).toEqual([
+      { description: "Design", quantity: "3", unitPrice: format("40.00"), lineTotal: format("120.00") },
+      { description: "Hosting", quantity: "2", unitPrice: format("15.50"), lineTotal: format("31.00") },
+    ]);
+    expect(capturedViewModel!.isFlatSynthetic).toBe(false);
   });
 
   // --- 12: notification delivery only after commit ----------------------------
@@ -880,8 +957,33 @@ describe("issueInvoice — Invoice System Official Slice 3, sub-PR 3b", () => {
 
     const activities = await prisma.activity.findMany({ where: { entityType: "INVOICE", entityId: invoice.id, action: "STATUS_CHANGED" } });
     expect(activities).toHaveLength(1);
+
     const notifications = await prisma.notification.findMany({ where: { activityId: activities[0].id } });
-    expect(notifications.length).toBeGreaterThan(0);
+    // INVOICE_STATUS_CHANGED's own rule (notification-rules.ts) fans out
+    // to every OWNER/ADMIN membership in the organization; dispatch-
+    // notifications.ts then excludes the actor and dedupes. This
+    // fixture's own orgA membership (test/fixtures/seed.ts) is
+    // owner(OWNER)/admin(ADMIN)/member(MEMBER); the actor issuing here is
+    // fixtures.owner — so the only eligible, non-actor OWNER/ADMIN
+    // recipient is fixtures.admin. Derived from the actual rule and
+    // fixture membership, not hard-coded independently of them.
+    const expectedRecipientIds = [fixtures.admin.id];
+    expect(notifications.every((n) => n.activityId === activities[0].id)).toBe(true);
+    expect(notifications.every((n) => n.type === "INVOICE_STATUS_CHANGED")).toBe(true);
+    const recipientIds = notifications.map((n) => n.recipientId);
+    expect([...recipientIds].sort()).toEqual([...expectedRecipientIds].sort());
+    expect(new Set(recipientIds).size).toBe(recipientIds.length);
+    // The OWNER actor never receives a self-notification for their own action.
+    expect(recipientIds).not.toContain(fixtures.owner.id);
+
+    // The losing concurrent attempt creates no second, orphaned
+    // Notification fan-out anywhere in the organization for this Invoice
+    // — every INVOICE_STATUS_CHANGED notification for it traces back to
+    // this exact one Activity.
+    const allInvoiceStatusNotifications = await prisma.notification.findMany({
+      where: { organizationId: fixtures.orgA.id, entityType: "INVOICE", entityId: invoice.id, type: "INVOICE_STATUS_CHANGED" },
+    });
+    expect(allInvoiceStatusNotifications.map((n) => n.id).sort()).toEqual(notifications.map((n) => n.id).sort());
 
     // Every uploading attempt registers its own ledger row before it ever
     // uploads (pipeline step C) — this is therefore the exhaustive set of
@@ -931,41 +1033,59 @@ describe("issueInvoice — Invoice System Official Slice 3, sub-PR 3b", () => {
       ),
     ).rejects.toThrow(CRASH_MARKER);
 
-    // The final transaction never ran — the source Invoice is completely
-    // untouched.
-    const after = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
-    expect(after.status).toBe("DRAFT");
-    expect(after.notes).toBe("pre-crash notes");
-    expect(after.finalizedAt).toBeNull();
-    expect(after.pdfGeneratedAt).toBeNull();
-    expect(after.pdfStoragePath).toBeNull();
-    expect(after.issuerSnapshot).toBeNull();
-    expect(after.recipientSnapshot).toBeNull();
-
-    const activities = await prisma.activity.findMany({ where: { entityType: "INVOICE", entityId: invoice.id, action: "STATUS_CHANGED" } });
-    expect(activities).toHaveLength(0);
-    const notifications = await prisma.notification.findMany({ where: { organizationId: fixtures.orgA.id, activity: { entityId: invoice.id } } });
-    expect(notifications).toHaveLength(0);
-
-    // The ledger row this exact attempt created is still PENDING_UPLOAD —
-    // no compensation ever ran, because the crash happened before
-    // issueInvoice() could reach any of its own catch/compensation logic.
+    // The ledger row this exact attempt created — loaded once, up front,
+    // so both the proof below and the `finally` cleanup act on the exact
+    // same row regardless of which assertion (if any) fails.
     const ledger = await prisma.invoicePdfArchiveObject.findFirstOrThrow({ where: { invoiceId: invoice.id } });
-    expect(ledger.status).toBe("PENDING_UPLOAD");
 
-    // The exact uploaded PDF object is still present, untouched.
-    const stored = testStorageRead("attachments", ledger.storagePath);
-    expect(stored).not.toBeNull();
-    expect(isPdfSignature(stored!.body)).toBe(true);
+    try {
+      // The final transaction never ran — the source Invoice is
+      // completely untouched.
+      const after = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+      expect(after.status).toBe("DRAFT");
+      expect(after.notes).toBe("pre-crash notes");
+      expect(after.finalizedAt).toBeNull();
+      expect(after.pdfGeneratedAt).toBeNull();
+      expect(after.pdfStoragePath).toBeNull();
+      expect(after.issuerSnapshot).toBeNull();
+      expect(after.recipientSnapshot).toBeNull();
 
-    // The same query shape the future Slice 3d reconciliation worker will
-    // use discovers this exact row.
-    const discoverable = await prisma.invoicePdfArchiveObject.findMany({
-      where: { status: { in: ["PENDING_UPLOAD", "CLEANUP_PENDING"] } },
-    });
-    expect(discoverable.some((row) => row.id === ledger.id)).toBe(true);
+      const activities = await prisma.activity.findMany({ where: { entityType: "INVOICE", entityId: invoice.id, action: "STATUS_CHANGED" } });
+      expect(activities).toHaveLength(0);
+      const notifications = await prisma.notification.findMany({ where: { organizationId: fixtures.orgA.id, activity: { entityId: invoice.id } } });
+      expect(notifications).toHaveLength(0);
 
-    await prisma.invoicePdfArchiveObject.delete({ where: { id: ledger.id } });
+      // This exact attempt's own ledger row is still PENDING_UPLOAD — no
+      // compensation ever ran, because the crash happened before
+      // issueInvoice() could reach any of its own catch/compensation
+      // logic.
+      expect(ledger.status).toBe("PENDING_UPLOAD");
+
+      // The exact uploaded PDF object is still present, untouched.
+      const stored = testStorageRead("attachments", ledger.storagePath);
+      expect(stored).not.toBeNull();
+      expect(isPdfSignature(stored!.body)).toBe(true);
+
+      // The same query shape the future Slice 3d reconciliation worker
+      // will use discovers this exact row.
+      const discoverable = await prisma.invoicePdfArchiveObject.findMany({
+        where: { status: { in: ["PENDING_UPLOAD", "CLEANUP_PENDING"] } },
+      });
+      expect(discoverable.some((row) => row.id === ledger.id)).toBe(true);
+    } finally {
+      // Test-hygiene cleanup, not the real Issue pipeline's own
+      // compensation (this crash is specifically the scenario where that
+      // never runs) — runs even if a proof assertion above fails, and
+      // removes the exact Storage object BEFORE the ledger row, so a
+      // failed removal never leaves an untracked object with no ledger
+      // evidence pointing at it.
+      const identity = { organizationId: ledger.organizationId, invoiceId: invoice.id, documentVersion: ledger.documentVersion, archiveId: ledger.id };
+      const removal = await removeInvoicePdfObject({ identity });
+      expect(removal).toEqual({ ok: true });
+      expect(testStorageRead("attachments", ledger.storagePath)).toBeNull();
+
+      await prisma.invoicePdfArchiveObject.delete({ where: { id: ledger.id } });
+    }
   });
 });
 
