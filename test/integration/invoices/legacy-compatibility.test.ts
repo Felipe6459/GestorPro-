@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
-import { buildInvoiceTotalsViewModel } from "@/components/invoices/invoice-read-only-view";
+import { buildInvoiceTotalsViewModel } from "@/lib/invoices/totals-view-model";
 import { changeInvoiceStatusAction } from "@/app/(dashboard)/invoices/[id]/status-actions";
 import { updateInvoiceInternalNotesAction } from "@/app/(dashboard)/invoices/[id]/internal-notes-actions";
 import { seedTestData, cleanupTestData, type TestFixtures } from "../../fixtures/seed";

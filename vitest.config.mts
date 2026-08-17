@@ -6,7 +6,11 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["test/unit/**/*.test.ts", "test/integration/**/*.test.ts"],
+    // Invoice System Official Slice 3, sub-PR 3a — invoice-pdf-document.test.tsx
+    // is the first .tsx unit test in this repo (it exercises the React-pdf
+    // <InvoicePdfDocument> element directly). Additive only — every existing
+    // *.test.ts file still matches unchanged.
+    include: ["test/unit/**/*.test.ts", "test/unit/**/*.test.tsx", "test/integration/**/*.test.ts"],
     exclude: ["test/e2e/**", "node_modules/**"],
     coverage: {
       provider: "v8",
