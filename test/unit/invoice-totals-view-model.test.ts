@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildInvoiceTotalsViewModel } from "@/components/invoices/invoice-read-only-view";
+import { buildInvoiceTotalsViewModel } from "@/lib/invoices/totals-view-model";
 
 describe("buildInvoiceTotalsViewModel", () => {
   it("a fully-null legacy row falls back to amount for subtotal, and omits discount/tax rows", () => {
