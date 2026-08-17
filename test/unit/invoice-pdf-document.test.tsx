@@ -8,7 +8,27 @@ vi.mock("server-only", () => ({}));
 
 import { renderToBuffer } from "@react-pdf/renderer";
 import { InvoicePdfDocument, renderInvoicePdfBuffer } from "@/lib/invoices/pdf/document";
-import { buildInvoicePdfViewModel, type InvoicePdfBuildInput, type InvoicePdfIssuerPresentation, type InvoicePdfRecipientPresentation } from "@/lib/invoices/pdf/view-model";
+import {
+  buildInvoicePdfViewModel,
+  type InvoicePdfBuildInput,
+  type InvoicePdfIssuerPresentation,
+  type InvoicePdfRecipientPresentation,
+  type SuccessfulInvoiceCalculation,
+} from "@/lib/invoices/pdf/view-model";
+import { calculateInvoiceTotals, type InvoiceCalculationInput } from "@/lib/invoices/calculations";
+
+/** Test-only helper — real production code never assumes success; the future Issue/Legacy service calls calculateInvoiceTotals() itself and handles a failure explicitly. */
+function mustCalculate(input: InvoiceCalculationInput): SuccessfulInvoiceCalculation {
+  const result = calculateInvoiceTotals(input);
+  if (!result.ok) throw new Error(`test fixture calculation failed: ${JSON.stringify(result.error)}`);
+  return result;
+}
+
+const FLAT_CALCULATION = mustCalculate({
+  subtotalSource: { mode: "flat", amount: "250.00" },
+  discount: { type: "NONE" },
+  taxRatePercent: null,
+});
 
 const ISSUER: InvoicePdfIssuerPresentation = {
   legalName: "Acme Corp",
@@ -43,19 +63,12 @@ function baseInput(overrides: Partial<InvoicePdfBuildInput> = {}): InvoicePdfBui
     invoiceNumber: "INV-100",
     issueDate: new Date("2026-08-17T00:00:00.000Z"),
     dueDate: new Date("2026-09-01T00:00:00.000Z"),
-    lineItems: [],
-    flatAmount: "250.00",
-    totals: {
-      amount: "250.00",
-      subtotal: "250.00",
-      discountType: "NONE",
-      discountAmount: null,
-      discountValue: null,
-      taxRatePercent: null,
-      taxAmount: null,
-      taxLabel: "TAX",
-      currency: "USD",
-    },
+    currency: "USD",
+    calculation: FLAT_CALCULATION,
+    discountType: "NONE",
+    discountValue: null,
+    taxRatePercent: null,
+    taxLabel: "TAX",
     notes: "Thank you for your business.",
     issuer: ISSUER,
     recipient: RECIPIENT,
@@ -76,15 +89,19 @@ describe("renderInvoicePdfBuffer — real end-to-end render", () => {
     expect(isPdfSignature(buffer)).toBe(true);
   });
 
-  it("renders an itemized invoice with real line items to a valid PDF buffer", async () => {
-    const viewModel = buildInvoicePdfViewModel(
-      baseInput({
+  it("renders an itemized invoice with real line items (from the authoritative calculator) to a valid PDF buffer", async () => {
+    const calculation = mustCalculate({
+      subtotalSource: {
+        mode: "lineItems",
         lineItems: [
-          { description: "Design", quantity: "2", unitPrice: "50.00", lineTotal: "100.00" },
-          { description: "Hosting", quantity: "1", unitPrice: "29.99", lineTotal: "29.99" },
+          { description: "Design", quantity: "2", unitPrice: "50.00" },
+          { description: "Hosting", quantity: "1", unitPrice: "29.99" },
         ],
-      }),
-    );
+      },
+      discount: { type: "NONE" },
+      taxRatePercent: null,
+    });
+    const viewModel = buildInvoicePdfViewModel(baseInput({ calculation }));
     const buffer = await renderInvoicePdfBuffer(viewModel);
     expect(isPdfSignature(buffer)).toBe(true);
   });
@@ -114,16 +131,28 @@ describe("renderInvoicePdfBuffer — real end-to-end render", () => {
   // sized for ordinary unit tests, not a real end-to-end PDF render. This
   // is the one test in this suite that legitimately needs a longer ceiling.
   it(
-    "renders without throwing for up to 200 line items with long descriptions (wrapping/page-break safety)",
+    "renders without throwing for the maximum supported 200 line items with long descriptions (wrapping/page-break safety)",
     async () => {
-      const longDescription = "X".repeat(500);
-      const lineItems = Array.from({ length: 200 }, (_, i) => ({
-        description: `${longDescription} #${i}`,
-        quantity: "1",
-        unitPrice: "1.00",
-        lineTotal: "1.00",
-      }));
-      const viewModel = buildInvoicePdfViewModel(baseInput({ lineItems }));
+      // 495 chars + the " #<index>" suffix (up to 5 chars for index 0-199)
+      // stays within calculateInvoiceTotals()'s real 500-char
+      // MAX_DESCRIPTION_LENGTH — every row genuinely passes real
+      // validation now that this fixture goes through the authoritative
+      // calculator instead of directly constructing line items.
+      const longDescription = "X".repeat(495);
+      const calculation = mustCalculate({
+        subtotalSource: {
+          mode: "lineItems",
+          lineItems: Array.from({ length: 200 }, (_, i) => ({
+            description: `${longDescription} #${i}`,
+            quantity: "1",
+            unitPrice: "1.00",
+          })),
+        },
+        discount: { type: "NONE" },
+        taxRatePercent: null,
+      });
+      const viewModel = buildInvoicePdfViewModel(baseInput({ calculation }));
+      expect(viewModel.lineItems).toHaveLength(200);
       const buffer = await renderInvoicePdfBuffer(viewModel);
       expect(isPdfSignature(buffer)).toBe(true);
     },

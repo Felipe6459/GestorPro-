@@ -1,8 +1,11 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { Prisma } from "@/generated/prisma/browser";
+import type { InvoiceDiscountType, InvoiceTaxLabel } from "@/generated/prisma/browser";
 import { formatInvoiceCurrencyAmount } from "@/lib/invoices/currencies";
 import { formatDateOnlyForDisplay } from "@/lib/invoices/date-only";
 import { buildInvoiceTotalsViewModel, type InvoiceTotalsInput, type InvoiceTotalsViewModel } from "@/lib/invoices/totals-view-model";
+import type { InvoiceCalculationResult } from "@/lib/invoices/calculations";
 import type { AllowedLogoContentType, InvoiceIssuerSnapshotV1, InvoiceRecipientSnapshotV1 } from "./snapshot-types";
 
 /**
@@ -110,24 +113,63 @@ export type InvoicePdfViewModel = {
 // Mapping: persisted snapshot -> renderer-safe presentation.
 // ---------------------------------------------------------------------------
 
+export type RendererIssuerPresentationResult =
+  | { ok: true; presentation: InvoicePdfIssuerPresentation }
+  | { ok: false; reason: "LOGO_PROVENANCE_MISMATCH" };
+
+/**
+ * Enforces that `logoBytes` (already-fetched, already-validated bytes) is
+ * exactly what `snapshot.logo`'s provenance record claims — never embeds a
+ * logo the snapshot says wasn't included, never omits one the snapshot
+ * says was, and never trusts a content-type/byte mismatch between what
+ * was persisted and what's actually being rendered into this legal
+ * document. `snapshot.logo.bucket`/`.path`/`.sha256` are read ONLY for
+ * this consistency check — never copied into the returned presentation,
+ * never rendered, never embedded in a URL. A mismatch is a hard failure
+ * (`LOGO_PROVENANCE_MISMATCH`), never silently downgraded to "render
+ * without a logo and continue" — the caller (the future Issue/Legacy
+ * service) is responsible for mapping this to a safe internal error
+ * before any render/upload proceeds.
+ */
 export function toRendererIssuerPresentation(
   snapshot: InvoiceIssuerSnapshotV1,
   logoBytes: { data: Buffer; contentType: AllowedLogoContentType } | null,
-): InvoicePdfIssuerPresentation {
+): RendererIssuerPresentationResult {
+  let logoImage: { dataUri: string } | null = null;
+
+  if (snapshot.logo.included) {
+    if (logoBytes === null) {
+      return { ok: false, reason: "LOGO_PROVENANCE_MISMATCH" };
+    }
+    if (logoBytes.contentType !== snapshot.logo.contentType) {
+      return { ok: false, reason: "LOGO_PROVENANCE_MISMATCH" };
+    }
+    // Computed from the exact Buffer being embedded — node:crypto only,
+    // no new dependency — and compared against the persisted provenance's
+    // own hash, never trusted merely because a contentType matched.
+    const computedSha256 = createHash("sha256").update(logoBytes.data).digest("hex");
+    if (computedSha256 !== snapshot.logo.sha256) {
+      return { ok: false, reason: "LOGO_PROVENANCE_MISMATCH" };
+    }
+    logoImage = { dataUri: `data:${logoBytes.contentType};base64,${logoBytes.data.toString("base64")}` };
+  } else if (logoBytes !== null) {
+    return { ok: false, reason: "LOGO_PROVENANCE_MISMATCH" };
+  }
+
   return {
-    legalName: snapshot.legalName,
-    address: { ...snapshot.address },
-    country: snapshot.country,
-    taxId: snapshot.taxId,
-    supportEmail: snapshot.supportEmail,
-    phone: snapshot.phone,
-    website: snapshot.website,
-    brandColor: snapshot.brandColor,
-    payment: snapshot.payment ? { ...snapshot.payment } : null,
-    // snapshot.logo (bucket/path/sha256 provenance) is intentionally never
-    // read here — logoBytes (already-fetched, already-validated) is the
-    // sole source of the renderer-facing image.
-    logoImage: logoBytes ? { dataUri: `data:${logoBytes.contentType};base64,${logoBytes.data.toString("base64")}` } : null,
+    ok: true,
+    presentation: {
+      legalName: snapshot.legalName,
+      address: { ...snapshot.address },
+      country: snapshot.country,
+      taxId: snapshot.taxId,
+      supportEmail: snapshot.supportEmail,
+      phone: snapshot.phone,
+      website: snapshot.website,
+      brandColor: snapshot.brandColor,
+      payment: snapshot.payment ? { ...snapshot.payment } : null,
+      logoImage,
+    },
   };
 }
 
@@ -145,7 +187,16 @@ export function toRendererRecipientPresentation(snapshot: InvoiceRecipientSnapsh
 // The main view-model builder.
 // ---------------------------------------------------------------------------
 
-export type InvoicePdfLineItemInput = { description: string; quantity: MoneyValue; unitPrice: MoneyValue; lineTotal: MoneyValue };
+/**
+ * The single successful result of calling the authoritative
+ * `calculateInvoiceTotals()` — never a second, independently-supplied
+ * `lineItems`/`flatAmount`/`totals` set that could disagree with it. This
+ * builder performs presentation formatting only; it never calls
+ * `calculateInvoiceTotals()` itself. The future Issue/Legacy service is
+ * responsible for calling the authoritative calculator exactly once and
+ * passing its one successful result here.
+ */
+export type SuccessfulInvoiceCalculation = Extract<InvoiceCalculationResult, { ok: true }>;
 
 export type InvoicePdfBuildInput = {
   /** Explicit, server-derived target status — see InvoicePdfViewModel's own header comment. Never derived from any source row's own `.status`. */
@@ -153,36 +204,59 @@ export type InvoicePdfBuildInput = {
   invoiceNumber: string;
   issueDate: Date;
   dueDate: Date | null;
-  /** Real itemized rows in persisted order, already computed — empty array means a flat invoice. This builder never recalculates lineTotal/aggregate totals; it only formats already-validated Decimal values. */
-  lineItems: InvoicePdfLineItemInput[];
-  /** Used only when `lineItems` is empty, to build the single synthetic "Services" row — never itself treated as a persisted line item. */
-  flatAmount: MoneyValue;
-  /** Already recomputed/validated totals — reuses the exact same presentation rules as the read-only view via buildInvoiceTotalsViewModel(). */
-  totals: InvoiceTotalsInput;
+  currency: string;
+  /**
+   * The one, authoritative calculation. A flat invoice is identified only
+   * by `calculation.lineItems.length === 0` — its synthetic "Services" row
+   * uses `calculation.subtotal` as both unit price and line total, never a
+   * separately-supplied amount. Itemized rows, per-line totals, subtotal,
+   * discount amount, tax amount, and the final total all come only from
+   * this one object — there is no other way for a caller to supply any of
+   * them, so a forged/inconsistent PDF input is not structurally
+   * expressible.
+   */
+  calculation: SuccessfulInvoiceCalculation;
+  /** Presentation-label inputs only (e.g. "Discount (10%)") — reused unchanged by buildInvoiceTotalsViewModel(); never fed back into any arithmetic. */
+  discountType: InvoiceDiscountType;
+  discountValue: MoneyValue | null;
+  taxRatePercent: MoneyValue | null;
+  taxLabel: InvoiceTaxLabel;
   notes: string | null;
   issuer: InvoicePdfIssuerPresentation;
   recipient: InvoicePdfRecipientPresentation;
 };
 
 export function buildInvoicePdfViewModel(input: InvoicePdfBuildInput): InvoicePdfViewModel {
-  const currency = input.totals.currency;
-  const isFlatSynthetic = input.lineItems.length === 0;
+  const { calculation, currency } = input;
+  const isFlatSynthetic = calculation.lineItems.length === 0;
 
   const lineItems: InvoicePdfLineItem[] = isFlatSynthetic
     ? [
         {
           description: "Services",
           quantity: "1",
-          unitPrice: formatMoney(input.flatAmount, currency),
-          lineTotal: formatMoney(input.flatAmount, currency),
+          unitPrice: formatMoney(calculation.subtotal, currency),
+          lineTotal: formatMoney(calculation.subtotal, currency),
         },
       ]
-    : input.lineItems.map((item) => ({
+    : calculation.lineItems.map((item) => ({
         description: item.description,
         quantity: String(item.quantity),
         unitPrice: formatMoney(item.unitPrice, currency),
         lineTotal: formatMoney(item.lineTotal, currency),
       }));
+
+  const totalsInput: InvoiceTotalsInput = {
+    amount: calculation.total,
+    subtotal: calculation.subtotal,
+    discountType: input.discountType,
+    discountAmount: calculation.discountAmount,
+    discountValue: input.discountValue,
+    taxRatePercent: input.taxRatePercent,
+    taxAmount: calculation.taxAmount,
+    taxLabel: input.taxLabel,
+    currency,
+  };
 
   return {
     documentStatus: input.documentStatus,
@@ -194,7 +268,7 @@ export function buildInvoicePdfViewModel(input: InvoicePdfBuildInput): InvoicePd
     recipient: input.recipient,
     lineItems,
     isFlatSynthetic,
-    totals: buildInvoiceTotalsViewModel(input.totals),
+    totals: buildInvoiceTotalsViewModel(totalsInput),
     notes: input.notes,
   };
 }
