@@ -108,18 +108,27 @@ describe("renderInvoicePdfBuffer — real end-to-end render", () => {
     expect(raw).not.toContain("/BaseFont /Helvetica");
   });
 
-  it("renders without throwing for up to 200 line items with long descriptions (wrapping/page-break safety)", async () => {
-    const longDescription = "X".repeat(500);
-    const lineItems = Array.from({ length: 200 }, (_, i) => ({
-      description: `${longDescription} #${i}`,
-      quantity: "1",
-      unitPrice: "1.00",
-      lineTotal: "1.00",
-    }));
-    const viewModel = buildInvoicePdfViewModel(baseInput({ lineItems }));
-    const buffer = await renderInvoicePdfBuffer(viewModel);
-    expect(isPdfSignature(buffer)).toBe(true);
-  });
+  // A real 200-line-item, 500-char-description render genuinely takes a
+  // few seconds of layout work (observed ~6s on a loaded CI runner) —
+  // comfortably above Vitest's default 5000ms per-test timeout, which is
+  // sized for ordinary unit tests, not a real end-to-end PDF render. This
+  // is the one test in this suite that legitimately needs a longer ceiling.
+  it(
+    "renders without throwing for up to 200 line items with long descriptions (wrapping/page-break safety)",
+    async () => {
+      const longDescription = "X".repeat(500);
+      const lineItems = Array.from({ length: 200 }, (_, i) => ({
+        description: `${longDescription} #${i}`,
+        quantity: "1",
+        unitPrice: "1.00",
+        lineTotal: "1.00",
+      }));
+      const viewModel = buildInvoicePdfViewModel(baseInput({ lineItems }));
+      const buffer = await renderInvoicePdfBuffer(viewModel);
+      expect(isPdfSignature(buffer)).toBe(true);
+    },
+    20000,
+  );
 
   it("omits the payment section entirely when payment is null", async () => {
     const viewModel = buildInvoicePdfViewModel(baseInput({ issuer: { ...ISSUER, payment: null } }));
