@@ -20,10 +20,28 @@ import { mockRedirect, mockNotFound, mockRevalidatePath } from "../support/navig
 //    real implementation needs a live Supabase Storage bucket)
 //  - @/lib/storage/logo-storage (same reasoning, its own dedicated bucket
 //    — see logo-mutations.ts's own doc comment for why it's separate)
+//  - the "server-only" marker package itself (see every existing unit
+//    test's own identical vi.mock — the real package throws unless
+//    resolved through Next's own webpack build, which this Vitest
+//    integration harness never provides). Invoice System Slice 3,
+//    sub-PR 3b's own modules (issue-invoice.ts, storage.ts, logo.ts, and
+//    every sub-PR 3a PDF module they import) all carry this marker.
+//    Unlike attachments-storage.ts/logo-storage.ts above, storage.ts/
+//    logo.ts are NOT module-wide vi.mock()'d — issueInvoice()'s own
+//    dependency injection (see its IssueInvoiceDeps type) is what
+//    integration tests use instead to control upload/remove/logo-
+//    resolution outcomes directly, as plain function arguments, without
+//    depending on process.env.TEST_MODE at all (which — deliberately not
+//    set anywhere in this integration harness — would otherwise leak
+//    into and change the behavior of unrelated TEST_MODE-checking code,
+//    e.g. src/lib/billing/provider/provider.ts's own provider-selection
+//    branch, found the hard way while building this sub-PR).
 // Everything else — getOrCreateUser, getCurrentMembership,
 // getCurrentPortalUser, and every real Server Action/query function built
 // on them — runs unmodified against the real (test) Postgres via the real
 // Prisma client.
+
+vi.mock("server-only", () => ({}));
 
 vi.mock("next/headers", () => ({
   cookies: async () => mockCookies(),

@@ -44,3 +44,28 @@ export function testStorageRead(bucket: string, path: string): { body: Buffer; c
   if (!TEST_MODE) return null;
   return store.get(key(bucket, path)) ?? null;
 }
+
+/**
+ * Invoice System Slice 3, sub-PR 3b — create-only counterpart to
+ * testStorageUpload() above, for exactly one caller
+ * (src/lib/invoices/pdf/storage.ts): an archived invoice PDF is an
+ * immutable legal artifact, so silently overwriting an existing Map entry
+ * (testStorageUpload's own documented, correct behavior for every other
+ * TEST_MODE caller — attachments/logos, which always use a fresh
+ * server-generated id per upload anyway) would be the wrong contract here.
+ * Mirrors real Supabase Storage's own `upsert: false` — an existing key at
+ * this exact (bucket, path) is always a bug, never an intended overwrite,
+ * so this returns a failure instead of touching the existing entry.
+ */
+export function testStorageUploadIfAbsent(
+  bucket: string,
+  path: string,
+  body: Buffer,
+  contentType: string,
+): { ok: true } | { ok: false } {
+  if (!TEST_MODE) throw new Error("testStorageUploadIfAbsent() called outside TEST_MODE");
+  const k = key(bucket, path);
+  if (store.has(k)) return { ok: false };
+  store.set(k, { body, contentType });
+  return { ok: true };
+}

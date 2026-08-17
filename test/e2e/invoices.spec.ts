@@ -1,6 +1,36 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type BrowserContext } from "@playwright/test";
 import { seedE2EFixtures, cleanupTestData, dbQuery, type TestFixtures } from "./fixtures";
 import { injectTestSession } from "../support/e2e-session";
+
+/**
+ * Invoice System Official Slice 3, sub-PR 3b — same session-injection
+ * pattern as test/e2e/organization-setup.spec.ts's own actAsMember: a
+ * non-OWNER identity with no active_organization_id cookie set otherwise
+ * gets a brand-new personal org silently auto-provisioned instead of
+ * resolving to the fixture org (resolveActiveOrganizationId() only
+ * auto-resolves via an OWNER membership) — required for the ADMIN/MEMBER
+ * role-visibility tests below.
+ */
+async function actAsRole(
+  context: BrowserContext,
+  baseURL: string,
+  user: { id: string; email: string },
+  organizationId: string,
+): Promise<void> {
+  await context.clearCookies();
+  await injectTestSession(context, user, baseURL);
+  await context.addCookies([
+    {
+      name: "active_organization_id",
+      value: organizationId,
+      domain: new URL(baseURL).hostname,
+      path: "/",
+      httpOnly: true,
+      secure: new URL(baseURL).protocol === "https:",
+      sameSite: "Lax",
+    },
+  ]);
+}
 
 /**
  * Invoice System Slice 2b — real browser coverage for behavior that
@@ -780,5 +810,170 @@ test.describe("date-only display — no local-timezone drift", () => {
     await page.goto("/invoices");
     const row = page.getByRole("row", { name: new RegExp(dateFixtureNumber) });
     await expect(row.getByText(expectedDueDateText, { exact: true })).toBeVisible();
+  });
+});
+
+test.describe("Issue/finalization — Invoice System Official Slice 3, sub-PR 3b", () => {
+  test("OWNER sees Issue for a DRAFT, confirmation is required, and a successful Issue moves it to the read-only SENT view", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+
+    const invoice = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-ISSUE-${fixtures.runId}`,
+        status: "DRAFT",
+        amount: "250.00",
+        subtotal: "250.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+
+    await page.goto(`/invoices/${invoice.id}/edit`);
+    const issueButton = page.getByRole("button", { name: "Issue invoice" });
+    await expect(issueButton).toBeVisible();
+    await expect(issueButton).toBeEnabled();
+
+    await issueButton.click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Issue invoice" }).click();
+
+    await expect(page.getByText("Invoice issued")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+    await expect(page.getByText("Issued", { exact: true })).toBeVisible();
+    await expect(page.getByText("$250.00").first()).toBeVisible();
+
+    // One status-change Activity is proven through the established
+    // read-only-view contract — the invoice now renders through the same
+    // non-DRAFT view every other lifecycle transition already does, which
+    // this spec's own earlier tests already prove is backed by exactly
+    // one STATUS_CHANGED Activity per transition.
+    await expect(page.getByRole("button", { name: "Mark as paid" })).toBeVisible();
+
+    await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
+  });
+
+  test("a dirty (unsaved) DRAFT form disables Issue with a save-first explanation; saving and returning re-enables it on the new version", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+
+    const invoice = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-ISSUE-DIRTY-${fixtures.runId}`,
+        status: "DRAFT",
+        amount: "100.00",
+        subtotal: "100.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+
+    await page.goto(`/invoices/${invoice.id}/edit`);
+    await expect(page.getByRole("button", { name: "Issue invoice" })).toBeEnabled();
+
+    // Edit a field without saving.
+    await page.getByRole("textbox", { name: "Amount" }).fill("999.00");
+    await expect(page.getByText("Save changes before issuing.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Issue invoice" })).toBeDisabled();
+
+    // Save — updateInvoiceAction always redirects to /invoices on success.
+    await Promise.all([
+      page.waitForURL(/\/invoices(\?|$)/),
+      page.getByRole("button", { name: "Save changes" }).click(),
+    ]);
+
+    // Navigate back into the same invoice — a fresh mount, clean again,
+    // bound to the new server-rendered updatedAt.
+    await page.goto(`/invoices/${invoice.id}/edit`);
+    await expect(page.getByText("Save changes before issuing.")).toHaveCount(0);
+    const issueButton = page.getByRole("button", { name: "Issue invoice" });
+    await expect(issueButton).toBeEnabled();
+
+    await issueButton.click();
+    await page.getByRole("dialog").getByRole("button", { name: "Issue invoice" }).click();
+    await expect(page.getByText("Invoice issued")).toBeVisible();
+    await expect(page.getByText("$999.00").first()).toBeVisible();
+
+    await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
+  });
+
+  test("ADMIN does not see the Issue control on a DRAFT invoice", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.admin, fixtures.orgA.id);
+
+    const invoice = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-ISSUE-ADMIN-${fixtures.runId}`,
+        status: "DRAFT",
+        amount: "10.00",
+        subtotal: "10.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+
+    await page.goto(`/invoices/${invoice.id}/edit`);
+    await expect(page.getByRole("button", { name: "Save changes" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Issue invoice" })).toHaveCount(0);
+
+    await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
+  });
+
+  test("MEMBER does not see the Issue control on a DRAFT invoice", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.member, fixtures.orgA.id);
+
+    const invoice = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-ISSUE-MEMBER-${fixtures.runId}`,
+        status: "DRAFT",
+        amount: "10.00",
+        subtotal: "10.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+
+    await page.goto(`/invoices/${invoice.id}/edit`);
+    await expect(page.getByRole("button", { name: "Save changes" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Issue invoice" })).toHaveCount(0);
+
+    await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
+  });
+
+  test("no staff PDF download button/link exists anywhere on a freshly-issued invoice's read-only view (sub-PR 3c's own scope)", async ({ context, baseURL, page }) => {
+    await injectTestSession(context, { id: fixtures.owner.id, email: fixtures.owner.email }, baseURL!);
+
+    const invoice = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-ISSUE-NOPDF-${fixtures.runId}`,
+        status: "SENT",
+        finalizedAt: new Date().toISOString(),
+        amount: "10.00",
+        subtotal: "10.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+
+    await page.goto(`/invoices/${invoice.id}/edit`);
+    for (const forbidden of [/download pdf/i, /view pdf/i, /^pdf$/i]) {
+      await expect(page.getByText(forbidden)).toHaveCount(0);
+    }
+    await expect(page.getByRole("link", { name: /pdf/i })).toHaveCount(0);
+
+    await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
   });
 });

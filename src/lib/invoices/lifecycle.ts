@@ -1,4 +1,4 @@
-import type { InvoiceStatus } from "@/generated/prisma/browser";
+import type { InvoiceStatus, Role } from "@/generated/prisma/browser";
 
 /**
  * Invoice System Slice 2a — pure lifecycle helpers and a type-only Slice 3
@@ -78,37 +78,59 @@ export function computePaidAtUpdate(wasPaid: boolean, willBePaid: boolean, now: 
 }
 
 // ---------------------------------------------------------------------------
-// Slice 3 type-only contract (docs/invoicing-architecture.md §8.1/§14 Slice 3)
+// Slice 3 Issue contract (docs/invoicing-architecture.md §8.1/§14 Slice 3)
 // ---------------------------------------------------------------------------
 //
-// The types below document the exact shape of the future Issue operation's
-// input/output so Slice 2's read-only-view code (and later, Slice 3 itself)
-// can be written against a stable, agreed contract. This is intentionally
-// TYPES ONLY: no function, no `declare function`, no throwing stub, nothing
-// callable is exported from this section — there is nothing here for any
-// Slice 2 code path to accidentally invoke. No Slice 2 code writes
-// `status = "SENT"` from `"DRAFT"`, `finalizedAt`, `issuerSnapshot`,
-// `recipientSnapshot`, `pdfStoragePath`, or `pdfGeneratedAt` — that remains
-// exclusively Slice 3's, once it implements a function matching this shape
-// (illustrative only, never declared anywhere in this file or in Slice 2):
+// The live contract for src/lib/invoices/pdf/issue-invoice.ts's
+// issueInvoice(), implemented in sub-PR 3b. Still type-only in this file —
+// the real function lives in issue-invoice.ts, which imports these types
+// rather than redeclaring them, so callers (the Server Action, tests) and
+// the implementation always agree on one shape.
 //
-//   async function issueInvoice(input: IssueInvoiceInput): Promise<IssueInvoiceResult>
+// Corrected from the original Slice 2a placeholder: `IssueInvoiceInput` no
+// longer accepts a bare `organizationId` from a caller — every field on
+// `TrustedIssueActor` must come from server-side session/membership
+// resolution (getCurrentMembership()), never from FormData/client input.
+// `IssueInvoiceSuccess` no longer exposes `pdfStoragePath` — the archive
+// path is server-internal only, never returned to any caller (see
+// issue-invoice.ts's own header comment for why).
+
+export type TrustedIssueActor = {
+  organizationId: string;
+  userId: string;
+  userName: string;
+  role: Role;
+};
 
 export type IssueInvoiceInput = {
+  actor: TrustedIssueActor;
   invoiceId: string;
-  organizationId: string;
+  /** The exact page-rendered `Invoice.updatedAt.toISOString()` value — the same optimistic-concurrency contract updateInvoiceAction already uses. */
+  expectedUpdatedAt: string;
 };
 
 export type IssueInvoiceSuccess = {
   ok: true;
   invoiceId: string;
   finalizedAt: Date;
-  pdfStoragePath: string;
 };
+
+export type IssueInvoiceErrorCode =
+  | "NOT_FOUND"
+  | "FORBIDDEN"
+  | "NOT_DRAFT"
+  | "STALE_VERSION"
+  | "SNAPSHOT_INVALID"
+  | "STORAGE_NOT_CONFIGURED"
+  | "RENDER_FAILED"
+  | "PDF_TOO_LARGE"
+  | "UPLOAD_FAILED"
+  | "CONFLICT"
+  | "FINALIZATION_FAILED";
 
 export type IssueInvoiceFailure = {
   ok: false;
-  error: "NOT_FOUND" | "NOT_DRAFT" | "RENDER_FAILED" | "UPLOAD_FAILED" | "CONFLICT";
+  error: IssueInvoiceErrorCode;
 };
 
 export type IssueInvoiceResult = IssueInvoiceSuccess | IssueInvoiceFailure;

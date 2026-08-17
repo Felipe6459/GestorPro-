@@ -152,7 +152,16 @@ describe("module-boundary — no Client Component imports any new PDF module", (
   });
 });
 
-describe("module-boundary — no route/action anywhere imports the new PDF modules in this sub-PR", () => {
+describe("module-boundary — no route/action other than the sub-PR 3b Issue action imports the PDF modules", () => {
+  // Sub-PR 3a's own version of this test asserted zero route/action
+  // imports at all (nothing was wired yet). Sub-PR 3b intentionally wires
+  // exactly one — the dedicated Issue Server Action — per its own
+  // "the dedicated Issue service is the only new DRAFT -> SENT path"
+  // requirement. This still catches any OTHER route/action accidentally
+  // reaching into src/lib/invoices/pdf/ (e.g. a future accidental import
+  // from an unrelated action), which would be a real scope violation.
+  const EXPECTED_PDF_IMPORTING_FILE = "src/app/(dashboard)/invoices/[id]/edit/issue-actions.ts";
+
   const routeAndActionFiles = walkTsFiles("src/app").filter(
     (file) => file.endsWith("route.ts") || file.endsWith("actions.ts") || file.endsWith("action.ts"),
   );
@@ -161,9 +170,17 @@ describe("module-boundary — no route/action anywhere imports the new PDF modul
     expect(routeAndActionFiles.length).toBeGreaterThan(0);
   });
 
-  it.each(routeAndActionFiles)("%s does not import from @/lib/invoices/pdf", (file) => {
-    expect(readSource(file)).not.toContain("@/lib/invoices/pdf");
+  it("the expected Issue action file exists and does import from @/lib/invoices/pdf", () => {
+    expect(routeAndActionFiles).toContain(EXPECTED_PDF_IMPORTING_FILE);
+    expect(readSource(EXPECTED_PDF_IMPORTING_FILE)).toContain("@/lib/invoices/pdf");
   });
+
+  it.each(routeAndActionFiles.filter((file) => file !== EXPECTED_PDF_IMPORTING_FILE))(
+    "%s does not import from @/lib/invoices/pdf",
+    (file) => {
+      expect(readSource(file)).not.toContain("@/lib/invoices/pdf");
+    },
+  );
 });
 
 describe("module-boundary — src/components/invoices/invoice-read-only-view.tsx only imports the totals TYPE, not the pdf/ modules", () => {

@@ -1,12 +1,13 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { getCurrentUserOrganization } from "@/lib/current-user";
+import { getCurrentMembership } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
-import { InvoiceForm } from "@/components/invoices/invoice-form";
+import { InvoiceDraftPanel } from "@/components/invoices/invoice-draft-panel";
 import { InvoiceReadOnlyView } from "@/components/invoices/invoice-read-only-view";
 import { buildInvoiceTotalsViewModel } from "@/lib/invoices/totals-view-model";
 import { getSupportedInvoiceCurrencies } from "@/lib/invoices/currencies";
 import { formatDateOnly } from "@/lib/invoices/date-only";
+import { canAccessPaymentDetails } from "@/lib/organization-setup/authorization";
 import { updateInvoiceAction } from "./actions";
 import { InvoiceAttachmentsSection } from "./attachments-section";
 
@@ -16,7 +17,14 @@ export default async function EditInvoicePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { organizationId } = await getCurrentUserOrganization();
+  const { organizationId, membership } = await getCurrentMembership();
+  // Invoice System Official Slice 3, sub-PR 3b — Issue is OWNER-only,
+  // reusing the exact same authorization boundary payment details already
+  // established (src/lib/organization-setup/authorization.ts). This only
+  // gates whether the control is rendered at all — issueInvoiceAction()
+  // and issueInvoice() both independently re-check this server-side, so
+  // hiding the control here is a UX convenience, never the enforcement.
+  const canIssue = canAccessPaymentDetails(membership.role);
 
   // The one shared Invoice fetch, needed by both branches — ordered line
   // items and Project/Client display, never a duplicate Invoice lookup.
@@ -63,7 +71,11 @@ export default async function EditInvoicePage({
       </div>
       <div className="rounded-lg border border-gray-200 bg-white p-6">
         {isDraft ? (
-          <InvoiceForm
+          <InvoiceDraftPanel
+            invoiceId={invoice.id}
+            invoiceNumber={invoice.invoiceNumber}
+            expectedUpdatedAt={invoice.updatedAt.toISOString()}
+            canIssue={canIssue}
             action={boundUpdateInvoiceAction}
             projects={(projects ?? []).map((project) => ({
               id: project.id,
@@ -92,8 +104,6 @@ export default async function EditInvoicePage({
               taxRatePercent: invoice.taxRatePercent?.toString() ?? "",
               taxLabel: invoice.taxLabel,
             }}
-            submitLabel="Save changes"
-            pendingLabel="Saving…"
           />
         ) : (
           <InvoiceReadOnlyView
