@@ -338,6 +338,55 @@ test.describe("Duplicate-as-new-DRAFT — completing official Invoice System Sli
     return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
   }
 
+  type InvoiceSnapshot = {
+    id: string;
+    invoiceNumber: string;
+    status: string;
+    updatedAt: string;
+    lineItems: { id: string; description: string; quantity: string; unitPrice: string; position: number }[];
+    activity: { id: string; action: string }[];
+  };
+
+  /**
+   * A full, exact-scope source-of-truth snapshot for one Invoice — used
+   * to prove an invoice genuinely never changes across a Duplicate flow
+   * (id/invoiceNumber/status/updatedAt, every ordered line item, every
+   * Activity row for that entity). Decimal/Date values are normalized to
+   * strings once here via String(), so two captures compare deterministically
+   * regardless of any JSON-transport serialization quirk in dbQuery's own
+   * HTTP round-trip (test/support/e2e-db-client.ts).
+   */
+  async function captureInvoiceSnapshot(invoiceId: string, organizationId: string): Promise<InvoiceSnapshot> {
+    const invoice = await dbQuery<{ id: string; invoiceNumber: string; status: string; updatedAt: string }>(
+      "invoice",
+      "findUniqueOrThrow",
+      { where: { id: invoiceId } },
+    );
+    const lineItems = await dbQuery<{ id: string; description: string; quantity: string; unitPrice: string; position: number }[]>(
+      "invoiceLineItem",
+      "findMany",
+      { where: { invoiceId }, orderBy: { position: "asc" } },
+    );
+    const activity = await dbQuery<{ id: string; action: string }[]>("activity", "findMany", {
+      where: { organizationId, entityType: "INVOICE", entityId: invoiceId },
+      orderBy: { createdAt: "asc" },
+    });
+    return {
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      status: invoice.status,
+      updatedAt: String(invoice.updatedAt),
+      lineItems: lineItems.map((li) => ({
+        id: li.id,
+        description: li.description,
+        quantity: String(li.quantity),
+        unitPrice: String(li.unitPrice),
+        position: li.position,
+      })),
+      activity: activity.map((a) => ({ id: a.id, action: a.action })),
+    };
+  }
+
   test.beforeAll(async () => {
     const itemized = await dbQuery<{ id: string }>("invoice", "create", {
       data: {
@@ -464,6 +513,17 @@ test.describe("Duplicate-as-new-DRAFT — completing official Invoice System Sli
   test("itemized CANCELLED source: full flow from the read-only view through explicit submit", async ({ page }) => {
     const suggestedNumber = `E2E-DUP-ITM-${fixtures.runId}-R1`;
 
+    // Exact source snapshot, captured before opening or navigating away
+    // from the source at all — invoiceNumber/status/updatedAt plus every
+    // ordered line item and every Activity row scoped to this entity.
+    // Decimal/date values are normalized to strings once here (String())
+    // and compared as strings throughout, since the JSON transport this
+    // suite's dbQuery already uses (test/support/e2e-db-client.ts) is not
+    // guaranteed to round-trip a Decimal/Date the same way twice on its
+    // own.
+    const sourceBefore = await captureInvoiceSnapshot(itemizedCancelledId, fixtures.orgA.id);
+    expect(sourceBefore.lineItems).toHaveLength(2);
+
     await page.goto(`/invoices/${itemizedCancelledId}/edit`);
     const duplicateLink = page.getByRole("link", { name: "Duplicate as new draft" });
     await expect(duplicateLink).toHaveCount(1);
@@ -497,20 +557,23 @@ test.describe("Duplicate-as-new-DRAFT — completing official Invoice System Sli
     await expect(page.getByLabel("Internal notes")).toHaveValue("");
     await expect(page.getByLabel("Notes", { exact: true })).toHaveValue("Original client-visible note");
 
-    // Zero-write proof, scoped to this exact suggested number — nothing
-    // has been submitted yet.
-    const beforeSubmit = await dbQuery<unknown[]>("invoice", "findMany", { where: { invoiceNumber: suggestedNumber } });
-    expect(beforeSubmit).toHaveLength(0);
-    const sourceLineItemsBefore = await dbQuery<unknown[]>("invoiceLineItem", "findMany", {
-      where: { invoiceId: itemizedCancelledId },
+    // Zero-write proof, scoped to this exact suggested number in the
+    // source's own Client scope — nothing has been submitted yet — plus a
+    // full re-read proving the source itself is still exactly as
+    // captured above (including updatedAt, its ordered line items, and
+    // its Activity state).
+    const beforeSubmit = await dbQuery<unknown[]>("invoice", "findMany", {
+      where: { invoiceNumber: suggestedNumber, clientId: fixtures.clientA.id },
     });
-    expect(sourceLineItemsBefore).toHaveLength(2);
+    expect(beforeSubmit).toHaveLength(0);
+    const sourceAfterOpen = await captureInvoiceSnapshot(itemizedCancelledId, fixtures.orgA.id);
+    expect(sourceAfterOpen).toEqual(sourceBefore);
 
     await page.getByRole("button", { name: "Create duplicate" }).click();
     await expect(page.getByText("Invoice created")).toBeVisible();
 
     const created = await dbQuery<{ id: string; status: string }[]>("invoice", "findMany", {
-      where: { invoiceNumber: suggestedNumber },
+      where: { invoiceNumber: suggestedNumber, clientId: fixtures.clientA.id },
     });
     expect(created).toHaveLength(1);
     expect(created[0].status).toBe("DRAFT");
@@ -519,10 +582,20 @@ test.describe("Duplicate-as-new-DRAFT — completing official Invoice System Sli
     await expect(row.getByRole("link", { name: "Edit" })).toBeVisible();
     await expect(row.getByRole("button", { name: "Delete" })).toBeVisible();
 
-    const sourceAfter = await dbQuery<{ status: string }>("invoice", "findUniqueOrThrow", {
-      where: { id: itemizedCancelledId },
+    // Source remains byte-for-byte unchanged after a real duplicate was
+    // created — same invoiceNumber/status/updatedAt, same ordered line
+    // items, same Activity rows.
+    const sourceAfterSubmit = await captureInvoiceSnapshot(itemizedCancelledId, fixtures.orgA.id);
+    expect(sourceAfterSubmit).toEqual(sourceBefore);
+
+    // The new invoice, and only the new invoice, has its own exactly one
+    // CREATED Activity row.
+    const newInvoiceActivity = await dbQuery<{ id: string; action: string }[]>("activity", "findMany", {
+      where: { organizationId: fixtures.orgA.id, entityType: "INVOICE", entityId: created[0].id },
     });
-    expect(sourceAfter.status).toBe("CANCELLED");
+    expect(newInvoiceActivity).toHaveLength(1);
+    expect(newInvoiceActivity[0].action).toBe("CREATED");
+
     await page.goto(`/invoices/${itemizedCancelledId}/edit`);
     await expect(page.getByText("Cancelled")).toBeVisible();
     await expect(page.getByLabel("Invoice number")).toHaveCount(0);
@@ -589,13 +662,15 @@ test.describe("Duplicate-as-new-DRAFT — completing official Invoice System Sli
     });
 
     try {
+      // Exact-scope snapshots for BOTH sources, captured before either
+      // navigation — never a global organization-wide count, which could
+      // be affected by unrelated test activity running in the same org.
+      const normalizedBefore = await captureInvoiceSnapshot(normalizedCurrency.id, fixtures.orgA.id);
+      const unsupportedBefore = await captureInvoiceSnapshot(unsupportedCurrency.id, fixtures.orgA.id);
+
       await page.goto(`/invoices/${normalizedCurrency.id}/duplicate`);
       await expect(page.getByLabel("Currency")).toHaveValue("USD");
       await expect(page.getByRole("button", { name: "Create duplicate" })).toBeVisible();
-
-      const beforeCounts = await dbQuery<number>("invoice", "count", {
-        where: { organizationId: fixtures.orgA.id },
-      });
 
       await page.goto(`/invoices/${unsupportedCurrency.id}/duplicate`);
       await expect(page.getByText(/can.t duplicate this invoice automatically/i)).toBeVisible();
@@ -607,10 +682,23 @@ test.describe("Duplicate-as-new-DRAFT — completing official Invoice System Sli
       await expect(page.getByRole("link", { name: "View original invoice" })).toBeVisible();
       await expect(page.getByRole("link", { name: "Add invoice" })).toBeVisible();
 
-      const afterCounts = await dbQuery<number>("invoice", "count", {
-        where: { organizationId: fixtures.orgA.id },
+      // Neither navigation wrote anything — both sources are exactly as
+      // captured above (id/invoiceNumber/status/updatedAt, line items,
+      // Activity), and neither's suggested -R1 duplicate number exists in
+      // the source's own Client scope.
+      const normalizedAfter = await captureInvoiceSnapshot(normalizedCurrency.id, fixtures.orgA.id);
+      const unsupportedAfter = await captureInvoiceSnapshot(unsupportedCurrency.id, fixtures.orgA.id);
+      expect(normalizedAfter).toEqual(normalizedBefore);
+      expect(unsupportedAfter).toEqual(unsupportedBefore);
+
+      const suggestedForNormalized = await dbQuery<unknown[]>("invoice", "findMany", {
+        where: { invoiceNumber: `${normalizedBefore.invoiceNumber}-R1`, clientId: fixtures.clientA.id },
       });
-      expect(afterCounts).toBe(beforeCounts);
+      expect(suggestedForNormalized).toHaveLength(0);
+      const suggestedForUnsupported = await dbQuery<unknown[]>("invoice", "findMany", {
+        where: { invoiceNumber: `${unsupportedBefore.invoiceNumber}-R1`, clientId: fixtures.clientA.id },
+      });
+      expect(suggestedForUnsupported).toHaveLength(0);
     } finally {
       await dbQuery("invoice", "deleteMany", { where: { id: { in: [normalizedCurrency.id, unsupportedCurrency.id] } } });
     }

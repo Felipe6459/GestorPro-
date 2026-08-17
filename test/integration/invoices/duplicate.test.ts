@@ -19,8 +19,18 @@ function uniqueInvoiceNumber(runId: string): string {
  * Polls `check()` until `predicate()` accepts its result, matching this
  * suite's own established pattern for waiting on eventual consistency
  * (test/support/local-postgres.ts's `waitForSocketReady()`) rather than a
- * fixed sleep — returns as soon as the harness has actually settled, and
- * still fails fast with the real last-observed value if it never does.
+ * fixed sleep — returns as soon as the harness has actually settled.
+ *
+ * A `check()` call that throws mid-poll is treated as "not yet settled,"
+ * not as failure — retried the same as a predicate miss, since the exact
+ * local PGlite/`max: 1`-pool artifact this helper exists for (see the
+ * collision test's own comment) can surface as a genuinely malformed
+ * response immediately after a rolled-back transaction, not only as a
+ * stale-but-well-formed one. Timeout is never itself treated as success:
+ * the final attempt after the loop is unguarded, so it either returns the
+ * real, current, settled state for the caller's own explicit assertions
+ * to check, or — if the harness is still not settled — rethrows that
+ * real error instead of silently returning a stale/guessed value.
  */
 async function pollUntilStable<T>(
   check: () => Promise<T>,
@@ -29,12 +39,16 @@ async function pollUntilStable<T>(
   intervalMs = 25,
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;
-  let lastValue = await check();
-  while (!predicate(lastValue) && Date.now() < deadline) {
+  while (Date.now() < deadline) {
+    try {
+      const value = await check();
+      if (predicate(value)) return value;
+    } catch {
+      // Retried below — see this function's own doc comment.
+    }
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    lastValue = await check();
   }
-  return lastValue;
+  return check();
 }
 
 async function expectRedirect(promise: Promise<unknown>): Promise<void> {
@@ -436,22 +450,61 @@ describe("createInvoiceAction via duplicate-derived FormData — real action, ta
     actAs(fixtures.owner, fixtures.orgA.id);
     await expectRedirect(createInvoiceAction({ error: null }, buildFormDataFromDuplicateDefaults(defaults)));
 
+    // Exact-scope state right after the first, successful create — this
+    // fixture is flat, so zero InvoiceLineItem rows is the expected
+    // baseline both now and after the rejected second attempt below.
+    const firstCreated = await prisma.invoice.findUniqueOrThrow({
+      where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber: defaults.invoiceNumber } },
+    });
+    const lineItemsAfterFirst = await prisma.invoiceLineItem.findMany({ where: { invoiceId: firstCreated.id } });
+    const activityAfterFirst = await prisma.activity.findMany({
+      where: { organizationId: fixtures.orgA.id, entityType: "INVOICE", entityId: firstCreated.id },
+    });
+    expect(lineItemsAfterFirst).toHaveLength(0);
+    expect(activityAfterFirst).toHaveLength(1);
+    expect(activityAfterFirst[0].action).toBe("CREATED");
+
     const result = await createInvoiceAction({ error: null }, buildFormDataFromDuplicateDefaults(defaults));
     resetAuthMock();
 
     expect(result.fieldErrors?.invoiceNumber).toBeTruthy();
+
     // The rejected second attempt rolls back inside prisma.$transaction();
-    // the shared local PGlite/pg-adapter test harness (`max: 1` pool,
-    // see src/lib/prisma.ts) needs a brief moment to settle that rollback
+    // the shared local PGlite/pg-adapter test harness (`max: 1` pool, see
+    // src/lib/prisma.ts) needs a brief moment to settle that rollback
     // before a fresh read is guaranteed consistent — reproduced even
     // against the plain, unmodified createInvoiceAction with no
-    // duplicate-specific code involved. pollUntilStable (below) polls
-    // rather than sleeping a fixed amount, so this resolves as soon as
-    // the harness has actually settled, not after an arbitrary delay.
-    const matches = await pollUntilStable(
-      () => prisma.invoice.findMany({ where: { clientId: fixtures.clientA.id, invoiceNumber: defaults.invoiceNumber } }),
-      (rows) => rows.length === 1,
+    // duplicate-specific code involved. pollUntilStable (declared above)
+    // polls for the full expected end state rather than sleeping a fixed
+    // amount, so this resolves as soon as the harness has actually
+    // settled, not after an arbitrary delay. A poll timeout is never
+    // itself treated as success — whatever pollUntilStable last observed
+    // (settled or not) is asserted explicitly below, so a genuine
+    // regression (e.g. a real second Invoice/Activity/line-item row)
+    // still fails this test rather than silently timing out green.
+    const finalState = await pollUntilStable(
+      async () => ({
+        invoices: await prisma.invoice.findMany({
+          where: { clientId: fixtures.clientA.id, invoiceNumber: defaults.invoiceNumber },
+        }),
+        lineItems: await prisma.invoiceLineItem.findMany({ where: { invoiceId: firstCreated.id } }),
+        activity: await prisma.activity.findMany({
+          where: { organizationId: fixtures.orgA.id, entityType: "INVOICE", entityId: firstCreated.id },
+        }),
+      }),
+      (state) => state.invoices.length === 1 && state.activity.length === 1,
     );
-    expect(matches).toHaveLength(1);
+
+    // Exactly one matching Invoice — the original successfully-created
+    // duplicate, never a second row.
+    expect(finalState.invoices).toHaveLength(1);
+    expect(finalState.invoices[0].id).toBe(firstCreated.id);
+    // InvoiceLineItem state unchanged (still zero — this fixture is flat).
+    expect(finalState.lineItems).toHaveLength(0);
+    // Exactly one CREATED Activity for the original invoice — the
+    // rejected attempt produced no additional Activity of any kind.
+    expect(finalState.activity).toHaveLength(1);
+    expect(finalState.activity[0].entityId).toBe(firstCreated.id);
+    expect(finalState.activity[0].action).toBe("CREATED");
   });
 });
