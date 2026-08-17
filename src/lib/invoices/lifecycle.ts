@@ -1,12 +1,16 @@
-import type { InvoiceStatus } from "@/generated/prisma/browser";
+import type { InvoiceStatus, Role } from "@/generated/prisma/browser";
 
 /**
- * Invoice System Slice 2a — pure lifecycle helpers and a type-only Slice 3
- * contract (docs/invoicing-architecture.md §3.1/§14 Slice 2). Nothing in
- * this module is wired into any live route, Server Action, or component
- * yet — that wiring is Slice 2b's job. This file exists now so Slice 2b
- * can import a single, already-tested source of truth instead of
- * re-deriving the transition matrix inline a second time.
+ * Invoice System Slice 2a — pure lifecycle helpers, plus the live Slice 3
+ * Issue contract (docs/invoicing-architecture.md §3.1/§8.1/§14). The
+ * transition-matrix helpers below are wired into the ordinary status-change
+ * Server Action (src/app/(dashboard)/invoices/[id]/status-actions.ts, Slice
+ * 2b); `computePaidAtUpdate()` is likewise live there. The Issue contract
+ * types are implemented for real by src/lib/invoices/pdf/issue-invoice.ts
+ * (Slice 3, sub-PR 3b) — see that file's own header comment for the actual
+ * pipeline. This file remains the single, already-tested source of truth
+ * both callers import from, rather than re-deriving either rule set
+ * inline a second time.
  *
  * No I/O, no Prisma Client import, no `new Date()` call anywhere in this
  * file — every function here is a pure function of its arguments.
@@ -14,8 +18,9 @@ import type { InvoiceStatus } from "@/generated/prisma/browser";
 
 /**
  * The exact transition matrix from docs/invoicing-architecture.md §3.1.
- * `DRAFT` transitions to nothing here: `DRAFT -> SENT` is the future
- * Slice 3 Issue operation (not a status-change action, see
+ * `DRAFT` transitions to nothing here: `DRAFT -> SENT` is the dedicated
+ * Slice 3 Issue operation (issueInvoice() in
+ * src/lib/invoices/pdf/issue-invoice.ts — not a status-change action, see
  * `IssueInvoiceResult` below), and `DRAFT -> CANCELLED`/`PAID`/`OVERDUE`
  * are all forbidden outright (abandoning a draft that was never issued is
  * a plain delete, never a status transition). `CANCELLED` is terminal.
@@ -55,12 +60,10 @@ export function isTransitionAllowed(from: InvoiceStatus, to: InvoiceStatus): boo
 export type PaidAtUpdate = { paidAt?: Date | null };
 
 /**
- * Reproduces the exact 4-case `paidAt` rule already inline in
- * `src/app/(dashboard)/invoices/[id]/edit/actions.ts` today — this
- * function is not yet called by that file (Slice 2b rewires it); it exists
- * now, independently tested against the same 4 cases, so Slice 2b has a
- * single already-correct implementation to switch to rather than
- * re-deriving the rule a second time.
+ * The exact 4-case `paidAt` rule, live in
+ * `src/app/(dashboard)/invoices/[id]/status-actions.ts` (Slice 2b) — that
+ * Server Action calls this function directly rather than re-deriving the
+ * rule inline.
  *
  * `now` is an explicit, injected parameter — never `new Date()` internally
  * — so this function is genuinely deterministic and unit-testable without
@@ -78,37 +81,59 @@ export function computePaidAtUpdate(wasPaid: boolean, willBePaid: boolean, now: 
 }
 
 // ---------------------------------------------------------------------------
-// Slice 3 type-only contract (docs/invoicing-architecture.md §8.1/§14 Slice 3)
+// Slice 3 Issue contract (docs/invoicing-architecture.md §8.1/§14 Slice 3)
 // ---------------------------------------------------------------------------
 //
-// The types below document the exact shape of the future Issue operation's
-// input/output so Slice 2's read-only-view code (and later, Slice 3 itself)
-// can be written against a stable, agreed contract. This is intentionally
-// TYPES ONLY: no function, no `declare function`, no throwing stub, nothing
-// callable is exported from this section — there is nothing here for any
-// Slice 2 code path to accidentally invoke. No Slice 2 code writes
-// `status = "SENT"` from `"DRAFT"`, `finalizedAt`, `issuerSnapshot`,
-// `recipientSnapshot`, `pdfStoragePath`, or `pdfGeneratedAt` — that remains
-// exclusively Slice 3's, once it implements a function matching this shape
-// (illustrative only, never declared anywhere in this file or in Slice 2):
+// The live contract for src/lib/invoices/pdf/issue-invoice.ts's
+// issueInvoice(), implemented in sub-PR 3b. Still type-only in this file —
+// the real function lives in issue-invoice.ts, which imports these types
+// rather than redeclaring them, so callers (the Server Action, tests) and
+// the implementation always agree on one shape.
 //
-//   async function issueInvoice(input: IssueInvoiceInput): Promise<IssueInvoiceResult>
+// Corrected from the original Slice 2a placeholder: `IssueInvoiceInput` no
+// longer accepts a bare `organizationId` from a caller — every field on
+// `TrustedIssueActor` must come from server-side session/membership
+// resolution (getCurrentMembership()), never from FormData/client input.
+// `IssueInvoiceSuccess` no longer exposes `pdfStoragePath` — the archive
+// path is server-internal only, never returned to any caller (see
+// issue-invoice.ts's own header comment for why).
+
+export type TrustedIssueActor = {
+  organizationId: string;
+  userId: string;
+  userName: string;
+  role: Role;
+};
 
 export type IssueInvoiceInput = {
+  actor: TrustedIssueActor;
   invoiceId: string;
-  organizationId: string;
+  /** The exact page-rendered `Invoice.updatedAt.toISOString()` value — the same optimistic-concurrency contract updateInvoiceAction already uses. */
+  expectedUpdatedAt: string;
 };
 
 export type IssueInvoiceSuccess = {
   ok: true;
   invoiceId: string;
   finalizedAt: Date;
-  pdfStoragePath: string;
 };
+
+export type IssueInvoiceErrorCode =
+  | "NOT_FOUND"
+  | "FORBIDDEN"
+  | "NOT_DRAFT"
+  | "STALE_VERSION"
+  | "SNAPSHOT_INVALID"
+  | "STORAGE_NOT_CONFIGURED"
+  | "RENDER_FAILED"
+  | "PDF_TOO_LARGE"
+  | "UPLOAD_FAILED"
+  | "CONFLICT"
+  | "FINALIZATION_FAILED";
 
 export type IssueInvoiceFailure = {
   ok: false;
-  error: "NOT_FOUND" | "NOT_DRAFT" | "RENDER_FAILED" | "UPLOAD_FAILED" | "CONFLICT";
+  error: IssueInvoiceErrorCode;
 };
 
 export type IssueInvoiceResult = IssueInvoiceSuccess | IssueInvoiceFailure;

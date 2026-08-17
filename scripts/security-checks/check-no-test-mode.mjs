@@ -110,6 +110,11 @@ const expectedStorageImporters = [
   "src/lib/storage/attachments-storage.ts",
   "src/lib/storage/logo-storage.ts",
   "src/app/api/e2e-test-storage/[...path]/route.ts",
+  // Invoice System Slice 3, sub-PR 3b — same TEST_MODE-gated in-memory
+  // Storage stand-in, for the new private invoice-pdf namespace and its
+  // logo-byte reads respectively.
+  "src/lib/invoices/pdf/storage.ts",
+  "src/lib/invoices/pdf/logo.ts",
 ];
 const uniqueStorageImporters = [...new Set(storageImporters)];
 const unexpectedStorageImporters = uniqueStorageImporters.filter((f) => !expectedStorageImporters.includes(f));

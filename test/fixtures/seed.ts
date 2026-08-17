@@ -223,16 +223,23 @@ export async function seedTestData(runId: string = getRunId()): Promise<TestFixt
  * Restrict, so every Invoice under these Clients/Projects must go first
  * (deleteMany by clientId, not just the one seeded id, so a test that
  * creates an extra Invoice under the same fixture Client doesn't leave a
- * dangling row blocking cleanup). Client then cascades Project/Task/
- * ClientInvitation/PortalUser; Organization cascades Membership/
- * Invitation/Attachment/Activity; Users are deleted last since
+ * dangling row blocking cleanup). InvoicePdfArchiveObject.organizationId
+ * is likewise onDelete: Restrict (Invoice System Slice 3, sub-PR 3b's own
+ * durable archival ledger — deleting an Organization must never silently
+ * erase it) — a scenario (integration or E2E) that actually issues an
+ * invoice leaves a REFERENCED ledger row behind, which must be removed
+ * before the Organization can be deleted at all. Client then cascades
+ * Project/Task/ClientInvitation/PortalUser; Organization cascades
+ * Membership/Invitation/Attachment/Activity; Users are deleted last since
  * Client.userId/Project.ownerId are also onDelete: Restrict.
  */
 export async function cleanupTestData(fixtures: TestFixtures): Promise<void> {
   const clientIds = [fixtures.clientA.id, fixtures.clientB.id];
+  const orgIds = [fixtures.orgA.id, fixtures.orgB.id];
+  await prisma.invoicePdfArchiveObject.deleteMany({ where: { organizationId: { in: orgIds } } });
   await prisma.invoice.deleteMany({ where: { clientId: { in: clientIds } } });
   await prisma.client.deleteMany({ where: { id: { in: clientIds } } });
-  await prisma.organization.deleteMany({ where: { id: { in: [fixtures.orgA.id, fixtures.orgB.id] } } });
+  await prisma.organization.deleteMany({ where: { id: { in: orgIds } } });
   await prisma.user.deleteMany({
     where: { id: { in: [fixtures.owner.id, fixtures.admin.id, fixtures.member.id, fixtures.orgBOwner.id] } },
   });

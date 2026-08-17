@@ -362,6 +362,10 @@ model Organization {
   attachments Attachment[]
   comments    Comment[]
 
+  // Invoice System Slice 3, sub-PR 3b — see InvoicePdfArchiveObject's own
+  // doc comment.
+  invoicePdfArchiveObjects InvoicePdfArchiveObject[]
+
   // Portal Analytics persistence foundation (docs/analytics-architecture.md
   // §12, Slice 1) — see PortalDownloadRequest's own doc comment.
   portalDownloadRequests PortalDownloadRequest[]
@@ -753,6 +757,13 @@ model Invoice {
   lineItems     InvoiceLineItem[]
   emailAttempts InvoiceEmailAttempt[]
 
+  // Invoice System Slice 3, sub-PR 3b — see InvoicePdfArchiveObject's own
+  // doc comment. The FK on the ledger side is SetNull, not Cascade
+  // (deleting this Invoice never deletes its archive-object history) —
+  // this reverse relation exists so a still-existing Invoice can look up
+  // its own archive attempts; no code path reads it in this sub-PR.
+  pdfArchiveObjects InvoicePdfArchiveObject[]
+
   @@unique([clientId, invoiceNumber])
   @@index([status])
   @@index([dueDate])
@@ -811,6 +822,93 @@ model InvoiceEmailAttempt {
 
   @@index([invoiceId, attemptedAt])
   @@index([invoiceId, status, attemptedAt])
+}
+
+// Invoice System Slice 3, sub-PR 3b — durable archival-object ledger. Every
+// PDF Issue (and future Legacy Archive) attempt registers a row here BEFORE
+// ever uploading, and only ever transitions it forward
+// (PENDING_UPLOAD -> REFERENCED, or PENDING_UPLOAD -> CLEANUP_PENDING ->
+// CLEANED on a compensated failure) — this is what makes "was this Storage
+// object left behind by a failed/interrupted attempt" a bounded database
+// query for the future Slice 3d reconciliation worker, never a full bucket
+// listing. No PDF bytes, signed URL, or raw provider error is ever stored
+// here — see lastCleanupFailureCategory's own comment for its bounded
+// category contract.
+enum InvoicePdfArchiveObjectStatus {
+  PENDING_UPLOAD
+  REFERENCED
+  CLEANUP_PENDING
+  CLEANED
+}
+
+model InvoicePdfArchiveObject {
+  // Deliberately the same value as the archiveId embedded in storagePath —
+  // one identity for "this archive attempt", never two unrelated random
+  // ids that could drift out of sync with each other.
+  id String @id @db.Uuid
+
+  // Restrict, not Cascade: this ledger is the durable evidence trail for
+  // archived Invoice PDFs — deleting an Organization must never silently
+  // erase the only database record of an object that may still exist in
+  // private Storage. No code path in this application ever deletes an
+  // Organization row while archive-object rows for it still exist; this
+  // constraint exists to make that failure loud (a DB error) rather than
+  // a silent, unrecoverable data loss.
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  // Nullable + SetNull: an Invoice DRAFT can be deleted (deleteInvoiceAction
+  // requires status DRAFT) concurrently with an in-flight Issue attempt —
+  // the ledger row must outlive that race so a stray uploaded object is
+  // still discoverable/cleanable even if its source Invoice no longer
+  // exists by the time reconciliation runs.
+  invoiceId String?  @db.Uuid
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  // Matches the archived Invoice.documentVersion at issuance time —
+  // positive by application contract (never enforced at the DB level here,
+  // the same "descriptive, validated in code" precedent this schema
+  // already uses elsewhere, e.g. OrganizationProfile.currency).
+  documentVersion Int
+
+  // organizations/<organizationId>/invoice-pdf/<invoiceId>/v<documentVersion>/<archiveId>.pdf
+  // in the existing private "attachments" bucket (src/lib/invoices/pdf/storage.ts)
+  // — unique because Storage's own create-only (upsert: false) semantics
+  // make a collision here always a bug, never an intended overwrite.
+  storagePath String @unique
+
+  status InvoicePdfArchiveObjectStatus @default(PENDING_UPLOAD)
+
+  // Stamped with the Issue operation's own single injected/current
+  // timestamp, in the same short transaction that flips status to
+  // REFERENCED — never a separately-read `now()`.
+  referencedAt DateTime?
+  // Stamped when a compensating removal is confirmed to have succeeded.
+  cleanedAt    DateTime?
+
+  // Claim-related fields — read/written only by the future Slice 3d
+  // reconciliation worker (not implemented in this PR); this Issue
+  // pipeline never sets cleanupLockedAt/cleanupClaimToken itself, only
+  // cleanupAttemptCount/lastCleanupFailureCategory on its own
+  // best-effort compensating-removal attempt.
+  cleanupLockedAt   DateTime?
+  cleanupClaimToken String?   @db.Uuid
+
+  cleanupAttemptCount Int @default(0)
+
+  // A bounded, predefined category only (e.g. "remove_failed",
+  // "not_configured") — never a raw third-party error message, response
+  // body, signed URL, or object path. See src/lib/invoices/pdf/storage.ts's
+  // own closed failure-reason type for the exact allowed values.
+  lastCleanupFailureCategory String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([invoiceId])
+  @@index([status, createdAt])
+  @@index([status, cleanupLockedAt])
 }
 
 // Append-only audit log. Never updated or deleted by app code (see

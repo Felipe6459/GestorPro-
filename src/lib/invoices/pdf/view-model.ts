@@ -192,9 +192,10 @@ export function toRendererRecipientPresentation(snapshot: InvoiceRecipientSnapsh
  * `calculateInvoiceTotals()` — never a second, independently-supplied
  * `lineItems`/`flatAmount`/`totals` set that could disagree with it. This
  * builder performs presentation formatting only; it never calls
- * `calculateInvoiceTotals()` itself. The future Issue/Legacy service is
- * responsible for calling the authoritative calculator exactly once and
- * passing its one successful result here.
+ * `calculateInvoiceTotals()` itself. The Issue service
+ * (src/lib/invoices/pdf/issue-invoice.ts) and the future Legacy Archive
+ * service are each responsible for calling the authoritative calculator
+ * exactly once and passing its one successful result here.
  */
 export type SuccessfulInvoiceCalculation = Extract<InvoiceCalculationResult, { ok: true }>;
 

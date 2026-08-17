@@ -55,6 +55,7 @@ export function InvoiceForm({
   defaultValues,
   submitLabel = "Create invoice",
   pendingLabel = "Creating…",
+  onDirtyChange,
 }: {
   action: (prevState: InvoiceFormState, formData: FormData) => Promise<InvoiceFormState>;
   projects: { id: string; label: string }[];
@@ -63,6 +64,16 @@ export function InvoiceForm({
   defaultValues?: InvoiceFormDefaults;
   submitLabel?: string;
   pendingLabel?: string;
+  /**
+   * Invoice System Official Slice 3, sub-PR 3b — fires the first time (and
+   * every time) the user changes anything, via this component's own
+   * existing centralized error-dismissal path below — every editable
+   * field already routes through dismissCurrentErrors() on change, so
+   * this needed no new per-field wiring. Never fires on initial mount.
+   * Optional so every other current caller of InvoiceForm (the plain
+   * create page, the duplicate page) is unaffected.
+   */
+  onDirtyChange?: () => void;
 }) {
   const [state, formAction, pending] = useActionState(action, initialState);
 
@@ -77,6 +88,7 @@ export function InvoiceForm({
 
   function dismissCurrentErrors() {
     setDismissedState(state);
+    onDirtyChange?.();
   }
 
   const [mode, setMode] = useState<"flat" | "itemized">(defaultValues?.mode ?? "flat");
