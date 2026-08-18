@@ -844,8 +844,11 @@ it could silently deny a legitimate request on relation drift. The
 route deliberately never calls `recordPortalDownloadRequest()` — the
 existing Portal Analytics "Download-link requests" metric (see
 `docs/analytics-architecture.md`) remains scoped to Attachment downloads
-only and is not redefined by this route. Legacy Archive (§8.3) and
-orphan reconciliation (§8.5) remain target design only.
+only and is not redefined by this route. Legacy Archive (§8.3) is now
+implemented (PR #79, merged as
+`9f8a802b0bcf07535706d7dfe1a8733913021d8e`) — see §8.3's own operational
+status note below; orphan reconciliation (§8.5) remains target design
+only.
 
 ### 8.3 Legacy invoices
 
@@ -877,6 +880,23 @@ Uses §4.6's exact classification, never `createdAt`:
   lets staff opt a legacy invoice into the same snapshot+archival
   pipeline retroactively, once, on demand — never automatic, never
   triggered by a GET.
+
+**Operational status (recorded in the 2026-08-18 documentation refresh
+after PR #79, merged as
+`9f8a802b0bcf07535706d7dfe1a8733913021d8e`): this section's retroactive
+archival design is now implemented**, as the OWNER-only
+`archiveLegacyInvoiceAction`/`archiveLegacyInvoice()` Server Action +
+service (a dedicated Server Action, not a Route Handler `POST`, but the
+same "explicit, on-demand, never automatic, never triggered by a GET"
+contract this section requires), gated by `classifyInvoiceArchival()`
+exactly as designed, with financial fields recalculated from persisted
+primitives and required to exactly match the persisted `Invoice.amount`
+before any write. The retroactively-created snapshot/PDF is retrieved
+through the same already-shipped staff/Portal signed-URL routes
+described in §8.2 above, unchanged. **The live, best-effort read-only
+preview on GET described earlier in this section ("may render...")
+remains target design only — PR #79 added no preview route and performs
+no work on GET.**
 
 ### 8.4 Logo handling
 
