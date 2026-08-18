@@ -816,21 +816,36 @@ live-render fallback (see §8.3).
   silently papered over for the client.
 
 **Operational status (recorded in the 2026-08-18 documentation refresh
-after sub-PR 3c/PR #75, merged as
-`12ce09274de7192ecebd24f0818a9752a8f0dcb0`): the staff half of this
-section is now implemented exactly as designed above** —
-`GET /api/invoices/[id]/pdf` ships with `getCurrentUserOrganization()`
-authorization (no additional role gate — every Membership role may
-download), a dedicated `INVOICE_PDF_DOWNLOAD_LIMIT` rate limiter checked
-before any Invoice-domain query, `classifyInvoiceArchival()` as the
-eligibility gate, an added ledger-consistency proof against
-`InvoicePdfArchiveObject` before ever signing (not originally spelled out
-in this section's own text, an implementation-time hardening not a
-design deviation), the `307`/`Cache-Control: private, no-store`/safe-
-filename contract exactly as specified, and strict read-only behavior.
-**The portal half of this section — `GET /api/portal/invoices/[id]/pdf`
-— remains target design only, not yet implemented.** Legacy Archive
-(§8.3) and orphan reconciliation (§8.5) also remain target design only.
+after PR #77, merged as
+`b6113c17de78d9d6a86b0911f7a4bac3c8d29ab1`): both halves of this
+section are now implemented exactly as designed above.** The staff half
+shipped first (sub-PR 3c/PR #75, merged as
+`12ce09274de7192ecebd24f0818a9752a8f0dcb0`) — `GET /api/invoices/[id]/pdf`
+ships with `getCurrentUserOrganization()` authorization (no additional
+role gate — every Membership role may download), a dedicated
+`INVOICE_PDF_DOWNLOAD_LIMIT` rate limiter checked before any
+Invoice-domain query, `classifyInvoiceArchival()` as the eligibility
+gate, an added ledger-consistency proof against `InvoicePdfArchiveObject`
+before ever signing (not originally spelled out in this section's own
+text, an implementation-time hardening not a design deviation), the
+`307`/`Cache-Control: private, no-store`/safe-filename contract exactly
+as specified, and strict read-only behavior. **The portal half —
+`GET /api/portal/invoices/[id]/pdf` — then shipped in PR #77**, reusing
+the staff route's `classifyInvoiceArchival()` classifier, ledger-
+consistency proof, canonical-path rebuild, and `createInvoicePdfSignedUrl()`
+signing helper unchanged; its own additions are `getCurrentPortalUser()`
+authorization, a dedicated isolated `PORTAL_INVOICE_PDF_DOWNLOAD_LIMIT`
+rate limiter (120/hour per portal user id, in-memory/per-instance like
+every other limiter in this codebase), and a Portal-scoped Invoice
+lookup keyed by `clientId`, `organizationId`, and `project: { clientId }`
+— **`project.organizationId` is deliberately not a predicate**, since
+`Project.organizationId` is nullable (`onDelete: SetNull`) and requiring
+it could silently deny a legitimate request on relation drift. The
+route deliberately never calls `recordPortalDownloadRequest()` — the
+existing Portal Analytics "Download-link requests" metric (see
+`docs/analytics-architecture.md`) remains scoped to Attachment downloads
+only and is not redefined by this route. Legacy Archive (§8.3) and
+orphan reconciliation (§8.5) remain target design only.
 
 ### 8.3 Legacy invoices
 
