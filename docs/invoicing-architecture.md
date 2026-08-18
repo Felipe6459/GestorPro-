@@ -815,6 +815,23 @@ live-render fallback (see §8.3).
   error/recovery state from §8.1, surfaced to staff for remediation, not
   silently papered over for the client.
 
+**Operational status (recorded in the 2026-08-18 documentation refresh
+after sub-PR 3c/PR #75, merged as
+`12ce09274de7192ecebd24f0818a9752a8f0dcb0`): the staff half of this
+section is now implemented exactly as designed above** —
+`GET /api/invoices/[id]/pdf` ships with `getCurrentUserOrganization()`
+authorization (no additional role gate — every Membership role may
+download), a dedicated `INVOICE_PDF_DOWNLOAD_LIMIT` rate limiter checked
+before any Invoice-domain query, `classifyInvoiceArchival()` as the
+eligibility gate, an added ledger-consistency proof against
+`InvoicePdfArchiveObject` before ever signing (not originally spelled out
+in this section's own text, an implementation-time hardening not a
+design deviation), the `307`/`Cache-Control: private, no-store`/safe-
+filename contract exactly as specified, and strict read-only behavior.
+**The portal half of this section — `GET /api/portal/invoices/[id]/pdf`
+— remains target design only, not yet implemented.** Legacy Archive
+(§8.3) and orphan reconciliation (§8.5) also remain target design only.
+
 ### 8.3 Legacy invoices
 
 Uses §4.6's exact classification, never `createdAt`:
