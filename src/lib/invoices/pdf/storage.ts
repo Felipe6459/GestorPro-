@@ -1,9 +1,10 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { headers } from "next/headers";
 import { TEST_MODE } from "@/lib/test-mode";
 import { testStorageUploadIfAbsent, testStorageRemove } from "@/lib/storage/test-storage";
 import { getStorageAdminClient } from "@/lib/storage/admin-client";
-import { ATTACHMENTS_BUCKET } from "@/lib/storage/attachments-config";
+import { ATTACHMENTS_BUCKET, SIGNED_URL_TTL_SECONDS } from "@/lib/storage/attachments-config";
 
 /**
  * Invoice System Slice 3, sub-PR 3b — private Invoice PDF storage.
@@ -148,5 +149,100 @@ export async function removeInvoicePdfObject(
     return error ? { ok: false, reason: "remove_failed" } : { ok: true };
   } catch {
     return { ok: false, reason: "remove_failed" };
+  }
+}
+
+// Invoice System Official Slice 3, sub-PR 3c — deterministic, exact
+// filename contract for the staff signed-download route. MAX_STEM_LENGTH
+// bounds the sanitized invoice-number component; FALLBACK_FILENAME is
+// returned whenever sanitization empties that component entirely (an
+// empty, Unicode-only, or punctuation-only invoice number).
+const MAX_STEM_LENGTH = 100;
+const FALLBACK_FILENAME = "Invoice.pdf";
+
+/**
+ * Exact execution order (never reordered — each step depends on the
+ * previous one already having run):
+ *  1. Trim.
+ *  2. Unicode-normalize to NFKD, splitting composed/accented characters
+ *     into a base character plus combining marks.
+ *  3. Strip combining marks (U+0300-U+036F).
+ *  4. Replace every RUN of characters outside [A-Za-z0-9] with exactly one
+ *     hyphen — a run, not per-character removal, so e.g. "A/B" becomes
+ *     "A-B", never the character-joining "AB". This one step alone
+ *     removes every remaining non-ASCII character, every control
+ *     character (including NUL/CR/LF), both quote characters, and both
+ *     path separators (`/`, `\`).
+ *  5. Strip a leading and trailing hyphen, if present.
+ *  6. Truncate to MAX_STEM_LENGTH characters.
+ *  7. Strip a trailing hyphen again — truncation in step 6 can newly
+ *     expose one if the cut point lands inside what was an interior
+ *     separator run.
+ *  8. Empty result -> return the fixed FALLBACK_FILENAME outright.
+ *     Otherwise -> "Invoice-<stem>.pdf".
+ *
+ * Every character in a non-fallback result is one of [A-Za-z0-9-] (the
+ * stem) plus the fixed "Invoice-"/".pdf" literals — nothing after step 4
+ * ever reintroduces a disallowed character. Maximum length: 8 ("Invoice-")
+ * + 100 (stem) + 4 (".pdf") = 112 ASCII bytes; the fallback path is fixed
+ * at 12 bytes ("Invoice.pdf").
+ */
+export function buildInvoicePdfDownloadFilename(rawInvoiceNumber: string): string {
+  const trimmed = rawInvoiceNumber.trim();
+  const decomposed = trimmed.normalize("NFKD");
+  const marksRemoved = decomposed.replace(/[\u0300-\u036f]/g, "");
+  const collapsed = marksRemoved.replace(/[^A-Za-z0-9]+/g, "-");
+  const edgesTrimmed = collapsed.replace(/^-+/, "").replace(/-+$/, "");
+  const truncated = edgesTrimmed.slice(0, MAX_STEM_LENGTH);
+  const stem = truncated.replace(/-+$/, "");
+
+  return stem.length > 0 ? `Invoice-${stem}.pdf` : FALLBACK_FILENAME;
+}
+
+export type InvoicePdfSignedUrlFailureReason = "storage_not_configured" | "signed_url_failed";
+
+export type InvoicePdfSignedUrlResult = { ok: true; url: string } | { ok: false; reason: InvoicePdfSignedUrlFailureReason };
+
+/**
+ * Issues a short-lived signed download URL for exactly one archived
+ * Invoice PDF object. Accepts only a structured `identity` — the path is
+ * always rebuilt internally via `buildInvoicePdfStoragePath()`, exactly
+ * like upload/remove above, never accepted as a raw string. The download
+ * filename is generated internally from `invoiceNumber` (never accepted
+ * pre-built), and the TTL is always the fixed `SIGNED_URL_TTL_SECONDS`
+ * ceiling — there is no `expiresInSeconds` parameter for a caller to
+ * override.
+ */
+export async function createInvoicePdfSignedUrl(
+  { identity, invoiceNumber }: { identity: InvoicePdfObjectIdentity; invoiceNumber: string },
+  client?: SupabaseClient,
+): Promise<InvoicePdfSignedUrlResult> {
+  const path = buildInvoicePdfStoragePath(identity);
+  const filename = buildInvoicePdfDownloadFilename(invoiceNumber);
+
+  if (TEST_MODE) {
+    // No real Storage to sign a URL against — points at the TEST_MODE-only
+    // serving route instead (src/app/api/e2e-test-storage/[...path]/route.ts,
+    // itself gated on this same TEST_MODE flag), mirroring
+    // createAttachmentSignedUrl()'s own identical technique exactly.
+    // headers() reads the incoming request's own host — never a hardcoded
+    // origin — and this always runs inside a Route Handler. Deterministic:
+    // no random component, no timestamp.
+    const h = await headers();
+    const host = h.get("host") ?? "127.0.0.1";
+    const proto = h.get("x-forwarded-proto") ?? "http";
+    return { ok: true, url: `${proto}://${host}/api/e2e-test-storage/${ATTACHMENTS_BUCKET}/${path}` };
+  }
+
+  const resolved = resolveClient(client);
+  if (!resolved) return { ok: false, reason: "storage_not_configured" };
+
+  try {
+    const { data, error } = await resolved.storage.from(ATTACHMENTS_BUCKET).createSignedUrl(path, SIGNED_URL_TTL_SECONDS, {
+      download: filename,
+    });
+    return error || !data?.signedUrl ? { ok: false, reason: "signed_url_failed" } : { ok: true, url: data.signedUrl };
+  } catch {
+    return { ok: false, reason: "signed_url_failed" };
   }
 }

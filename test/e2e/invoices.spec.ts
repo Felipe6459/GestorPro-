@@ -950,9 +950,14 @@ test.describe("Issue/finalization — Invoice System Official Slice 3, sub-PR 3b
     await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
   });
 
-  test("no staff PDF download button/link exists anywhere on a freshly-issued invoice's read-only view (sub-PR 3c's own scope)", async ({ context, baseURL, page }) => {
+  test("no staff PDF download link exists for an invariant_violation invoice (finalizedAt set, no archive fields) — sub-PR 3c's classifier gate", async ({ context, baseURL, page }) => {
     await injectTestSession(context, { id: fixtures.owner.id, email: fixtures.owner.email }, baseURL!);
 
+    // finalizedAt set but pdfStoragePath/pdfGeneratedAt/snapshots all null
+    // on a non-DRAFT row is classifyInvoiceArchival()'s own
+    // invariant_violation("incomplete_archive_fields") state — never
+    // "archived", and per sub-PR 3c's own design must never expose a
+    // working PDF link even though the invoice is non-DRAFT.
     const invoice = await dbQuery<{ id: string }>("invoice", "create", {
       data: {
         invoiceNumber: `E2E-ISSUE-NOPDF-${fixtures.runId}`,
@@ -974,6 +979,103 @@ test.describe("Issue/finalization — Invoice System Official Slice 3, sub-PR 3b
     }
     await expect(page.getByRole("link", { name: /pdf/i })).toHaveCount(0);
 
+    await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
+  });
+
+  test("Download PDF appears only after a real Issue, and the real staff PDF route serves the archived object through the TEST_MODE redirect chain", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+
+    const invoice = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-PDF-DOWNLOAD-${fixtures.runId}`,
+        status: "DRAFT",
+        amount: "300.00",
+        subtotal: "300.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+
+    await page.goto(`/invoices/${invoice.id}/edit`);
+    await expect(page.getByRole("link", { name: "Download PDF" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Issue invoice" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Issue invoice" }).click();
+    await expect(page.getByText("Invoice issued")).toBeVisible();
+    await expect(page.getByText("Issued", { exact: true })).toBeVisible();
+
+    const downloadLink = page.getByRole("link", { name: "Download PDF" });
+    await expect(downloadLink).toHaveCount(1);
+    const downloadHref = await downloadLink.getAttribute("href");
+    expect(downloadHref).toBe(`/api/invoices/${invoice.id}/pdf`);
+
+    // Exact, deterministically-ordered state for everything the download
+    // route could conceivably touch: the complete Invoice row (every
+    // scalar field — no `select`, so pdfStoragePath/finalizedAt/
+    // pdfGeneratedAt/documentVersion/issuerSnapshot/recipientSnapshot/
+    // amount/subtotal/discountAmount/taxAmount/paidAt/updatedAt are all
+    // included automatically), every InvoiceLineItem, and every
+    // InvoicePdfArchiveObject row for this exact Invoice (id/
+    // organizationId/invoiceId/documentVersion/storagePath/status/
+    // referencedAt/cleanedAt/cleanupLockedAt/cleanupClaimToken/
+    // cleanupAttemptCount/lastCleanupFailureCategory/createdAt/updatedAt
+    // — the real, complete prisma/schema.prisma field set, confirmed by
+    // direct schema read, not guessed), plus the Activity/Notification
+    // rows scoped to this exact Invoice the same way the integration
+    // suite's own captureInvoiceState() does.
+    async function captureInvoiceSnapshot(invoiceId: string) {
+      const [invoiceRow, lineItems, ledgerRows, activities, notifications] = await Promise.all([
+        dbQuery<Record<string, unknown>>("invoice", "findUniqueOrThrow", { where: { id: invoiceId } }),
+        dbQuery<Record<string, unknown>[]>("invoiceLineItem", "findMany", {
+          where: { invoiceId },
+          orderBy: [{ position: "asc" }, { id: "asc" }],
+        }),
+        dbQuery<Record<string, unknown>[]>("invoicePdfArchiveObject", "findMany", {
+          where: { invoiceId },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        }),
+        dbQuery<Record<string, unknown>[]>("activity", "findMany", {
+          where: { organizationId: fixtures.orgA.id, entityType: "INVOICE", entityId: invoiceId },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        }),
+        dbQuery<Record<string, unknown>[]>("notification", "findMany", {
+          where: { organizationId: fixtures.orgA.id, entityType: "INVOICE", entityId: invoiceId },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        }),
+      ]);
+      return { invoice: invoiceRow, lineItems, ledgerRows, activities, notifications };
+    }
+
+    const before = await captureInvoiceSnapshot(invoice.id);
+    // Sanity check that this capture is actually meaningful — the real
+    // Issue flow above must have produced exactly one REFERENCED ledger
+    // row, or a before===after comparison against an empty array would
+    // prove nothing about ledger-field preservation.
+    expect(before.ledgerRows).toHaveLength(1);
+    expect(before.ledgerRows[0].status).toBe("REFERENCED");
+
+    const redirectResponse = await page.request.get(downloadHref!, { maxRedirects: 0 });
+    expect(redirectResponse.status()).toBe(307);
+    expect(redirectResponse.headers()["cache-control"]).toBe("private, no-store");
+    expect(redirectResponse.headers()["location"]).toContain("/api/e2e-test-storage/attachments/");
+
+    const fileResponse = await page.request.get(downloadHref!);
+    expect(fileResponse.status()).toBe(200);
+    const bytes = await fileResponse.body();
+    expect(bytes.subarray(0, 4).toString("latin1")).toBe("%PDF");
+
+    const after = await captureInvoiceSnapshot(invoice.id);
+    // Proves the download changed none of: Invoice.updatedAt, any
+    // archive/finalization field, any line item, ledger status,
+    // referencedAt, cleanup fields, or ledger timestamps — not merely
+    // that the three fields the prior version of this test checked
+    // stayed the same.
+    expect(after).toEqual(before);
+
+    await dbQuery("invoicePdfArchiveObject", "deleteMany", { where: { invoiceId: invoice.id } });
     await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
   });
 });

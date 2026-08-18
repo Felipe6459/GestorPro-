@@ -152,15 +152,22 @@ describe("module-boundary — no Client Component imports any new PDF module", (
   });
 });
 
-describe("module-boundary — no route/action other than the sub-PR 3b Issue action imports the PDF modules", () => {
+describe("module-boundary — no route/action other than the sub-PR 3b Issue action and the sub-PR 3c PDF route imports the PDF modules", () => {
   // Sub-PR 3a's own version of this test asserted zero route/action
-  // imports at all (nothing was wired yet). Sub-PR 3b intentionally wires
+  // imports at all (nothing was wired yet). Sub-PR 3b intentionally wired
   // exactly one — the dedicated Issue Server Action — per its own
   // "the dedicated Issue service is the only new DRAFT -> SENT path"
-  // requirement. This still catches any OTHER route/action accidentally
-  // reaching into src/lib/invoices/pdf/ (e.g. a future accidental import
-  // from an unrelated action), which would be a real scope violation.
-  const EXPECTED_PDF_IMPORTING_FILE = "src/app/(dashboard)/invoices/[id]/edit/issue-actions.ts";
+  // requirement. Sub-PR 3c adds exactly one more, deliberate entry: the
+  // staff signed PDF download Route Handler, which must call
+  // classifyInvoiceArchival()/buildInvoicePdfStoragePath()/
+  // createInvoicePdfSignedUrl(). A precise allowlist (not a broad
+  // directory allowance) still catches any OTHER route/action
+  // accidentally reaching into src/lib/invoices/pdf/, which would be a
+  // real scope violation.
+  const EXPECTED_PDF_IMPORTING_FILES = [
+    "src/app/(dashboard)/invoices/[id]/edit/issue-actions.ts",
+    "src/app/api/invoices/[id]/pdf/route.ts",
+  ];
 
   const routeAndActionFiles = walkTsFiles("src/app").filter(
     (file) => file.endsWith("route.ts") || file.endsWith("actions.ts") || file.endsWith("action.ts"),
@@ -170,12 +177,12 @@ describe("module-boundary — no route/action other than the sub-PR 3b Issue act
     expect(routeAndActionFiles.length).toBeGreaterThan(0);
   });
 
-  it("the expected Issue action file exists and does import from @/lib/invoices/pdf", () => {
-    expect(routeAndActionFiles).toContain(EXPECTED_PDF_IMPORTING_FILE);
-    expect(readSource(EXPECTED_PDF_IMPORTING_FILE)).toContain("@/lib/invoices/pdf");
+  it.each(EXPECTED_PDF_IMPORTING_FILES)("%s exists and does import from @/lib/invoices/pdf", (file) => {
+    expect(routeAndActionFiles).toContain(file);
+    expect(readSource(file)).toContain("@/lib/invoices/pdf");
   });
 
-  it.each(routeAndActionFiles.filter((file) => file !== EXPECTED_PDF_IMPORTING_FILE))(
+  it.each(routeAndActionFiles.filter((file) => !EXPECTED_PDF_IMPORTING_FILES.includes(file)))(
     "%s does not import from @/lib/invoices/pdf",
     (file) => {
       expect(readSource(file)).not.toContain("@/lib/invoices/pdf");

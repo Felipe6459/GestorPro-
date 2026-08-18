@@ -8,10 +8,19 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 // TEST_MODE branch runs directly, not a mock of it.
 vi.mock("server-only", () => ({}));
 
+// Invoice System Official Slice 3, sub-PR 3c — createInvoicePdfSignedUrl()'s
+// own TEST_MODE branch calls next/headers' headers() to build a same-origin
+// URL; this file is a plain Vitest unit test with no real Next.js request
+// context, so the module is mocked with a fixed, deterministic
+// host/protocol pair — never a real request, never randomness.
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ host: "e2e-test.local", "x-forwarded-proto": "https" }),
+}));
+
 const ORIGINAL_TEST_MODE = process.env.TEST_MODE;
 process.env.TEST_MODE = "1";
 
-const { buildInvoicePdfStoragePath, uploadInvoicePdfObject, removeInvoicePdfObject } = await import(
+const { buildInvoicePdfStoragePath, uploadInvoicePdfObject, removeInvoicePdfObject, createInvoicePdfSignedUrl } = await import(
   "@/lib/invoices/pdf/storage"
 );
 const { testStorageRead } = await import("@/lib/storage/test-storage");
@@ -199,5 +208,167 @@ describe("uploadInvoicePdfObject — production adapter passes upsert: false", (
 
     process.env.TEST_MODE = originalTestMode;
     vi.resetModules();
+  });
+});
+
+describe("createInvoicePdfSignedUrl — TEST_MODE branch", () => {
+  const prodIdentity = { organizationId: ORG_ID, invoiceId: INVOICE_ID, documentVersion: 1, archiveId: ARCHIVE_ID };
+
+  it("rebuilds the canonical path internally and returns a deterministic same-origin e2e-test-storage URL", async () => {
+    const result = await createInvoicePdfSignedUrl({ identity: prodIdentity, invoiceNumber: "INV-2026-001" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+
+    const expectedPath = buildInvoicePdfStoragePath(prodIdentity);
+    expect(result.url).toBe(`https://e2e-test.local/api/e2e-test-storage/attachments/${expectedPath}`);
+  });
+
+  it("two identical calls return identical results — deterministic, no randomness or timestamp", async () => {
+    const first = await createInvoicePdfSignedUrl({ identity: prodIdentity, invoiceNumber: "INV-2026-001" });
+    const second = await createInvoicePdfSignedUrl({ identity: prodIdentity, invoiceNumber: "INV-2026-001" });
+    expect(first).toEqual(second);
+  });
+
+  it("never calls a Supabase client — the TEST_MODE branch returns before any client is resolved, even when one is explicitly supplied", async () => {
+    // Direct evidence, not inference: a fake client IS supplied (unlike
+    // the sibling "no client argument at all" case this replaces), with
+    // its own storage.from spied — if TEST_MODE's own branch reached the
+    // client-resolution/signing code at all, this spy would record a
+    // call. It never does, proving the TEST_MODE `if` returns before
+    // resolveClient()/storage.from() are ever reached, not merely that
+    // no client happened to be available to call.
+    const fromSpy = vi.fn();
+    const fakeClient = { storage: { from: fromSpy } } as unknown as Parameters<typeof createInvoicePdfSignedUrl>[1];
+
+    const result = await createInvoicePdfSignedUrl({ identity: prodIdentity, invoiceNumber: "INV-2026-001" }, fakeClient);
+
+    const expectedPath = buildInvoicePdfStoragePath(prodIdentity);
+    expect(result).toEqual({ ok: true, url: `https://e2e-test.local/api/e2e-test-storage/attachments/${expectedPath}` });
+    expect(fromSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid structured identity before any external call — buildInvoicePdfStoragePath's own validation runs first", async () => {
+    await expect(
+      createInvoicePdfSignedUrl({ identity: { ...prodIdentity, organizationId: "not-a-uuid" }, invoiceNumber: "INV-2026-001" }),
+    ).rejects.toThrow(/organizationId/);
+  });
+});
+
+describe("createInvoicePdfSignedUrl — production adapter", () => {
+  const prodIdentity = { organizationId: ORG_ID, invoiceId: INVOICE_ID, documentVersion: 1, archiveId: ARCHIVE_ID };
+
+  it("calls storage.from('attachments').createSignedUrl(rebuiltPath, 60, { download: safeFilename }) and succeeds", async () => {
+    const originalTestMode = process.env.TEST_MODE;
+    try {
+      delete process.env.TEST_MODE;
+      vi.resetModules();
+      const {
+        createInvoicePdfSignedUrl: signProd,
+        buildInvoicePdfStoragePath: buildPathProd,
+        buildInvoicePdfDownloadFilename: buildFilenameProd,
+      } = await import("@/lib/invoices/pdf/storage");
+
+      const createSignedUrlMock = vi.fn().mockResolvedValue({ data: { signedUrl: "https://storage.example.test/signed/mock.pdf" }, error: null });
+      const fromMock = vi.fn().mockReturnValue({ createSignedUrl: createSignedUrlMock });
+      const fakeClient = { storage: { from: fromMock } } as unknown as Parameters<typeof signProd>[1];
+
+      const result = await signProd({ identity: prodIdentity, invoiceNumber: "INV-2026-001" }, fakeClient);
+
+      expect(result).toEqual({ ok: true, url: "https://storage.example.test/signed/mock.pdf" });
+      expect(fromMock).toHaveBeenCalledWith("attachments");
+      expect(createSignedUrlMock).toHaveBeenCalledWith(buildPathProd(prodIdentity), 60, {
+        download: buildFilenameProd("INV-2026-001"),
+      });
+    } finally {
+      process.env.TEST_MODE = originalTestMode;
+      vi.resetModules();
+    }
+  });
+
+  it("returns storage_not_configured when no client can be resolved and none is injected", async () => {
+    const originalTestMode = process.env.TEST_MODE;
+    try {
+      delete process.env.TEST_MODE;
+      vi.resetModules();
+      const { createInvoicePdfSignedUrl: signProd } = await import("@/lib/invoices/pdf/storage");
+
+      // No client injected, and no real Supabase admin client is
+      // configured in this test environment — resolveClient() falls
+      // through to its own catch branch.
+      const result = await signProd({ identity: prodIdentity, invoiceNumber: "INV-2026-001" });
+      expect(result).toEqual({ ok: false, reason: "storage_not_configured" });
+    } finally {
+      process.env.TEST_MODE = originalTestMode;
+      vi.resetModules();
+    }
+  });
+
+  it("maps a returned provider error to signed_url_failed", async () => {
+    const originalTestMode = process.env.TEST_MODE;
+    try {
+      delete process.env.TEST_MODE;
+      vi.resetModules();
+      const { createInvoicePdfSignedUrl: signProd } = await import("@/lib/invoices/pdf/storage");
+
+      const fakeClient = {
+        storage: {
+          from: vi.fn().mockReturnValue({
+            createSignedUrl: vi.fn().mockResolvedValue({ data: null, error: { message: "provider rejected" } }),
+          }),
+        },
+      } as unknown as Parameters<typeof signProd>[1];
+
+      const result = await signProd({ identity: prodIdentity, invoiceNumber: "INV-2026-001" }, fakeClient);
+      expect(result).toEqual({ ok: false, reason: "signed_url_failed" });
+    } finally {
+      process.env.TEST_MODE = originalTestMode;
+      vi.resetModules();
+    }
+  });
+
+  it("maps a thrown provider error to signed_url_failed, never letting the raw exception escape", async () => {
+    const originalTestMode = process.env.TEST_MODE;
+    try {
+      delete process.env.TEST_MODE;
+      vi.resetModules();
+      const { createInvoicePdfSignedUrl: signProd } = await import("@/lib/invoices/pdf/storage");
+
+      const fakeClient = {
+        storage: {
+          from: vi.fn().mockReturnValue({
+            createSignedUrl: vi.fn().mockRejectedValue(new Error("network failure")),
+          }),
+        },
+      } as unknown as Parameters<typeof signProd>[1];
+
+      const result = await signProd({ identity: prodIdentity, invoiceNumber: "INV-2026-001" }, fakeClient);
+      expect(result).toEqual({ ok: false, reason: "signed_url_failed" });
+    } finally {
+      process.env.TEST_MODE = originalTestMode;
+      vi.resetModules();
+    }
+  });
+
+  it("maps a missing/empty signedUrl to signed_url_failed even when no error is reported", async () => {
+    const originalTestMode = process.env.TEST_MODE;
+    try {
+      delete process.env.TEST_MODE;
+      vi.resetModules();
+      const { createInvoicePdfSignedUrl: signProd } = await import("@/lib/invoices/pdf/storage");
+
+      const fakeClient = {
+        storage: {
+          from: vi.fn().mockReturnValue({
+            createSignedUrl: vi.fn().mockResolvedValue({ data: { signedUrl: "" }, error: null }),
+          }),
+        },
+      } as unknown as Parameters<typeof signProd>[1];
+
+      const result = await signProd({ identity: prodIdentity, invoiceNumber: "INV-2026-001" }, fakeClient);
+      expect(result).toEqual({ ok: false, reason: "signed_url_failed" });
+    } finally {
+      process.env.TEST_MODE = originalTestMode;
+      vi.resetModules();
+    }
   });
 });
