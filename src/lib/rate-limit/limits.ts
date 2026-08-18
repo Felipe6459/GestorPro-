@@ -125,6 +125,19 @@ export const INVOICE_PDF_DOWNLOAD_LIMIT: RateLimitConfig = {
   windowMs: HOUR_MS,
 };
 
+// Invoice System Official Slice 3, Portal Invoice PDF access — isolated
+// bucket from INVOICE_PDF_DOWNLOAD_LIMIT (staff) and
+// PORTAL_ATTACHMENT_DOWNLOAD_LIMIT (a different Portal resource); a
+// portal identity's Invoice-PDF downloads must never throttle or be
+// throttled by either. Same shape/ceiling as its siblings; per
+// authenticated portal user id. Remains the existing in-memory,
+// per-instance store — not distributed across server instances.
+export const PORTAL_INVOICE_PDF_DOWNLOAD_LIMIT: RateLimitConfig = {
+  scope: "portal-invoice-pdf-download",
+  limit: 120,
+  windowMs: HOUR_MS,
+};
+
 // Sale-Ready Phase A.1 (Business Identity), PR4 — per OWNER user id (only
 // OWNER can ever call this). A logo is replaced rarely in normal use; this
 // ceiling is about abuse (e.g. a compromised OWNER session scripting

@@ -93,6 +93,17 @@ export default async function PortalInvoiceDetailPage({
           )}
         </dl>
 
+        {invoice.hasArchivedPdf && (
+          <div className="mt-6">
+            <a
+              href={`/api/portal/invoices/${invoice.id}/pdf`}
+              className="rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+            >
+              Download PDF
+            </a>
+          </div>
+        )}
+
         <div className="mt-8 border-t border-gray-200 pt-6">
           <h2 className="text-sm font-semibold text-gray-900">Attachments</h2>
           <PortalAttachmentsList

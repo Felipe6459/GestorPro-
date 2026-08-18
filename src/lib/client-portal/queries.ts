@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { ProjectStatus, InvoiceStatus } from "@/generated/prisma/enums";
+import { classifyInvoiceArchival } from "@/lib/invoices/pdf/classify-archival";
 
 // Same definition the staff Dashboard KPI already uses for "active
 // projects" (src/app/(dashboard)/dashboard/query.ts) — kept identical so
@@ -66,6 +67,15 @@ export type PortalInvoiceDetail = PortalInvoiceSummary & {
    * portal page's JSX.
    */
   projectOrganizationId: string | null;
+  /**
+   * Invoice System Official Slice 3, Portal Invoice PDF access —
+   * classifyInvoiceArchival()'s own "archived" outcome, computed here from
+   * fields never exposed on this type. The page renders a Download PDF
+   * link only when this is true; pdfStoragePath/documentVersion/
+   * issuerSnapshot/recipientSnapshot/any ledger data are never added to
+   * this type and never cross into any portal page's JSX.
+   */
+  hasArchivedPdf: boolean;
 };
 
 export type PortalOverview = {
@@ -249,6 +259,12 @@ export async function getPortalInvoice(
       paidAt: true,
       client: { select: { name: true } },
       project: { select: { name: true, organizationId: true } },
+      finalizedAt: true,
+      pdfStoragePath: true,
+      pdfGeneratedAt: true,
+      issuerSnapshot: true,
+      recipientSnapshot: true,
+      documentVersion: true,
     },
   });
 
@@ -259,5 +275,6 @@ export async function getPortalInvoice(
     paidAt: invoice.paidAt,
     clientName: invoice.client.name,
     projectOrganizationId: invoice.project.organizationId,
+    hasArchivedPdf: classifyInvoiceArchival(invoice).kind === "archived",
   };
 }

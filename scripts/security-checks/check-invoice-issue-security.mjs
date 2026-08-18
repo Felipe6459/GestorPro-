@@ -178,13 +178,104 @@ ok = report(
   emailAttemptWrite,
 ) && ok;
 
-// 11. No Portal PDF route was introduced in this sub-PR — that remains a
-// later sub-PR's.
-const portalPdfRoute = "src/app/api/portal/invoices";
+// 11. Portal Invoice PDF access — this sub-PR's own new trust boundary,
+// verified with the same fail-closed discipline as the staff Issue
+// checks above. Replaces this check's own prior assertion that the
+// route "does not exist yet (out of scope for this sub-PR)" — accurate
+// for sub-PR 3b/3c, now obsolete since Portal Invoice PDF access is
+// exactly this sub-PR's own scope. A narrow, exact-file check (not a
+// repository-wide ban), matching this script's own established style.
+const portalPdfRoute = "src/app/api/portal/invoices/[id]/pdf/route.ts";
+
 ok = report(
-  `${portalPdfRoute} does not exist yet (out of scope for this sub-PR)`,
-  !existsSync(portalPdfRoute),
-  existsSync(portalPdfRoute) ? `Found ${portalPdfRoute} — Portal PDF access is a later sub-PR's.` : "",
+  `${portalPdfRoute} exists`,
+  existsSync(portalPdfRoute),
+  existsSync(portalPdfRoute) ? "" : `Expected ${portalPdfRoute} to exist.`,
 ) && ok;
+
+if (existsSync(portalPdfRoute)) {
+  const portalPdfContent = readFileSync(portalPdfRoute, "utf8");
+
+  // 11a. Resolves identity through the real Portal auth boundary, never
+  // the staff one.
+  ok = report(
+    `${portalPdfRoute} resolves identity via getCurrentPortalUser`,
+    portalPdfContent.includes("getCurrentPortalUser"),
+    "",
+  ) && ok;
+
+  // 11b. Uses its own dedicated, isolated rate limiter — never shares a
+  // bucket with the staff Invoice PDF route or either Attachment route.
+  ok = report(
+    `${portalPdfRoute} uses the dedicated PORTAL_INVOICE_PDF_DOWNLOAD_LIMIT`,
+    portalPdfContent.includes("PORTAL_INVOICE_PDF_DOWNLOAD_LIMIT"),
+    "",
+  ) && ok;
+
+  // 11c. classifyInvoiceArchival() remains the single eligibility gate.
+  ok = report(
+    `${portalPdfRoute} calls classifyInvoiceArchival`,
+    portalPdfContent.includes("classifyInvoiceArchival"),
+    "",
+  ) && ok;
+
+  // 11d. Rebuilds the canonical path before ever signing — never trusts
+  // a raw persisted path as the source of truth.
+  ok = report(
+    `${portalPdfRoute} calls buildInvoicePdfStoragePath before signing`,
+    portalPdfContent.includes("buildInvoicePdfStoragePath"),
+    "",
+  ) && ok;
+
+  // 11e. Reuses the existing signed-URL helper — never a duplicated
+  // bucket/TTL/filename/TEST_MODE/signing implementation.
+  ok = report(
+    `${portalPdfRoute} calls createInvoicePdfSignedUrl`,
+    portalPdfContent.includes("createInvoicePdfSignedUrl"),
+    "",
+  ) && ok;
+
+  // 11f. Never writes Portal Analytics — this sub-PR deliberately keeps
+  // the existing PortalDownloadRequest metric attachment-only. Comments
+  // stripped first: this route's own doc comment intentionally names
+  // recordPortalDownloadRequest() in prose to explain why it is *not*
+  // called, which a bare substring check against the raw file would
+  // wrongly flag as a violation.
+  const portalPdfCodeOnly = portalPdfContent.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  ok = report(
+    `${portalPdfRoute} never imports or calls recordPortalDownloadRequest`,
+    !portalPdfCodeOnly.includes("recordPortalDownloadRequest"),
+    "",
+  ) && ok;
+
+  // 11g. Never exposes a permanent public URL for a private-bucket
+  // object.
+  ok = report(
+    `${portalPdfRoute} never calls getPublicUrl`,
+    !portalPdfContent.includes("getPublicUrl"),
+    "",
+  ) && ok;
+
+  // 11h. No console logging of any kind — generic responses only, never
+  // a path/signed-URL/invoice-number/identifier printed anywhere.
+  const portalPdfConsoleCalls = grep("console\\.(log|error|warn|info|debug)\\(", portalPdfRoute);
+  ok = report(
+    `${portalPdfRoute} contains no console logging`,
+    portalPdfConsoleCalls === "",
+    portalPdfConsoleCalls,
+  ) && ok;
+
+  // 11i. The Invoice lookup is scoped by the real Portal Client-boundary
+  // fields — clientId (primary), organizationId (defense in depth), and
+  // project.clientId (defense against Invoice/Project relation drift) —
+  // never the staff organizationId-only boundary.
+  ok = report(
+    `${portalPdfRoute} scopes its Invoice query by clientId, organizationId, and project's clientId`,
+    portalPdfContent.includes("clientId") &&
+      portalPdfContent.includes("organizationId") &&
+      /project:\s*\{\s*clientId\s*\}/.test(portalPdfContent),
+    "",
+  ) && ok;
+}
 
 process.exit(ok ? 0 : 1);
