@@ -127,6 +127,23 @@ describe("archiveLegacyInvoice — Invoice System Official Slice 3, Legacy Archi
   });
 
   afterAll(async () => {
+    // Every deliberate-residue test above already cleans up its own
+    // Storage object in its own finally block; this is a defensive sweep
+    // so a successfully-archived (REFERENCED) test fixture's own real
+    // TEST_MODE object — never removed by any individual test, since a
+    // successful archive is supposed to keep its object — doesn't leak in
+    // the process-wide Storage Map once this whole describe block's rows
+    // are deleted. Scoped strictly to this suite's own two fixture
+    // organizations, matching the existing deleteMany scope exactly.
+    const residualLedgerRows = await prisma.invoicePdfArchiveObject.findMany({
+      where: { organizationId: { in: [fixtures.orgA.id, fixtures.orgB.id] } },
+    });
+    for (const row of residualLedgerRows) {
+      if (!row.invoiceId) continue;
+      const identity = { organizationId: row.organizationId, invoiceId: row.invoiceId, documentVersion: row.documentVersion, archiveId: row.id };
+      await removeInvoicePdfObject({ identity }).catch(() => {});
+    }
+
     await prisma.invoicePdfArchiveObject.deleteMany({ where: { organizationId: { in: [fixtures.orgA.id, fixtures.orgB.id] } } });
     await prisma.invoice.deleteMany({ where: { invoiceNumber: { startsWith: `${INVOICE_NUMBER_PREFIX}-${fixtures.runId}` } } });
     await cleanupTestData(fixtures);
@@ -560,20 +577,49 @@ describe("archiveLegacyInvoice — Invoice System Official Slice 3, Legacy Archi
     await prisma.invoicePdfArchiveObject.delete({ where: { id: collidingArchiveId } });
   });
 
-  it("state A — upload fails, removal succeeds, ledger transition succeeds: ledger CLEANED, object absent", async () => {
+  /**
+   * States A-D below all model an "ambiguous upload failure" — the exact
+   * real-world case compensation exists for: a real Storage write that
+   * genuinely completed, but whose provider response was lost/failed, so
+   * archiveLegacyInvoice() itself only ever sees a bounded failure result.
+   * Each test's own `upload` override calls the REAL uploadInvoicePdfObject()
+   * with the exact args (identity + rendered PDF bytes) the service
+   * generated, confirms that upload genuinely succeeded, and only then
+   * reports failure back to the caller — so testStorageRead() below is
+   * checking a real, previously-present TEST_MODE object, never an object
+   * that was never written in the first place.
+   */
+
+  it("state A — real upload succeeds, removal succeeds, ledger transition succeeds: ledger CLEANED, object absent", async () => {
     const invoice = await seedLegacyInvoice(fixtures);
     let removedPath: string | null = null;
+    // Captured, never asserted on INSIDE the override — archiveLegacyInvoice()
+    // wraps deps.upload/deps.remove in its own try/catch, so an assertion
+    // failure thrown from inside one of these callbacks would be silently
+    // swallowed and converted to an ordinary upload/remove failure result,
+    // never surfacing as a failed test. Every assertion below runs only
+    // after archiveLegacyInvoice() has fully resolved.
+    let realUploadResult: unknown;
+    let uploadedBytesPrefix: string | undefined;
 
     const result = await archiveLegacyInvoice(
       { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
       {
-        upload: async () => ({ ok: false, reason: "upload_failed" }),
+        upload: async (args) => {
+          realUploadResult = await uploadInvoicePdfObject(args);
+          uploadedBytesPrefix = testStorageRead("attachments", buildInvoicePdfStoragePath(args.identity))?.body.subarray(0, 4).toString("latin1");
+          return { ok: false, reason: "upload_failed" };
+        },
         remove: async ({ identity }) => {
           removedPath = buildInvoicePdfStoragePath(identity);
-          return { ok: true };
+          return removeInvoicePdfObject({ identity });
         },
       },
     );
+
+    // The real object genuinely existed before compensation ran.
+    expect(realUploadResult).toEqual({ ok: true });
+    expect(uploadedBytesPrefix).toBe("%PDF");
 
     expect(result).toEqual({ ok: false, error: "UPLOAD_FAILED" });
     const ledger = await prisma.invoicePdfArchiveObject.findFirstOrThrow({ where: { invoiceId: invoice.id } });
@@ -583,38 +629,74 @@ describe("archiveLegacyInvoice — Invoice System Official Slice 3, Legacy Archi
     expect(testStorageRead("attachments", ledger.storagePath)).toBeNull();
   });
 
-  it("state B — upload fails, removal succeeds, but the ledger transition itself fails: ledger stays PENDING_UPLOAD, object absent", async () => {
+  it("state B — real upload succeeds, removal succeeds, but the ledger transition itself fails: ledger stays PENDING_UPLOAD, object absent", async () => {
     const invoice = await seedLegacyInvoice(fixtures);
+    const updateManySpy = vi.spyOn(prisma.invoicePdfArchiveObject, "updateMany");
+    // Captured, asserted only after archiveLegacyInvoice() resolves — see
+    // state A's own header comment for why an in-callback assertion is
+    // unsafe (it would be swallowed by the service's own try/catch).
+    let realUploadResult: unknown;
 
-    const result = await archiveLegacyInvoice(
-      { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
-      { upload: async () => ({ ok: false, reason: "upload_failed" }), remove: async () => ({ ok: true }) },
-    );
-    expect(result).toEqual({ ok: false, error: "UPLOAD_FAILED" });
-
-    const ledger = await prisma.invoicePdfArchiveObject.findFirstOrThrow({ where: { invoiceId: invoice.id } });
-    // Removal already succeeded (object confirmed absent) above; now force
-    // the ledger row back to PENDING_UPLOAD to model "the transition write
-    // itself failed" without re-running the whole pipeline a second time —
-    // the shared helper's own unit-level behavior for this exact branch is
-    // proven directly in test/unit's own coverage; this proves the object
-    // is genuinely gone regardless of the ledger's own final resting state.
-    expect(testStorageRead("attachments", ledger.storagePath)).toBeNull();
     try {
-      expect(["CLEANED", "PENDING_UPLOAD"]).toContain(ledger.status);
+      updateManySpy.mockRejectedValueOnce(
+        new Error("simulated ledger-transition database failure — forced onto compensation's own CLEANED updateMany call"),
+      );
+
+      const result = await archiveLegacyInvoice(
+        { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
+        {
+          upload: async (args) => {
+            realUploadResult = await uploadInvoicePdfObject(args);
+            return { ok: false, reason: "upload_failed" };
+          },
+          remove: async ({ identity }) => removeInvoicePdfObject({ identity }),
+        },
+      );
+      expect(realUploadResult).toEqual({ ok: true });
+      expect(result).toEqual({ ok: false, error: "UPLOAD_FAILED" });
+
+      // The one-shot spy was consumed by compensation's own CLEANED
+      // updateMany call — the final transaction is never reached in this
+      // scenario (upload itself already failed), so no other write could
+      // have been the one intercepted.
+      expect(updateManySpy).toHaveBeenCalledTimes(1);
+      expect(updateManySpy.mock.calls[0][0]).toMatchObject({ data: { status: "CLEANED" } });
+
+      const ledger = await prisma.invoicePdfArchiveObject.findFirstOrThrow({ where: { invoiceId: invoice.id } });
+      expect(ledger.status).toBe("PENDING_UPLOAD");
+      expect(ledger.cleanedAt).toBeNull();
+      // Removal itself genuinely succeeded — only the ledger write failed.
+      expect(testStorageRead("attachments", ledger.storagePath)).toBeNull();
     } finally {
-      await prisma.invoicePdfArchiveObject.delete({ where: { id: ledger.id } }).catch(() => {});
+      updateManySpy.mockRestore();
+      const ledger = await prisma.invoicePdfArchiveObject.findFirst({ where: { invoiceId: invoice.id } });
+      if (ledger) {
+        const identity = { organizationId: ledger.organizationId, invoiceId: invoice.id, documentVersion: ledger.documentVersion, archiveId: ledger.id };
+        const removal = await removeInvoicePdfObject({ identity });
+        expect(removal).toEqual({ ok: true });
+        expect(testStorageRead("attachments", ledger.storagePath)).toBeNull();
+        await prisma.invoicePdfArchiveObject.delete({ where: { id: ledger.id } });
+      }
     }
   });
 
-  it("state C — upload fails, removal fails: ledger CLEANUP_PENDING with a bounded failure category and incremented attempt count, object present (orphaned)", async () => {
+  it("state C — real upload succeeds, removal fails: ledger CLEANUP_PENDING with a bounded failure category and incremented attempt count, object present (orphaned)", async () => {
     const invoice = await seedLegacyInvoice(fixtures);
+    let realUploadResult: unknown;
 
     const result = await archiveLegacyInvoice(
       { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
-      { upload: async () => ({ ok: false, reason: "upload_failed" }), remove: async () => ({ ok: false, reason: "remove_failed" }) },
+      {
+        upload: async (args) => {
+          realUploadResult = await uploadInvoicePdfObject(args);
+          return { ok: false, reason: "upload_failed" };
+        },
+        // Object deliberately left untouched — removal genuinely fails.
+        remove: async () => ({ ok: false, reason: "remove_failed" }),
+      },
     );
 
+    expect(realUploadResult).toEqual({ ok: true });
     expect(result).toEqual({ ok: false, error: "UPLOAD_FAILED" });
     const ledger = await prisma.invoicePdfArchiveObject.findFirstOrThrow({ where: { invoiceId: invoice.id } });
     try {
@@ -622,6 +704,9 @@ describe("archiveLegacyInvoice — Invoice System Official Slice 3, Legacy Archi
       expect(ledger.cleanupAttemptCount).toBe(1);
       expect(ledger.lastCleanupFailureCategory).toBe("remove_failed");
       expect(ledger.cleanedAt).toBeNull();
+      const stored = testStorageRead("attachments", ledger.storagePath);
+      expect(stored).not.toBeNull();
+      expect(stored!.body.subarray(0, 4).toString("latin1")).toBe("%PDF");
     } finally {
       // Deterministic cleanup — this test deliberately leaves residue,
       // which must not leak into a later test.
@@ -629,34 +714,102 @@ describe("archiveLegacyInvoice — Invoice System Official Slice 3, Legacy Archi
         identity: { organizationId: ledger.organizationId, invoiceId: invoice.id, documentVersion: ledger.documentVersion, archiveId: ledger.id },
       });
       expect(removal).toEqual({ ok: true });
+      expect(testStorageRead("attachments", ledger.storagePath)).toBeNull();
       await prisma.invoicePdfArchiveObject.delete({ where: { id: ledger.id } });
     }
   });
 
-  it("state D — remove adapter throws during compensation: converted to bounded remove_failed, never escapes, ledger CLEANUP_PENDING, object present", async () => {
+  it("state D — real upload succeeds, removal fails, AND the ledger transition also fails: ledger stays PENDING_UPLOAD, object remains present (orphaned)", async () => {
     const invoice = await seedLegacyInvoice(fixtures);
+    const updateManySpy = vi.spyOn(prisma.invoicePdfArchiveObject, "updateMany");
+    let ledgerId: string | null = null;
+    let realUploadResult: unknown;
+
+    try {
+      updateManySpy.mockRejectedValueOnce(
+        new Error("simulated ledger-transition database failure — forced onto compensation's own CLEANUP_PENDING updateMany call"),
+      );
+
+      const result = await archiveLegacyInvoice(
+        { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
+        {
+          upload: async (args) => {
+            realUploadResult = await uploadInvoicePdfObject(args);
+            return { ok: false, reason: "upload_failed" };
+          },
+          // Object deliberately left untouched — removal genuinely fails.
+          remove: async () => ({ ok: false, reason: "remove_failed" }),
+        },
+      );
+      expect(realUploadResult).toEqual({ ok: true });
+      expect(result).toEqual({ ok: false, error: "UPLOAD_FAILED" });
+
+      expect(updateManySpy).toHaveBeenCalledTimes(1);
+      expect(updateManySpy.mock.calls[0][0]).toMatchObject({ data: { status: "CLEANUP_PENDING" } });
+
+      const ledger = await prisma.invoicePdfArchiveObject.findFirstOrThrow({ where: { invoiceId: invoice.id } });
+      ledgerId = ledger.id;
+      expect(ledger.status).toBe("PENDING_UPLOAD");
+      expect(ledger.cleanupAttemptCount).toBe(0);
+      expect(ledger.lastCleanupFailureCategory).toBeNull();
+      expect(ledger.cleanedAt).toBeNull();
+      const stored = testStorageRead("attachments", ledger.storagePath);
+      expect(stored).not.toBeNull();
+      expect(stored!.body.subarray(0, 4).toString("latin1")).toBe("%PDF");
+    } finally {
+      updateManySpy.mockRestore();
+      if (ledgerId) {
+        const ledger = await prisma.invoicePdfArchiveObject.findUniqueOrThrow({ where: { id: ledgerId } });
+        const identity = { organizationId: ledger.organizationId, invoiceId: invoice.id, documentVersion: ledger.documentVersion, archiveId: ledger.id };
+        const removal = await removeInvoicePdfObject({ identity });
+        expect(removal).toEqual({ ok: true });
+        expect(testStorageRead("attachments", ledger.storagePath)).toBeNull();
+        await prisma.invoicePdfArchiveObject.delete({ where: { id: ledger.id } });
+      }
+    }
+  });
+
+  it("C2 — a thrown remove() during compensation is normalized to the bounded remove_failed category (a C-variant, never state D): raw exception never escapes or is persisted, ledger transition succeeds, final status CLEANUP_PENDING, object remains present until deterministic teardown", async () => {
+    const invoice = await seedLegacyInvoice(fixtures);
+    const RAW_ERROR = new Error("simulated storage provider exception during removal — must never be persisted or thrown");
+    let realUploadResult: unknown;
 
     const result = await archiveLegacyInvoice(
       { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
       {
-        upload: async () => ({ ok: false, reason: "upload_failed" }),
+        upload: async (args) => {
+          realUploadResult = await uploadInvoicePdfObject(args);
+          return { ok: false, reason: "upload_failed" };
+        },
         remove: async () => {
-          throw new Error("simulated storage provider exception during removal");
+          throw RAW_ERROR;
         },
       },
     );
 
+    expect(realUploadResult).toEqual({ ok: true });
+    // The raw exception never escapes archiveLegacyInvoice() itself —
+    // the same bounded UPLOAD_FAILED result as every other ambiguous
+    // upload failure, never a thrown error.
     expect(result).toEqual({ ok: false, error: "UPLOAD_FAILED" });
+
     const ledger = await prisma.invoicePdfArchiveObject.findFirstOrThrow({ where: { invoiceId: invoice.id } });
     try {
+      // Ledger transition itself succeeds in this variant — this is a
+      // C-outcome (removal failed, ledger write succeeded), never state D.
       expect(ledger.status).toBe("CLEANUP_PENDING");
       expect(ledger.cleanupAttemptCount).toBe(1);
       expect(ledger.lastCleanupFailureCategory).toBe("remove_failed");
+      expect(ledger.cleanedAt).toBeNull();
+      const stored = testStorageRead("attachments", ledger.storagePath);
+      expect(stored).not.toBeNull();
+      expect(stored!.body.subarray(0, 4).toString("latin1")).toBe("%PDF");
     } finally {
       const removal = await removeInvoicePdfObject({
         identity: { organizationId: ledger.organizationId, invoiceId: invoice.id, documentVersion: ledger.documentVersion, archiveId: ledger.id },
       });
       expect(removal).toEqual({ ok: true });
+      expect(testStorageRead("attachments", ledger.storagePath)).toBeNull();
       await prisma.invoicePdfArchiveObject.delete({ where: { id: ledger.id } });
     }
   });
