@@ -243,6 +243,68 @@ async function countScopedRows(organizationId: string) {
   return { invoices, lineItems, ledgerObjects, activities, notifications };
 }
 
+/**
+ * Normalizes exactly the two field shapes that would otherwise make a
+ * structurally-identical row compare unequal across two separate reads:
+ * a Prisma.Decimal (compared by its exact string representation) and a
+ * Date (compared by its exact ISO string). Every other field — including
+ * every Json column (issuerSnapshot/recipientSnapshot/metadata), every
+ * nullable field, and every plain string/number/boolean/enum — is left
+ * completely untouched, so no meaningful field is ever erased or
+ * collapsed by this normalization.
+ */
+function normalizeRow<T extends Record<string, unknown>>(row: T): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(row).map(([key, value]) => {
+      if (value instanceof Date) return [key, value.toISOString()];
+      if (value !== null && typeof value === "object" && typeof (value as { toFixed?: unknown }).toFixed === "function") {
+        return [key, String(value)];
+      }
+      return [key, value];
+    }),
+  );
+}
+
+/**
+ * Exact, deterministically-ordered state for one target Invoice and every
+ * row the route could conceivably touch — not merely a count. Used by the
+ * zero-write invariant block below: before/after equality here is a
+ * strictly stronger claim than countScopedRows()'s own row-count check,
+ * since it also catches an in-place field mutation on an existing row
+ * that a count alone could never detect.
+ */
+async function captureInvoiceState(invoiceId: string, organizationId: string) {
+  const [invoice, lineItems, ledgerRows, activities, notifications] = await Promise.all([
+    prisma.invoice.findUniqueOrThrow({ where: { id: invoiceId } }),
+    prisma.invoiceLineItem.findMany({ where: { invoiceId }, orderBy: [{ position: "asc" }, { id: "asc" }] }),
+    prisma.invoicePdfArchiveObject.findMany({ where: { invoiceId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
+    // Activity has no direct Invoice foreign key — organizationId +
+    // entityType + entityId is the same real, existing scoping every
+    // other Activity query in this codebase already uses (see
+    // issue-invoice.ts's own createActivity() call).
+    prisma.activity.findMany({
+      where: { organizationId, entityType: "INVOICE", entityId: invoiceId },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    }),
+    // Notification likewise carries its own real entityType/entityId
+    // columns (prisma/schema.prisma's Notification model) — not an
+    // invented relationship, the same columns Activity's own entityType/
+    // entityId use, scoped the identical way.
+    prisma.notification.findMany({
+      where: { organizationId, entityType: "INVOICE", entityId: invoiceId },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    }),
+  ]);
+
+  return {
+    invoice: normalizeRow(invoice as unknown as Record<string, unknown>),
+    lineItems: lineItems.map((row) => normalizeRow(row as unknown as Record<string, unknown>)),
+    ledgerRows: ledgerRows.map((row) => normalizeRow(row as unknown as Record<string, unknown>)),
+    activities: activities.map((row) => normalizeRow(row as unknown as Record<string, unknown>)),
+    notifications: notifications.map((row) => normalizeRow(row as unknown as Record<string, unknown>)),
+  };
+}
+
 describe("GET /api/invoices/[id]/pdf — Invoice System Official Slice 3, sub-PR 3c", () => {
   let fixtures: TestFixtures;
   let projectB: { id: string };
@@ -530,16 +592,24 @@ describe("GET /api/invoices/[id]/pdf — Invoice System Official Slice 3, sub-PR
         actAs(fixtures.owner, fixtures.orgA.id);
         const invoiceId = await scenario.build();
 
-        const before = await countScopedRows(fixtures.orgA.id);
-        const invoiceBefore = await prisma.invoice.findUniqueOrThrow({ where: { id: invoiceId } });
+        // Row-count evidence (kept as additional, weaker corroboration —
+        // catches an org-wide create/delete but not an in-place mutation
+        // of an already-existing row).
+        const countsBefore = await countScopedRows(fixtures.orgA.id);
+        // Exact-state evidence — the actual claim: every field of the
+        // target Invoice, every InvoiceLineItem, every InvoicePdfArchiveObject
+        // row, and every Activity/Notification row scoped to this exact
+        // Invoice is byte-for-byte identical before and after the request,
+        // not merely equal in count.
+        const stateBefore = await captureInvoiceState(invoiceId, fixtures.orgA.id);
 
         await pdfRequest(invoiceId);
 
-        const after = await countScopedRows(fixtures.orgA.id);
-        const invoiceAfter = await prisma.invoice.findUniqueOrThrow({ where: { id: invoiceId } });
+        const countsAfter = await countScopedRows(fixtures.orgA.id);
+        const stateAfter = await captureInvoiceState(invoiceId, fixtures.orgA.id);
 
-        expect(after).toEqual(before);
-        expect(invoiceAfter).toEqual(invoiceBefore);
+        expect(countsAfter).toEqual(countsBefore);
+        expect(stateAfter).toEqual(stateBefore);
       });
     }
   });

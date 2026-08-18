@@ -1012,9 +1012,50 @@ test.describe("Issue/finalization — Invoice System Official Slice 3, sub-PR 3b
     const downloadHref = await downloadLink.getAttribute("href");
     expect(downloadHref).toBe(`/api/invoices/${invoice.id}/pdf`);
 
-    const before = await dbQuery<{ status: string; pdfStoragePath: string | null; updatedAt: string }>("invoice", "findUniqueOrThrow", {
-      where: { id: invoice.id },
-    });
+    // Exact, deterministically-ordered state for everything the download
+    // route could conceivably touch: the complete Invoice row (every
+    // scalar field — no `select`, so pdfStoragePath/finalizedAt/
+    // pdfGeneratedAt/documentVersion/issuerSnapshot/recipientSnapshot/
+    // amount/subtotal/discountAmount/taxAmount/paidAt/updatedAt are all
+    // included automatically), every InvoiceLineItem, and every
+    // InvoicePdfArchiveObject row for this exact Invoice (id/
+    // organizationId/invoiceId/documentVersion/storagePath/status/
+    // referencedAt/cleanedAt/cleanupLockedAt/cleanupClaimToken/
+    // cleanupAttemptCount/lastCleanupFailureCategory/createdAt/updatedAt
+    // — the real, complete prisma/schema.prisma field set, confirmed by
+    // direct schema read, not guessed), plus the Activity/Notification
+    // rows scoped to this exact Invoice the same way the integration
+    // suite's own captureInvoiceState() does.
+    async function captureInvoiceSnapshot(invoiceId: string) {
+      const [invoiceRow, lineItems, ledgerRows, activities, notifications] = await Promise.all([
+        dbQuery<Record<string, unknown>>("invoice", "findUniqueOrThrow", { where: { id: invoiceId } }),
+        dbQuery<Record<string, unknown>[]>("invoiceLineItem", "findMany", {
+          where: { invoiceId },
+          orderBy: [{ position: "asc" }, { id: "asc" }],
+        }),
+        dbQuery<Record<string, unknown>[]>("invoicePdfArchiveObject", "findMany", {
+          where: { invoiceId },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        }),
+        dbQuery<Record<string, unknown>[]>("activity", "findMany", {
+          where: { organizationId: fixtures.orgA.id, entityType: "INVOICE", entityId: invoiceId },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        }),
+        dbQuery<Record<string, unknown>[]>("notification", "findMany", {
+          where: { organizationId: fixtures.orgA.id, entityType: "INVOICE", entityId: invoiceId },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        }),
+      ]);
+      return { invoice: invoiceRow, lineItems, ledgerRows, activities, notifications };
+    }
+
+    const before = await captureInvoiceSnapshot(invoice.id);
+    // Sanity check that this capture is actually meaningful — the real
+    // Issue flow above must have produced exactly one REFERENCED ledger
+    // row, or a before===after comparison against an empty array would
+    // prove nothing about ledger-field preservation.
+    expect(before.ledgerRows).toHaveLength(1);
+    expect(before.ledgerRows[0].status).toBe("REFERENCED");
 
     const redirectResponse = await page.request.get(downloadHref!, { maxRedirects: 0 });
     expect(redirectResponse.status()).toBe(307);
@@ -1026,9 +1067,12 @@ test.describe("Issue/finalization — Invoice System Official Slice 3, sub-PR 3b
     const bytes = await fileResponse.body();
     expect(bytes.subarray(0, 4).toString("latin1")).toBe("%PDF");
 
-    const after = await dbQuery<{ status: string; pdfStoragePath: string | null; updatedAt: string }>("invoice", "findUniqueOrThrow", {
-      where: { id: invoice.id },
-    });
+    const after = await captureInvoiceSnapshot(invoice.id);
+    // Proves the download changed none of: Invoice.updatedAt, any
+    // archive/finalization field, any line item, ledger status,
+    // referencedAt, cleanup fields, or ledger timestamps — not merely
+    // that the three fields the prior version of this test checked
+    // stayed the same.
     expect(after).toEqual(before);
 
     await dbQuery("invoicePdfArchiveObject", "deleteMany", { where: { invoiceId: invoice.id } });

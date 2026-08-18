@@ -229,13 +229,22 @@ describe("createInvoicePdfSignedUrl — TEST_MODE branch", () => {
     expect(first).toEqual(second);
   });
 
-  it("never calls a Supabase client — the TEST_MODE branch returns before any client is resolved", async () => {
-    // No client argument is passed at all; if TEST_MODE's own branch tried
-    // to resolve/call a real client, this would throw (no admin client is
-    // configured in this test environment) rather than resolve.
-    await expect(createInvoicePdfSignedUrl({ identity: prodIdentity, invoiceNumber: "INV-2026-001" })).resolves.toEqual(
-      expect.objectContaining({ ok: true }),
-    );
+  it("never calls a Supabase client — the TEST_MODE branch returns before any client is resolved, even when one is explicitly supplied", async () => {
+    // Direct evidence, not inference: a fake client IS supplied (unlike
+    // the sibling "no client argument at all" case this replaces), with
+    // its own storage.from spied — if TEST_MODE's own branch reached the
+    // client-resolution/signing code at all, this spy would record a
+    // call. It never does, proving the TEST_MODE `if` returns before
+    // resolveClient()/storage.from() are ever reached, not merely that
+    // no client happened to be available to call.
+    const fromSpy = vi.fn();
+    const fakeClient = { storage: { from: fromSpy } } as unknown as Parameters<typeof createInvoicePdfSignedUrl>[1];
+
+    const result = await createInvoicePdfSignedUrl({ identity: prodIdentity, invoiceNumber: "INV-2026-001" }, fakeClient);
+
+    const expectedPath = buildInvoicePdfStoragePath(prodIdentity);
+    expect(result).toEqual({ ok: true, url: `https://e2e-test.local/api/e2e-test-storage/attachments/${expectedPath}` });
+    expect(fromSpy).not.toHaveBeenCalled();
   });
 
   it("rejects an invalid structured identity before any external call — buildInvoicePdfStoragePath's own validation runs first", async () => {
