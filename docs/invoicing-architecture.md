@@ -243,7 +243,18 @@ installed — `src/lib/email/resend-client.ts` sends via a raw
 - **This migration has not been applied to any external/staging/production
   database by the PR #63 merge task** — merging into source control and
   deploying to a real database are separate, deliberately un-conflated
-  steps (§12.5 restates this).
+  steps (§12.5 restates this). This remains an accurate description of
+  what the PR #63 merge task itself did. **Operational update (2026-08-18,
+  after PR #73/sub-PR 3b):** this migration, along with the three other
+  migrations merged since (`20260910090000`, `20260912090000`,
+  `20260913090000`), went out of sync with the live production Supabase
+  database immediately after PR #73 merged, causing a real, confirmed
+  production incident (`P2022` failures on `/dashboard`/`/clients`). This
+  was diagnosed and resolved through a controlled backup/`prisma migrate
+  deploy`/status/schema-verification operator sequence — **all 26
+  repository migrations, including this one, are now confirmed applied to
+  the verified production database.** See `GPT_PROJECT_CONTEXT.md`'s
+  "Production migration incident and resolution" for the full account.
 - Portal DRAFT visibility (§1.3) was explicitly **out of scope** for PR
   #63 and remains unfixed until §10 ships (Slice 5).
 
@@ -1133,11 +1144,22 @@ not assumed to land atomically with Slice 1.
    scan is ever required" is not an accurate description of this design.
 
 **Operational note, restated**: PR #63's `Invoice.organizationId` repair
-migration is merged into source control on `main` but **was not applied
+migration was merged into source control on `main` but **was not applied
 to any external/staging/production database by that merge task** — a
-real deployed database still needs the normal, controlled migration
+real deployed database still needed the normal, controlled migration
 deployment process before that repair (or anything in this document)
-takes effect there.
+would take effect there. This remains an accurate description of what
+PR #63's own merge task did. **Operational update (2026-08-18):** that
+controlled deployment step has since happened — following a real
+production incident immediately after PR #73/sub-PR 3b merged (four
+migrations, including this one, had gone out of sync with the live
+database), a backup/`prisma migrate deploy`/status/schema-verification
+sequence was carried out against the verified production Supabase
+database. **All 26 repository migrations are now confirmed applied
+there** — see `GPT_PROJECT_CONTEXT.md`'s "Production migration incident
+and resolution" for the full account. This note is preserved to
+document what "merged but not yet deployed" meant at PR #63's own time,
+not because that gap still exists today.
 
 ---
 
@@ -1226,7 +1248,8 @@ existing mobile/tablet-overflow regression-test discipline.
 
 **Prerequisite — `Invoice.organizationId` repair: ✅ COMPLETE (PR #63,
 merged as `41452bd7391700f1b73063b4a8e16864d0e3de84`).** Not applied to
-any external database by that task (§1.6/§12).
+any external database by that task (§1.6/§12). **Applied to the verified
+production database as of 2026-08-18** — see §1.6's operational update.
 
 **Slice 0 — this document.** `docs/invoicing-architecture.md`, committed
 before any code. *(This slice.)*
