@@ -8,6 +8,7 @@ import { buildInvoiceTotalsViewModel } from "@/lib/invoices/totals-view-model";
 import { getSupportedInvoiceCurrencies } from "@/lib/invoices/currencies";
 import { formatDateOnly } from "@/lib/invoices/date-only";
 import { canAccessPaymentDetails } from "@/lib/organization-setup/authorization";
+import { classifyInvoiceArchival } from "@/lib/invoices/pdf/classify-archival";
 import { updateInvoiceAction } from "./actions";
 import { InvoiceAttachmentsSection } from "./attachments-section";
 
@@ -43,6 +44,15 @@ export default async function EditInvoicePage({
   }
 
   const isDraft = invoice.status === "DRAFT";
+  // Invoice System Official Slice 3, sub-PR 3c — the one place this page
+  // ever touches archival state. `include` above already retains every
+  // Invoice scalar column (finalizedAt/pdfStoragePath/pdfGeneratedAt/
+  // issuerSnapshot/recipientSnapshot/documentVersion), so no query change
+  // is needed. classifyInvoiceArchival() is called once, here, and only
+  // its boolean "is this a real, downloadable archive" outcome ever
+  // crosses into InvoiceReadOnlyView's props — never pdfStoragePath, a
+  // ledger id, a snapshot, or a signed URL.
+  const hasArchivedPdf = classifyInvoiceArchival(invoice).kind === "archived";
 
   // The full project option list is fetched only for the DRAFT branch —
   // the read-only view never offers a project-changing control.
@@ -124,6 +134,7 @@ export default async function EditInvoicePage({
             }))}
             notes={invoice.notes}
             internalNotes={invoice.internalNotes}
+            hasArchivedPdf={hasArchivedPdf}
             totals={buildInvoiceTotalsViewModel({
               amount: invoice.amount,
               subtotal: invoice.subtotal,

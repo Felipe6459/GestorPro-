@@ -113,6 +113,18 @@ export const PORTAL_ATTACHMENT_DOWNLOAD_LIMIT: RateLimitConfig = {
   windowMs: HOUR_MS,
 };
 
+// Invoice System Official Slice 3, sub-PR 3c — staff signed PDF download.
+// Isolated bucket from ATTACHMENT_DOWNLOAD_LIMIT: an Invoice PDF is a
+// different resource than a user-uploaded Attachment, and the two must
+// never throttle each other. Same shape/ceiling as its sibling — this is
+// abuse protection, not a hard day-to-day limit; per authenticated staff
+// user id.
+export const INVOICE_PDF_DOWNLOAD_LIMIT: RateLimitConfig = {
+  scope: "invoice-pdf-download",
+  limit: 120,
+  windowMs: HOUR_MS,
+};
+
 // Sale-Ready Phase A.1 (Business Identity), PR4 — per OWNER user id (only
 // OWNER can ever call this). A logo is replaced rarely in normal use; this
 // ceiling is about abuse (e.g. a compromised OWNER session scripting

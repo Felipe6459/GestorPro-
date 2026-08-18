@@ -14,14 +14,18 @@ export type InvoiceReadOnlyLineItem = { description: string; quantity: MoneyValu
 
 /**
  * The complete visible contract for an existing non-DRAFT invoice
- * (docs/invoicing-architecture.md §4.6). Every non-DRAFT invoice at this
- * point in the roadmap is "legacy unarchived historical" — finalizedAt/
- * pdfStoragePath are both null by construction, since nothing writes them
- * until Slice 3. This view never claims a PDF/archive exists, never
- * fabricates a line item for a flat invoice, and renders no editable
- * frozen field, Issue, Send, PDF/download, or email control. Duplicate
- * (via InvoiceLifecycleControls, §3.2) is the one exception — available
- * only for a terminal CANCELLED invoice, never for SENT/PAID/OVERDUE.
+ * (docs/invoicing-architecture.md §4.6). Never fabricates a line item for
+ * a flat invoice, and renders no editable frozen field, Issue, Send, or
+ * email control. Duplicate (via InvoiceLifecycleControls, §3.2) is
+ * available only for a terminal CANCELLED invoice, never for
+ * SENT/PAID/OVERDUE. As of Invoice System Official Slice 3, sub-PR 3c, a
+ * genuinely archived invoice (`hasArchivedPdf`, computed server-side by
+ * the caller via classifyInvoiceArchival() — never derived here, and
+ * never backed by pdfStoragePath/a ledger id/a snapshot/a signed URL
+ * crossing into this component's own props) renders one plain
+ * "Download PDF" link; every other state (DRAFT never reaches this
+ * component at all, `legacy_eligible`, every `invariant_violation`
+ * reason) renders none.
  */
 export function InvoiceReadOnlyView({
   invoiceId,
@@ -36,6 +40,7 @@ export function InvoiceReadOnlyView({
   lineItems,
   notes,
   internalNotes,
+  hasArchivedPdf,
   totals,
 }: {
   invoiceId: string;
@@ -50,6 +55,7 @@ export function InvoiceReadOnlyView({
   lineItems: InvoiceReadOnlyLineItem[];
   notes: string | null;
   internalNotes: string | null;
+  hasArchivedPdf: boolean;
   totals: InvoiceTotalsViewModel;
 }) {
   const format = (value: MoneyValue) => formatInvoiceCurrencyAmount(value, currency) ?? String(value);
@@ -141,6 +147,15 @@ export function InvoiceReadOnlyView({
       )}
 
       <InvoiceInternalNotesForm invoiceId={invoiceId} initialValue={internalNotes ?? ""} />
+
+      {hasArchivedPdf && (
+        <a
+          href={`/api/invoices/${invoiceId}/pdf`}
+          className="inline-block rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+        >
+          Download PDF
+        </a>
+      )}
 
       <InvoiceLifecycleControls invoiceId={invoiceId} status={status} invoiceNumber={invoiceNumber} />
     </div>
