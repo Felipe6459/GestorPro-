@@ -44,15 +44,22 @@ export default async function EditInvoicePage({
   }
 
   const isDraft = invoice.status === "DRAFT";
-  // Invoice System Official Slice 3, sub-PR 3c — the one place this page
-  // ever touches archival state. `include` above already retains every
+  // Invoice System Official Slice 3 — the one place this page ever
+  // touches archival state. `include` above already retains every
   // Invoice scalar column (finalizedAt/pdfStoragePath/pdfGeneratedAt/
   // issuerSnapshot/recipientSnapshot/documentVersion), so no query change
-  // is needed. classifyInvoiceArchival() is called once, here, and only
-  // its boolean "is this a real, downloadable archive" outcome ever
-  // crosses into InvoiceReadOnlyView's props — never pdfStoragePath, a
-  // ledger id, a snapshot, or a signed URL.
-  const hasArchivedPdf = classifyInvoiceArchival(invoice).kind === "archived";
+  // is needed. classifyInvoiceArchival() is called exactly once, here,
+  // its result bound to `archivalClassification`, and only the two
+  // derived booleans below ever cross into InvoiceReadOnlyView's props —
+  // never pdfStoragePath, a ledger id, a snapshot, or a signed URL. The
+  // two booleans are structurally mutually exclusive (a row can never be
+  // both `archived` and `legacy_eligible`). `canArchiveLegacy` also
+  // requires OWNER UI-capability (`canIssue`, reused verbatim) — this is
+  // visibility only, never enforcement; archiveLegacyInvoiceAction() and
+  // archiveLegacyInvoice() both independently re-check OWNER access.
+  const archivalClassification = classifyInvoiceArchival(invoice);
+  const hasArchivedPdf = archivalClassification.kind === "archived";
+  const canArchiveLegacy = archivalClassification.kind === "legacy_eligible" && canIssue;
 
   // The full project option list is fetched only for the DRAFT branch —
   // the read-only view never offers a project-changing control.
@@ -135,6 +142,8 @@ export default async function EditInvoicePage({
             notes={invoice.notes}
             internalNotes={invoice.internalNotes}
             hasArchivedPdf={hasArchivedPdf}
+            canArchiveLegacy={canArchiveLegacy}
+            expectedUpdatedAt={invoice.updatedAt.toISOString()}
             totals={buildInvoiceTotalsViewModel({
               amount: invoice.amount,
               subtotal: invoice.subtotal,

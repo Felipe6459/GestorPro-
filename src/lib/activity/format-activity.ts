@@ -48,6 +48,11 @@ const FIELD_LABELS: Record<string, string> = {
   taxRatePercent: "tax rate",
   taxLabel: "tax label",
   lineItems: "line items",
+  // Invoice System Official Slice 3, Legacy Archive — a single logical
+  // marker, never a real persisted Invoice column name (see
+  // buildInvoiceUpdatedMetadata's own names-only contract). Represents the
+  // whole retroactive-archival event as one readable Timeline phrase.
+  legacyArchive: "legacy PDF archive",
 };
 
 function humanizeFieldName(field: string): string {

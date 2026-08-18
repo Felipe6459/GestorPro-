@@ -256,10 +256,13 @@ test.describe("staff Invoice list — DRAFT vs non-DRAFT row actions, read-only 
     await expect(row.getByRole("link", { name: "Edit" })).toHaveCount(0);
   });
 
-  test("the read-only view: no editable frozen fields, no Delete/Duplicate/Issue/Send/PDF/email control, lifecycle buttons present", async ({ page }) => {
+  test("the read-only view: no editable frozen fields, no Delete/Duplicate/Issue/Send/email control, lifecycle buttons present, and — since this fixture is legacy_eligible — the Archive Legacy Invoice control (never Download PDF)", async ({ page }) => {
     await page.goto(`/invoices/${legacyInvoiceId}/edit`);
 
-    await expect(page.getByText("Issued")).toBeVisible();
+    // Exact match — a loose substring match would also match the Archive
+    // Legacy Invoice confirmation dialog's own disclosure copy, which
+    // itself contains the word "issued" in prose.
+    await expect(page.getByText("Issued", { exact: true })).toBeVisible();
     await expect(page.getByText("$777.00").first()).toBeVisible();
 
     // No frozen field is rendered as an editable control.
@@ -269,9 +272,15 @@ test.describe("staff Invoice list — DRAFT vs non-DRAFT row actions, read-only 
     await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
 
     // No control from a later slice exists anywhere on this page.
-    for (const forbidden of [/duplicate/i, /^issue$/i, /^send$/i, /download pdf/i, /resend/i]) {
+    for (const forbidden of [/duplicate/i, /^issue$/i, /^send$/i, /resend/i]) {
       await expect(page.getByText(forbidden)).toHaveCount(0);
     }
+    // This fixture is a genuine legacy_eligible row (SENT, no archive
+    // fields) viewed by OWNER — Invoice System Official Slice 3, Legacy
+    // Archive correctly shows the archival control, never a Download PDF
+    // link (nothing has been archived yet).
+    await expect(page.getByRole("button", { name: "Archive Legacy Invoice" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Download PDF" })).toHaveCount(0);
 
     // Allowed lifecycle controls for SENT: Mark as paid, Mark as overdue, Cancel.
     await expect(page.getByRole("button", { name: "Mark as paid" })).toBeVisible();
@@ -1074,6 +1083,168 @@ test.describe("Issue/finalization — Invoice System Official Slice 3, sub-PR 3b
     // that the three fields the prior version of this test checked
     // stayed the same.
     expect(after).toEqual(before);
+
+    await dbQuery("invoicePdfArchiveObject", "deleteMany", { where: { invoiceId: invoice.id } });
+    await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
+  });
+});
+
+/** Switches the same BrowserContext to a Client Portal identity — mirrors test/e2e/portal-invoices.spec.ts's own local helper exactly. */
+async function actAsPortalUser(
+  context: BrowserContext,
+  baseURL: string,
+  portalUser: { id: string; email: string },
+): Promise<void> {
+  await context.clearCookies();
+  await injectTestSession(context, portalUser, baseURL);
+}
+
+test.describe("Legacy Archive — Invoice System Official Slice 3", () => {
+  /** A genuine legacy_eligible fixture — non-DRAFT, every archive field null, created directly (no production path can produce a non-DRAFT invoice except through Issue, which always archives). */
+  async function seedLegacyInvoice(overrides: Record<string, unknown> = {}) {
+    return dbQuery<{ id: string; invoiceNumber: string; updatedAt: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-LEGACY-${fixtures.runId}-${Math.random().toString(36).slice(2, 8)}`,
+        status: "SENT",
+        amount: "180.00",
+        subtotal: "180.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+        ...overrides,
+      },
+    });
+  }
+
+  test("OWNER sees Archive Legacy Invoice for a legacy_eligible invoice; confirmation is required with the correct disclosure copy; a successful archive swaps the control for Download PDF, never both", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    const invoice = await seedLegacyInvoice();
+
+    await page.goto(`/invoices/${invoice.id}/edit`);
+    const archiveButton = page.getByRole("button", { name: "Archive Legacy Invoice" });
+    await expect(archiveButton).toBeVisible();
+    await expect(page.getByRole("link", { name: "Download PDF" })).toHaveCount(0);
+
+    await archiveButton.click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText(/current details/i)).toBeVisible();
+    await expect(dialog.getByText(/not necessarily what was on file when this invoice was originally issued/i)).toBeVisible();
+    await dialog.getByRole("button", { name: "Archive invoice" }).click();
+
+    await expect(page.getByText("Invoice archived")).toBeVisible();
+    // Never both simultaneously.
+    await expect(page.getByRole("button", { name: "Archive Legacy Invoice" })).toHaveCount(0);
+    const downloadLink = page.getByRole("link", { name: "Download PDF" });
+    await expect(downloadLink).toHaveCount(1);
+    expect(await downloadLink.getAttribute("href")).toBe(`/api/invoices/${invoice.id}/pdf`);
+
+    // Preserved exactly: status, amount, documentVersion; no email attempt.
+    const after = await dbQuery<Record<string, unknown>>("invoice", "findUniqueOrThrow", { where: { id: invoice.id } });
+    expect(after.status).toBe("SENT");
+    expect(Number(after.amount)).toBe(180);
+    expect(after.documentVersion).toBe(1);
+    expect(after.paidAt).toBeNull();
+    const emailAttempts = await dbQuery<unknown[]>("invoiceEmailAttempt", "findMany", { where: { invoiceId: invoice.id } });
+    expect(emailAttempts).toHaveLength(0);
+
+    // Real staff route follow-through.
+    const redirectResponse = await page.request.get(`/api/invoices/${invoice.id}/pdf`, { maxRedirects: 0 });
+    expect(redirectResponse.status()).toBe(307);
+    const fileResponse = await page.request.get(`/api/invoices/${invoice.id}/pdf`);
+    const bytes = await fileResponse.body();
+    expect(bytes.subarray(0, 4).toString("latin1")).toBe("%PDF");
+
+    await dbQuery("invoicePdfArchiveObject", "deleteMany", { where: { invoiceId: invoice.id } });
+    await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
+  });
+
+  test("ADMIN does not see Archive Legacy Invoice", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.admin, fixtures.orgA.id);
+    const invoice = await seedLegacyInvoice();
+
+    await page.goto(`/invoices/${invoice.id}/edit`);
+    await expect(page.getByRole("button", { name: "Archive Legacy Invoice" })).toHaveCount(0);
+
+    await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
+  });
+
+  test("MEMBER does not see Archive Legacy Invoice", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.member, fixtures.orgA.id);
+    const invoice = await seedLegacyInvoice();
+
+    await page.goto(`/invoices/${invoice.id}/edit`);
+    await expect(page.getByRole("button", { name: "Archive Legacy Invoice" })).toHaveCount(0);
+
+    await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
+  });
+
+  test("the control is absent for DRAFT, an already-archived invoice, and an invariant_violation invoice", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+
+    const draft = await seedLegacyInvoice({ status: "DRAFT" });
+    await page.goto(`/invoices/${draft.id}/edit`);
+    await expect(page.getByRole("button", { name: "Archive Legacy Invoice" })).toHaveCount(0);
+
+    const invariantViolation = await seedLegacyInvoice({ status: "SENT", finalizedAt: new Date().toISOString() });
+    await page.goto(`/invoices/${invariantViolation.id}/edit`);
+    await expect(page.getByRole("button", { name: "Archive Legacy Invoice" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Download PDF" })).toHaveCount(0);
+
+    await dbQuery("invoice", "deleteMany", { where: { id: { in: [draft.id, invariantViolation.id] } } });
+  });
+
+  test("after a real Issue (not Legacy Archive), the resulting archived invoice shows Download PDF and never the Archive Legacy Invoice control", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    const draft = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-LEGACY-ISSUED-${fixtures.runId}`,
+        status: "DRAFT",
+        amount: "50.00",
+        subtotal: "50.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+
+    await page.goto(`/invoices/${draft.id}/edit`);
+    await page.getByRole("button", { name: "Issue invoice" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Issue invoice" }).click();
+    await expect(page.getByText("Invoice issued")).toBeVisible();
+
+    await expect(page.getByRole("button", { name: "Archive Legacy Invoice" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Download PDF" })).toHaveCount(1);
+
+    await dbQuery("invoicePdfArchiveObject", "deleteMany", { where: { invoiceId: draft.id } });
+    await dbQuery("invoice", "deleteMany", { where: { id: draft.id } });
+  });
+
+  test("the connected Portal user can download the resulting archived PDF through the existing, unmodified Portal route — no Portal application workaround", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    const invoice = await seedLegacyInvoice();
+
+    await page.goto(`/invoices/${invoice.id}/edit`);
+    await page.getByRole("button", { name: "Archive Legacy Invoice" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Archive invoice" }).click();
+    await expect(page.getByText("Invoice archived")).toBeVisible();
+
+    await actAsPortalUser(context, baseURL!, { id: fixtures.portalUser.id, email: fixtures.portalUser.email });
+    await page.goto(`/portal/invoices/${invoice.id}`);
+
+    const downloadLink = page.getByRole("link", { name: "Download PDF" });
+    await expect(downloadLink).toHaveCount(1);
+    expect(await downloadLink.getAttribute("href")).toBe(`/api/portal/invoices/${invoice.id}/pdf`);
+
+    const redirectResponse = await page.request.get(`/api/portal/invoices/${invoice.id}/pdf`, { maxRedirects: 0 });
+    expect(redirectResponse.status()).toBe(307);
+    const fileResponse = await page.request.get(`/api/portal/invoices/${invoice.id}/pdf`);
+    const bytes = await fileResponse.body();
+    expect(bytes.subarray(0, 4).toString("latin1")).toBe("%PDF");
 
     await dbQuery("invoicePdfArchiveObject", "deleteMany", { where: { invoiceId: invoice.id } });
     await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });

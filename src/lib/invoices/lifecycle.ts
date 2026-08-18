@@ -137,3 +137,63 @@ export type IssueInvoiceFailure = {
 };
 
 export type IssueInvoiceResult = IssueInvoiceSuccess | IssueInvoiceFailure;
+
+// ---------------------------------------------------------------------------
+// Invoice System Official Slice 3, Legacy Archive — retroactively archives
+// an already-non-DRAFT invoice whose classifyInvoiceArchival() kind is
+// exactly "legacy_eligible" (docs/invoicing-architecture.md §4.6/§8.3).
+// Distinct from the Issue contract above: Legacy Archive never transitions
+// DRAFT -> SENT, never writes `status`, and never writes `amount` — see
+// src/lib/invoices/pdf/legacy-archive-invoice.ts for the full pipeline.
+// ---------------------------------------------------------------------------
+
+/**
+ * TrustedIssueActor's own shape (organizationId/userId/userName/role) is
+ * not Issue-specific — this alias lets Legacy Archive's own files read
+ * naturally without renaming the existing, already-tested Issue type.
+ */
+export type TrustedInvoiceActor = TrustedIssueActor;
+
+export type LegacyArchiveInput = {
+  actor: TrustedInvoiceActor;
+  invoiceId: string;
+  /** The exact page-rendered `Invoice.updatedAt.toISOString()` value — the same optimistic-concurrency contract Issue already uses. */
+  expectedUpdatedAt: string;
+};
+
+export type LegacyArchiveSuccess =
+  | {
+      ok: true;
+      outcome: "ARCHIVED";
+      invoiceId: string;
+      finalizedAt: Date;
+    }
+  | {
+      ok: true;
+      outcome: "ALREADY_ARCHIVED";
+      invoiceId: string;
+      finalizedAt: Date;
+    };
+
+export type LegacyArchiveErrorCode =
+  | "NOT_FOUND"
+  | "FORBIDDEN"
+  | "NOT_LEGACY_ELIGIBLE"
+  | "INVARIANT_VIOLATION"
+  | "INVALID_FINANCIAL_STATE"
+  | "UNSUPPORTED_CURRENCY"
+  | "SNAPSHOT_INVALID"
+  | "STALE_VERSION"
+  | "STORAGE_NOT_CONFIGURED"
+  | "RENDER_FAILED"
+  | "PDF_TOO_LARGE"
+  | "UPLOAD_FAILED"
+  | "CONFLICT"
+  | "ARCHIVE_FAILED";
+
+export type LegacyArchiveFailure = {
+  ok: false;
+  error: LegacyArchiveErrorCode;
+};
+
+export type LegacyArchiveResult = LegacyArchiveSuccess | LegacyArchiveFailure;
