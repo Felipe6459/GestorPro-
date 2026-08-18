@@ -102,6 +102,15 @@ describe("formatActivity — STATUS_CHANGED across entity types", () => {
     ]);
   });
 
+  it("Invoice UPDATED — Legacy Archive's own single logical marker renders as a readable phrase, never a raw column name", () => {
+    const result = activity("INVOICE", "UPDATED", {
+      invoiceNumber: "INV-1",
+      changedFields: ["legacyArchive"],
+      actorName: "Jane Doe",
+    });
+    expect(result.detailLines).toEqual(["Changed: legacy PDF archive"]);
+  });
+
   it("Invoice CREATED shows a formatted currency amount", () => {
     const result = activity("INVOICE", "CREATED", {
       invoiceNumber: "INV-1",

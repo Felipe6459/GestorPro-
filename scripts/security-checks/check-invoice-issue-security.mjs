@@ -11,6 +11,11 @@ let ok = true;
 const actionFile = "src/app/(dashboard)/invoices/[id]/edit/issue-actions.ts";
 const serviceFile = "src/lib/invoices/pdf/issue-invoice.ts";
 const storageFile = "src/lib/invoices/pdf/storage.ts";
+// Invoice System Official Slice 3, Legacy Archive — the shared post-upload
+// compensation helper extracted from issue-invoice.ts's own former private
+// compensateUpload(). Declared here, at top level, since both the Issue
+// checks (8e, below) and the Legacy Archive checks (12n, below) need it.
+const compensationFile = "src/lib/invoices/pdf/archive-compensation.ts";
 
 // 1. The dedicated Issue action exists.
 ok = report(`${actionFile} exists`, existsSync(actionFile), existsSync(actionFile) ? "" : `Expected ${actionFile} to exist.`) && ok;
@@ -136,22 +141,37 @@ if (existsSync(storageFile)) {
   ) && ok;
 }
 
-// 8d. The Issue service's own calls to deps.upload/deps.remove pass an
-// `identity`, never a raw `path` — the caller side of the same boundary.
+// 8d. The Issue service's own call to deps.upload passes an `identity`,
+// never a raw `path` — the caller side of the same boundary. deps.remove
+// is checked separately, below, against the shared archive-compensation.ts
+// module — since the extracted compensateArchiveUpload() helper (Invoice
+// System Official Slice 3, Legacy Archive) is now the one place either
+// pipeline ever calls deps.remove(), issue-invoice.ts itself no longer
+// contains that call textually after the extraction.
 if (existsSync(serviceFile)) {
   const serviceContent = readFileSync(serviceFile, "utf8");
   const uploadCallMatch = serviceContent.match(/deps\.upload\(\{([^}]*)\}\)/);
-  const removeCallMatches = [...serviceContent.matchAll(/deps\.remove\(\{([^}]*)\}\)/g)];
   ok = report(
     "issue-invoice.ts's own deps.upload(...) call passes { identity, body }, never a raw path",
     !!uploadCallMatch && /\bidentity\b/.test(uploadCallMatch[1]) && !/\bpath\s*:/.test(uploadCallMatch[1]),
     uploadCallMatch ? uploadCallMatch[1] : "deps.upload(...) call not found",
   ) && ok;
+}
+
+// 8e. The shared compensation helper's own call to deps.remove passes an
+// `identity`, never a raw `path` — this is the one place either pipeline
+// (Issue or Legacy Archive) ever removes an uploaded object during
+// compensation.
+if (existsSync(compensationFile)) {
+  const compensationRemoveContent = readFileSync(compensationFile, "utf8");
+  const removeCallMatches = [...compensationRemoveContent.matchAll(/deps\.remove\(\{([^}]*)\}\)/g)];
   ok = report(
-    "every issue-invoice.ts deps.remove(...) call passes { identity }, never a raw path",
+    "every archive-compensation.ts deps.remove(...) call passes { identity }, never a raw path",
     removeCallMatches.length > 0 && removeCallMatches.every(([, args]) => /\bidentity\b/.test(args) && !/\bpath\s*:/.test(args)),
     removeCallMatches.map(([, args]) => args).join(" | ") || "deps.remove(...) call not found",
   ) && ok;
+} else {
+  ok = report(`${compensationFile} exists`, false, `Expected ${compensationFile} to exist.`) && ok;
 }
 
 // 9. The public Issue result contract (IssueInvoiceSuccess) has no
@@ -275,6 +295,218 @@ if (existsSync(portalPdfRoute)) {
       portalPdfContent.includes("organizationId") &&
       /project:\s*\{\s*clientId\s*\}/.test(portalPdfContent),
     "",
+  ) && ok;
+}
+
+// 12. Invoice System Official Slice 3, Legacy Archive — its own new trust
+// boundary, verified with the same fail-closed discipline as the Issue and
+// Portal PDF checks above. Legacy Archive is a retroactive, OWNER-only
+// archival action for an already-non-DRAFT invoice, structurally similar
+// to Issue but never a DRAFT -> SENT transition — these checks additionally
+// guard the specific invariants that distinguish it (status/amount/
+// documentVersion must never be written, the shared compensation helper
+// must be used, no duplicate local implementation may exist).
+const legacyActionFile = "src/app/(dashboard)/invoices/[id]/edit/legacy-archive-actions.ts";
+const legacyServiceFile = "src/lib/invoices/pdf/legacy-archive-invoice.ts";
+
+// 12a. The dedicated Legacy Archive action exists.
+ok =
+  report(
+    `${legacyActionFile} exists`,
+    existsSync(legacyActionFile),
+    existsSync(legacyActionFile) ? "" : `Expected ${legacyActionFile} to exist.`,
+  ) && ok;
+
+if (existsSync(legacyActionFile)) {
+  const legacyActionContent = readFileSync(legacyActionFile, "utf8");
+
+  // 12b. It resolves the actor from real server-side membership, never a
+  // client-declared value.
+  ok = report(
+    `${legacyActionFile} loads trusted server-side membership (getCurrentMembership)`,
+    legacyActionContent.includes("getCurrentMembership"),
+    "",
+  ) && ok;
+
+  // 12c. It independently checks OWNER access itself (never relies solely
+  // on archiveLegacyInvoice()'s own re-check, or on the UI hiding the
+  // control).
+  ok = report(
+    `${legacyActionFile} independently checks OWNER access (assertCanAccessPaymentDetails)`,
+    legacyActionContent.includes("assertCanAccessPaymentDetails"),
+    "",
+  ) && ok;
+
+  // 12d. Its own exported function signature accepts only invoiceId/
+  // expectedUpdatedAt from the caller — never organizationId/role/
+  // storagePath/totals/snapshots/amount/status/documentVersion as a
+  // parameter name.
+  const legacyForbiddenParamNames = [
+    "organizationId",
+    "role",
+    "storagePath",
+    "totals",
+    "snapshot",
+    "actorName",
+    "userId",
+    "amount",
+    "status",
+    "documentVersion",
+  ];
+  const legacySignatureMatch = legacyActionContent.match(/export async function archiveLegacyInvoiceAction\(([^)]*)\)/);
+  const legacySignature = legacySignatureMatch ? legacySignatureMatch[1] : "";
+  const legacyLeakedParams = legacyForbiddenParamNames.filter((name) => new RegExp(`\\b${name}\\b`, "i").test(legacySignature));
+  ok = report(
+    "archiveLegacyInvoiceAction's own parameter list contains none of: organizationId, role, storagePath, totals, snapshot, actorName, userId, amount, status, documentVersion",
+    legacyLeakedParams.length === 0,
+    legacyLeakedParams.join(", "),
+  ) && ok;
+
+  // 12e. No console logging of any kind.
+  const legacyActionConsoleCalls = grep("console\\.(log|error|warn|info|debug)\\(", legacyActionFile);
+  ok = report(`${legacyActionFile} contains no console logging`, legacyActionConsoleCalls === "", legacyActionConsoleCalls) && ok;
+}
+
+// 12f. The service itself also independently re-checks OWNER access —
+// never trusting the action's own check alone.
+if (existsSync(legacyServiceFile)) {
+  const legacyServiceContent = readFileSync(legacyServiceFile, "utf8");
+
+  ok = report(
+    `${legacyServiceFile} independently checks OWNER access (assertCanAccessPaymentDetails)`,
+    legacyServiceContent.includes("assertCanAccessPaymentDetails"),
+    "",
+  ) && ok;
+
+  // 12g. classifyInvoiceArchival() remains the single eligibility gate —
+  // never an independently re-derived narrower check.
+  ok = report(
+    `${legacyServiceFile} calls classifyInvoiceArchival`,
+    legacyServiceContent.includes("classifyInvoiceArchival"),
+    "",
+  ) && ok;
+
+  // 12h. Reuses the shared compensation helper — never a duplicated local
+  // implementation.
+  ok = report(
+    `${legacyServiceFile} calls the shared compensateArchiveUpload helper`,
+    legacyServiceContent.includes("compensateArchiveUpload"),
+    "",
+  ) && ok;
+  ok = report(
+    `${legacyServiceFile} does not define its own local compensation function`,
+    !/async function compensate/.test(legacyServiceContent),
+    "",
+  ) && ok;
+
+  // 12i. Reuses the existing create-only upload helper — never a
+  // reimplemented upload/overwrite path.
+  ok = report(
+    `${legacyServiceFile} reuses uploadInvoicePdfObject (never a reimplemented upload)`,
+    legacyServiceContent.includes("uploadInvoicePdfObject") && !legacyServiceContent.includes("upsert: true"),
+    "",
+  ) && ok;
+
+  // 12j. The final transaction's guarded Invoice update carries the full
+  // five-field legacy-eligibility predicate, using Prisma.DbNull (never a
+  // bare JSON null) for the two Json? columns.
+  ok = report(
+    `${legacyServiceFile} guards on the full archive-null predicate (finalizedAt/pdfStoragePath/pdfGeneratedAt null, issuerSnapshot/recipientSnapshot via Prisma.DbNull)`,
+    legacyServiceContent.includes("finalizedAt: null") &&
+      legacyServiceContent.includes("pdfStoragePath: null") &&
+      legacyServiceContent.includes("pdfGeneratedAt: null") &&
+      legacyServiceContent.includes("issuerSnapshot: { equals: Prisma.DbNull }") &&
+      legacyServiceContent.includes("recipientSnapshot: { equals: Prisma.DbNull }"),
+    "",
+  ) && ok;
+
+  // 12k. The same guard also requires the exact status the PDF was
+  // rendered against — never "any non-DRAFT status" — so a status change
+  // mid-operation conflicts rather than silently committing.
+  ok = report(
+    `${legacyServiceFile} guards on the exact initial status (status: initialStatus)`,
+    legacyServiceContent.includes("status: initialStatus"),
+    "",
+  ) && ok;
+
+  // 12l. No PDF Storage call (upload/remove) appears textually inside the
+  // final prisma.$transaction(...) callback — the same blunt line-range
+  // proxy check #6 above already applies to issue-invoice.ts.
+  const legacyTxStart = legacyServiceContent.indexOf("prisma.$transaction(async (tx)");
+  if (legacyTxStart === -1) {
+    ok = report(`${legacyServiceFile} contains a prisma.$transaction(...) call`, false, "") && ok;
+  } else {
+    const legacyTxEnd = legacyServiceContent.indexOf("\n  } catch (err) {", legacyTxStart);
+    const legacyTxBody = legacyTxEnd === -1 ? legacyServiceContent.slice(legacyTxStart) : legacyServiceContent.slice(legacyTxStart, legacyTxEnd);
+    const legacyStorageCallInTx = /deps\.(upload|remove)\(/.test(legacyTxBody);
+    ok = report(
+      "no Storage operation (deps.upload/deps.remove) occurs inside the Legacy Archive final DB transaction",
+      !legacyStorageCallInTx,
+      legacyStorageCallInTx ? "Found deps.upload(...)/deps.remove(...) between the transaction's opening and its catch block." : "",
+    ) && ok;
+
+    // 12m. Inside that same transaction body, the guarded Invoice
+    // updateMany's own `data` object never writes status, amount, or
+    // documentVersion — a targeted extraction of the `data: {...}` block
+    // passed to `tx.invoice.updateMany`, not a whole-file scan (which
+    // would also match the unrelated `where` clause's own `status:
+    // initialStatus` predicate).
+    const legacyUpdateManyStart = legacyTxBody.indexOf("tx.invoice.updateMany(");
+    const legacyDataStart = legacyUpdateManyStart === -1 ? -1 : legacyTxBody.indexOf("data: {", legacyUpdateManyStart);
+    const legacyDataEnd = legacyDataStart === -1 ? -1 : legacyTxBody.indexOf("if (updateResult.count", legacyDataStart);
+    const legacyDataBlock = legacyDataStart === -1 || legacyDataEnd === -1 ? "" : legacyTxBody.slice(legacyDataStart, legacyDataEnd);
+    ok = report(
+      "the Legacy Archive Invoice update's own data object exists and is non-empty",
+      legacyDataBlock.length > 0,
+      "",
+    ) && ok;
+    ok = report(
+      "the Legacy Archive Invoice update's own data object never writes status/amount/documentVersion",
+      legacyDataBlock.length > 0 && !/\bstatus\s*:/.test(legacyDataBlock) && !/\bamount\s*:/.test(legacyDataBlock) && !/\bdocumentVersion\s*:/.test(legacyDataBlock),
+      legacyDataBlock,
+    ) && ok;
+  }
+} else {
+  ok = report(`${legacyServiceFile} exists`, false, `Expected ${legacyServiceFile} to exist.`) && ok;
+}
+
+// 12n. The shared compensation module exists, is server-only, and is the
+// one place both Issue and Legacy Archive perform post-upload compensation
+// — no duplicate implementation remains in either caller.
+ok = report(
+  `${compensationFile} exists`,
+  existsSync(compensationFile),
+  existsSync(compensationFile) ? "" : `Expected ${compensationFile} to exist.`,
+) && ok;
+
+if (existsSync(compensationFile)) {
+  const compensationContent = readFileSync(compensationFile, "utf8");
+  ok = report(`${compensationFile} begins with import "server-only"`, /^import "server-only";/m.test(compensationContent), "") && ok;
+  ok = report(`${compensationFile} exports compensateArchiveUpload`, /export async function compensateArchiveUpload/.test(compensationContent), "") && ok;
+}
+
+const issueServiceContentForCompensationCheck = existsSync(serviceFile) ? readFileSync(serviceFile, "utf8") : "";
+ok = report(
+  `${serviceFile} no longer defines its own local compensation function (uses the shared helper)`,
+  issueServiceContentForCompensationCheck.includes("compensateArchiveUpload") && !/async function compensateUpload/.test(issueServiceContentForCompensationCheck),
+  "",
+) && ok;
+
+// 12o. Neither new Legacy Archive file, nor the shared compensation
+// module, ever sends email, writes InvoiceEmailAttempt, writes
+// PortalDownloadRequest, or implements any reconciliation/bucket-listing/
+// cron surface. check #10 above already bans InvoiceEmailAttempt writers
+// repo-wide under src/lib/invoices/; these checks target the additional,
+// Legacy-Archive-specific forbidden surfaces by name.
+const legacyForbiddenSurfacePattern =
+  "(deliverNotificationEmails|sendEmailViaResend|recordPortalDownloadRequest|PortalDownloadRequest|CRON_SECRET|storage\\.from\\([^)]*\\)\\.list\\()";
+for (const file of [legacyServiceFile, legacyActionFile, compensationFile]) {
+  if (!existsSync(file)) continue;
+  const match = grep(legacyForbiddenSurfacePattern, file);
+  ok = report(
+    `${file} contains none of: deliverNotificationEmails, sendEmailViaResend, recordPortalDownloadRequest/PortalDownloadRequest, CRON_SECRET, a Storage bucket .list() call`,
+    match === "",
+    match,
   ) && ok;
 }
 

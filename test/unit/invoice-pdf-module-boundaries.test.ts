@@ -152,7 +152,7 @@ describe("module-boundary — no Client Component imports any new PDF module", (
   });
 });
 
-describe("module-boundary — no route/action other than the sub-PR 3b Issue action, the sub-PR 3c staff PDF route, and the Portal Invoice PDF route imports the PDF modules", () => {
+describe("module-boundary — no route/action other than the sub-PR 3b Issue action, the sub-PR 3c staff PDF route, the Portal Invoice PDF route, and the Legacy Archive action imports the PDF modules", () => {
   // Sub-PR 3a's own version of this test asserted zero route/action
   // imports at all (nothing was wired yet). Sub-PR 3b intentionally wired
   // exactly one — the dedicated Issue Server Action — per its own
@@ -161,12 +161,16 @@ describe("module-boundary — no route/action other than the sub-PR 3b Issue act
   // PDF download Route Handler. Portal Invoice PDF access adds a third,
   // deliberate entry: the Portal signed PDF download Route Handler, which
   // must call classifyInvoiceArchival()/buildInvoicePdfStoragePath()/
-  // createInvoicePdfSignedUrl() exactly like its staff sibling. A precise
-  // allowlist (not a broad directory allowance) still catches any OTHER
-  // route/action accidentally reaching into src/lib/invoices/pdf/, which
-  // would be a real scope violation.
+  // createInvoicePdfSignedUrl() exactly like its staff sibling. Invoice
+  // System Official Slice 3, Legacy Archive adds a fourth, deliberate
+  // entry: the retroactive-archival Server Action, which imports
+  // @/lib/invoices/pdf/legacy-archive-invoice. A precise allowlist (not a
+  // broad directory allowance) still catches any OTHER route/action
+  // accidentally reaching into src/lib/invoices/pdf/, which would be a
+  // real scope violation.
   const EXPECTED_PDF_IMPORTING_FILES = [
     "src/app/(dashboard)/invoices/[id]/edit/issue-actions.ts",
+    "src/app/(dashboard)/invoices/[id]/edit/legacy-archive-actions.ts",
     "src/app/api/invoices/[id]/pdf/route.ts",
     "src/app/api/portal/invoices/[id]/pdf/route.ts",
   ];
@@ -201,5 +205,26 @@ describe("module-boundary — src/components/invoices/invoice-read-only-view.tsx
 
   it("no longer defines buildInvoiceTotalsViewModel locally", () => {
     expect(source).not.toContain("export function buildInvoiceTotalsViewModel");
+  });
+});
+
+describe("module-boundary — shared archive-compensation.ts helper (Invoice System Official Slice 3, Legacy Archive)", () => {
+  it('archive-compensation.ts begins its imports with import "server-only";', () => {
+    const source = readSource("src/lib/invoices/pdf/archive-compensation.ts");
+    expect(source).toMatch(/^import "server-only";/m);
+  });
+
+  it("issue-invoice.ts imports compensateArchiveUpload from the shared module and no longer defines its own local compensation function", () => {
+    const source = readSource("src/lib/invoices/pdf/issue-invoice.ts");
+    expect(source).toContain('from "./archive-compensation"');
+    expect(source).toContain("compensateArchiveUpload");
+    expect(source).not.toMatch(/async function compensateUpload\(/);
+  });
+
+  it("legacy-archive-invoice.ts imports compensateArchiveUpload from the shared module and does not define its own local compensation function", () => {
+    const source = readSource("src/lib/invoices/pdf/legacy-archive-invoice.ts");
+    expect(source).toContain('from "./archive-compensation"');
+    expect(source).toContain("compensateArchiveUpload");
+    expect(source).not.toMatch(/async function compensate\w*\(/);
   });
 });

@@ -5,6 +5,7 @@ import { formatInvoiceCurrencyAmount } from "@/lib/invoices/currencies";
 import { formatDateOnlyForDisplay } from "@/lib/invoices/date-only";
 import { InvoiceLifecycleControls } from "./invoice-lifecycle-controls";
 import { InvoiceInternalNotesForm } from "./invoice-internal-notes-form";
+import { InvoiceLegacyArchiveControls } from "./invoice-legacy-archive-controls";
 import type { InvoiceStatusValue } from "@/lib/validation/invoice";
 import type { InvoiceTotalsViewModel } from "@/lib/invoices/totals-view-model";
 
@@ -23,9 +24,13 @@ export type InvoiceReadOnlyLineItem = { description: string; quantity: MoneyValu
  * the caller via classifyInvoiceArchival() — never derived here, and
  * never backed by pdfStoragePath/a ledger id/a snapshot/a signed URL
  * crossing into this component's own props) renders one plain
- * "Download PDF" link; every other state (DRAFT never reaches this
- * component at all, `legacy_eligible`, every `invariant_violation`
- * reason) renders none.
+ * "Download PDF" link. As of Invoice System Official Slice 3, Legacy
+ * Archive, a `legacy_eligible` invoice (also computed server-side by the
+ * caller, never derived here) instead renders the OWNER-only "Archive
+ * Legacy Invoice" control — the two are always mutually exclusive, since
+ * a row can never be both `archived` and `legacy_eligible` at once. DRAFT
+ * never reaches this component at all; every `invariant_violation` reason
+ * renders neither control.
  */
 export function InvoiceReadOnlyView({
   invoiceId,
@@ -41,6 +46,8 @@ export function InvoiceReadOnlyView({
   notes,
   internalNotes,
   hasArchivedPdf,
+  canArchiveLegacy,
+  expectedUpdatedAt,
   totals,
 }: {
   invoiceId: string;
@@ -56,6 +63,8 @@ export function InvoiceReadOnlyView({
   notes: string | null;
   internalNotes: string | null;
   hasArchivedPdf: boolean;
+  canArchiveLegacy: boolean;
+  expectedUpdatedAt: string;
   totals: InvoiceTotalsViewModel;
 }) {
   const format = (value: MoneyValue) => formatInvoiceCurrencyAmount(value, currency) ?? String(value);
@@ -155,6 +164,10 @@ export function InvoiceReadOnlyView({
         >
           Download PDF
         </a>
+      )}
+
+      {canArchiveLegacy && (
+        <InvoiceLegacyArchiveControls invoiceId={invoiceId} invoiceNumber={invoiceNumber} expectedUpdatedAt={expectedUpdatedAt} />
       )}
 
       <InvoiceLifecycleControls invoiceId={invoiceId} status={status} invoiceNumber={invoiceNumber} />
