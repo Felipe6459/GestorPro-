@@ -152,21 +152,23 @@ describe("module-boundary — no Client Component imports any new PDF module", (
   });
 });
 
-describe("module-boundary — no route/action other than the sub-PR 3b Issue action and the sub-PR 3c PDF route imports the PDF modules", () => {
+describe("module-boundary — no route/action other than the sub-PR 3b Issue action, the sub-PR 3c staff PDF route, and the Portal Invoice PDF route imports the PDF modules", () => {
   // Sub-PR 3a's own version of this test asserted zero route/action
   // imports at all (nothing was wired yet). Sub-PR 3b intentionally wired
   // exactly one — the dedicated Issue Server Action — per its own
   // "the dedicated Issue service is the only new DRAFT -> SENT path"
-  // requirement. Sub-PR 3c adds exactly one more, deliberate entry: the
-  // staff signed PDF download Route Handler, which must call
-  // classifyInvoiceArchival()/buildInvoicePdfStoragePath()/
-  // createInvoicePdfSignedUrl(). A precise allowlist (not a broad
-  // directory allowance) still catches any OTHER route/action
-  // accidentally reaching into src/lib/invoices/pdf/, which would be a
-  // real scope violation.
+  // requirement. Sub-PR 3c added exactly one more entry: the staff signed
+  // PDF download Route Handler. Portal Invoice PDF access adds a third,
+  // deliberate entry: the Portal signed PDF download Route Handler, which
+  // must call classifyInvoiceArchival()/buildInvoicePdfStoragePath()/
+  // createInvoicePdfSignedUrl() exactly like its staff sibling. A precise
+  // allowlist (not a broad directory allowance) still catches any OTHER
+  // route/action accidentally reaching into src/lib/invoices/pdf/, which
+  // would be a real scope violation.
   const EXPECTED_PDF_IMPORTING_FILES = [
     "src/app/(dashboard)/invoices/[id]/edit/issue-actions.ts",
     "src/app/api/invoices/[id]/pdf/route.ts",
+    "src/app/api/portal/invoices/[id]/pdf/route.ts",
   ];
 
   const routeAndActionFiles = walkTsFiles("src/app").filter(
