@@ -510,4 +510,136 @@ for (const file of [legacyServiceFile, legacyActionFile, compensationFile]) {
   ) && ok;
 }
 
+// 13. Staff Invoice PDF download route (sub-PR 3c) — its own dedicated
+// trust boundary never got a check block when it originally shipped
+// (only its Portal sibling, check #11 above, did). This route is
+// currently implemented correctly (verified by direct source read); this
+// block exists purely to guard that existing boundary against a future
+// regression, the same fail-closed discipline as check #11's own Portal
+// block, never a claim that a vulnerability exists today.
+const staffPdfRoute = "src/app/api/invoices/[id]/pdf/route.ts";
+
+ok = report(
+  `${staffPdfRoute} exists`,
+  existsSync(staffPdfRoute),
+  existsSync(staffPdfRoute) ? "" : `Expected ${staffPdfRoute} to exist.`,
+) && ok;
+
+if (existsSync(staffPdfRoute)) {
+  const staffPdfContent = readFileSync(staffPdfRoute, "utf8");
+  // Comments stripped once, up front — every forbidden-call check below
+  // reads from this stripped copy, so this route's own doc comments can
+  // never create a false positive (e.g. prose mentioning a forbidden
+  // function name to explain why it's absent).
+  const staffPdfCodeOnly = staffPdfContent.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+
+  // 13a. Resolves identity through the real staff auth boundary.
+  ok = report(
+    `${staffPdfRoute} resolves identity via getCurrentUserOrganization`,
+    staffPdfContent.includes("getCurrentUserOrganization"),
+    "",
+  ) && ok;
+
+  // 13b. Uses its own dedicated rate limiter — never a shared/borrowed
+  // bucket.
+  ok = report(
+    `${staffPdfRoute} uses the dedicated INVOICE_PDF_DOWNLOAD_LIMIT`,
+    staffPdfContent.includes("INVOICE_PDF_DOWNLOAD_LIMIT"),
+    "",
+  ) && ok;
+
+  // 13c. That limiter is actually passed to checkRateLimit(...), keyed by
+  // user.id — not merely imported/mentioned in a comment.
+  const rateLimitCallMatch = staffPdfCodeOnly.match(/checkRateLimit\(([^)]*)\)/);
+  const rateLimitArgs = rateLimitCallMatch ? rateLimitCallMatch[1] : "";
+  ok = report(
+    `${staffPdfRoute} calls checkRateLimit(INVOICE_PDF_DOWNLOAD_LIMIT, user.id)`,
+    /\bINVOICE_PDF_DOWNLOAD_LIMIT\b/.test(rateLimitArgs) && /\buser\.id\b/.test(rateLimitArgs),
+    rateLimitCallMatch ? rateLimitArgs : "checkRateLimit(...) call not found",
+  ) && ok;
+
+  // 13d. The rate-limit check happens before the first Invoice-domain
+  // Prisma lookup — never after, where an unthrottled request could
+  // already have paid the query cost.
+  const staffRateLimitIndex = staffPdfCodeOnly.indexOf("checkRateLimit(");
+  const staffInvoiceLookupIndex = staffPdfCodeOnly.indexOf("prisma.invoice.findFirst(");
+  ok = report(
+    `${staffPdfRoute} checks the rate limit before its first Invoice-domain Prisma lookup`,
+    staffRateLimitIndex !== -1 && staffInvoiceLookupIndex !== -1 && staffRateLimitIndex < staffInvoiceLookupIndex,
+    `checkRateLimit at ${staffRateLimitIndex}, prisma.invoice.findFirst at ${staffInvoiceLookupIndex}`,
+  ) && ok;
+
+  // 13e. classifyInvoiceArchival() remains the single eligibility gate.
+  ok = report(
+    `${staffPdfRoute} calls classifyInvoiceArchival`,
+    staffPdfContent.includes("classifyInvoiceArchival"),
+    "",
+  ) && ok;
+
+  // 13f. The ledger-consistency proof carries all six required
+  // predicates — a targeted extraction of the invoicePdfArchiveObject
+  // findFirst's own where clause, not a whole-file scan (which could be
+  // satisfied by unrelated text elsewhere in the route).
+  const staffLedgerCallIndex = staffPdfCodeOnly.indexOf("prisma.invoicePdfArchiveObject.findFirst(");
+  const staffLedgerWhereStart = staffLedgerCallIndex === -1 ? -1 : staffPdfCodeOnly.indexOf("where: {", staffLedgerCallIndex);
+  const staffLedgerWhereEnd = staffLedgerWhereStart === -1 ? -1 : staffPdfCodeOnly.indexOf("select:", staffLedgerWhereStart);
+  const staffLedgerWhereBlock =
+    staffLedgerWhereStart === -1 || staffLedgerWhereEnd === -1 ? "" : staffPdfCodeOnly.slice(staffLedgerWhereStart, staffLedgerWhereEnd);
+  const staffLedgerRequiredPredicates = [
+    "organizationId",
+    "invoiceId",
+    "storagePath",
+    "documentVersion",
+    'status: "REFERENCED"',
+    "referencedAt: { not: null }",
+  ];
+  const staffLedgerMissingPredicates = staffLedgerRequiredPredicates.filter((p) => !staffLedgerWhereBlock.includes(p));
+  ok = report(
+    `${staffPdfRoute}'s ledger-consistency proof contains all six required predicates (organizationId, invoiceId, storagePath, documentVersion, status: "REFERENCED", referencedAt: { not: null })`,
+    staffLedgerWhereBlock.length > 0 && staffLedgerMissingPredicates.length === 0,
+    staffLedgerMissingPredicates.join(", "),
+  ) && ok;
+
+  // 13g. Rebuilds the canonical path via buildInvoicePdfStoragePath(...)
+  // before ever calling the signing helper — never trusts a raw
+  // persisted path as the source of truth.
+  ok = report(
+    `${staffPdfRoute} calls buildInvoicePdfStoragePath`,
+    staffPdfContent.includes("buildInvoicePdfStoragePath"),
+    "",
+  ) && ok;
+
+  const staffPathRebuildIndex = staffPdfCodeOnly.indexOf("buildInvoicePdfStoragePath(");
+  const staffSignIndex = staffPdfCodeOnly.indexOf("createInvoicePdfSignedUrl(");
+  ok = report(
+    `${staffPdfRoute} rebuilds the canonical path before calling createInvoicePdfSignedUrl`,
+    staffPathRebuildIndex !== -1 && staffSignIndex !== -1 && staffPathRebuildIndex < staffSignIndex,
+    `buildInvoicePdfStoragePath at ${staffPathRebuildIndex}, createInvoicePdfSignedUrl at ${staffSignIndex}`,
+  ) && ok;
+
+  // 13h. Reuses the existing signed-URL helper — never a duplicated
+  // bucket/TTL/filename/TEST_MODE/signing implementation.
+  ok = report(
+    `${staffPdfRoute} calls createInvoicePdfSignedUrl`,
+    staffPdfContent.includes("createInvoicePdfSignedUrl"),
+    "",
+  ) && ok;
+
+  // 13i. Never exposes a permanent public URL for a private-bucket
+  // object.
+  ok = report(
+    `${staffPdfRoute} never calls getPublicUrl`,
+    !staffPdfCodeOnly.includes("getPublicUrl"),
+    "",
+  ) && ok;
+
+  // 13j. No console logging of any kind — generic responses only, never
+  // a path/signed-URL/invoice-number/identifier printed anywhere.
+  ok = report(
+    `${staffPdfRoute} contains no console logging`,
+    !/console\.(log|error|warn|info|debug)\(/.test(staffPdfCodeOnly),
+    "",
+  ) && ok;
+}
+
 process.exit(ok ? 0 : 1);
