@@ -388,6 +388,31 @@ export async function issueInvoice(
   }
 
   // --- D. Upload ----------------------------------------------------------
+  // Bounded Archival Reconciliation/Cleanup — ownership recheck immediately
+  // before upload. Defense in depth against a producer that stalled between
+  // ledger-row creation and this point and has since had this row claimed
+  // (or already reconciled) by the reconciliation worker: the primary proof
+  // that a live producer cannot still be running by the time a row becomes
+  // reconciliation-eligible is SAFETY_WINDOW_MS exceeding this
+  // application's own maximum Vercel Function invocation lifetime (see
+  // reconcile-archive-objects.ts's own MAX_VERCEL_FUNCTION_DURATION_MS doc
+  // comment) — this check does not, by itself, claim to close that TOCTOU.
+  let stillOwned: { id: string } | null;
+  try {
+    stillOwned = await prisma.invoicePdfArchiveObject.findFirst({
+      where: { id: identity.archiveId, status: "PENDING_UPLOAD", cleanupLockedAt: null, cleanupClaimToken: null },
+      select: { id: true },
+    });
+  } catch {
+    // A thrown/rejected ownership query is never allowed to propagate as a
+    // raw exception — deps.upload is never called on this branch either.
+    // No compensation is needed (upload was never attempted); the
+    // PENDING_UPLOAD ledger row this same call already created remains
+    // exactly as-is, durable evidence for a later reconciliation run.
+    return fail("FINALIZATION_FAILED");
+  }
+  if (!stillOwned) return fail("FINALIZATION_FAILED");
+
   let uploadResult: InvoicePdfUploadResult;
   try {
     uploadResult = await deps.upload({ identity, body: pdfBuffer });
@@ -446,8 +471,14 @@ export async function issueInvoice(
       });
       if (updateResult.count === 0) throw new InvoiceUpdateConflictError();
 
+      // Bounded Archival Reconciliation/Cleanup — cleanupLockedAt/
+      // cleanupClaimToken must both be null, i.e. no reconciliation worker
+      // currently holds this row's claim. If reconciliation won the race,
+      // this update matches zero rows, throwing below rolls back this
+      // entire transaction (including the Invoice.updateMany above), and
+      // Invoice.pdfStoragePath never becomes visible.
       const ledgerUpdate = await tx.invoicePdfArchiveObject.updateMany({
-        where: { id: identity.archiveId, status: "PENDING_UPLOAD" },
+        where: { id: identity.archiveId, status: "PENDING_UPLOAD", cleanupLockedAt: null, cleanupClaimToken: null },
         data: { status: "REFERENCED", referencedAt: now },
       });
       if (ledgerUpdate.count === 0) throw new LedgerTransitionInvariantError();

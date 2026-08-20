@@ -642,4 +642,204 @@ if (existsSync(staffPdfRoute)) {
   ) && ok;
 }
 
+// 14. Bounded Archival Reconciliation/Cleanup — its own new trust boundary
+// (the worker module plus both new cron routes), verified with the same
+// fail-closed discipline as every check above. 14a-14b target the
+// producer/compensation guard fields added to issue-invoice.ts,
+// legacy-archive-invoice.ts, and archive-compensation.ts directly; 14c
+// onward target the new reconcile-archive-objects.ts module and both new
+// route files.
+const reconciliationFile = "src/lib/invoices/pdf/reconcile-archive-objects.ts";
+const reconciliationRouteFile = "src/app/api/cron/invoice-pdf-reconciliation/route.ts";
+const reconciliationDryRunRouteFile = "src/app/api/cron/invoice-pdf-reconciliation/dry-run/route.ts";
+
+// 14a. Issue's and Legacy Archive's own final ledger-promotion updateMany
+// each require both claim fields null — a row the reconciliation worker
+// currently holds claimed must never be silently promoted to REFERENCED.
+for (const file of [serviceFile, legacyServiceFile]) {
+  if (!existsSync(file)) continue;
+  const content = readFileSync(file, "utf8");
+  const promotionMatch = content.match(/tx\.invoicePdfArchiveObject\.updateMany\(\{\s*where:\s*\{([^}]*)\}/);
+  const whereBody = promotionMatch ? promotionMatch[1] : "";
+  ok = report(
+    `${file}'s final ledger-promotion updateMany requires cleanupLockedAt: null and cleanupClaimToken: null`,
+    whereBody.length > 0 && /cleanupLockedAt:\s*null/.test(whereBody) && /cleanupClaimToken:\s*null/.test(whereBody),
+    whereBody,
+  ) && ok;
+}
+
+// 14b. Both archive-compensation.ts updateMany branches require the same
+// two null predicates.
+if (existsSync(compensationFile)) {
+  const compensationContent = readFileSync(compensationFile, "utf8");
+  const branches = [...compensationContent.matchAll(/prisma\.invoicePdfArchiveObject\.updateMany\(\{\s*where:\s*\{([^}]*)\}/g)];
+  ok = report(
+    `${compensationFile} has exactly two invoicePdfArchiveObject.updateMany calls, both requiring cleanupLockedAt: null and cleanupClaimToken: null`,
+    branches.length === 2 &&
+      branches.every(([, whereBody]) => /cleanupLockedAt:\s*null/.test(whereBody) && /cleanupClaimToken:\s*null/.test(whereBody)),
+    branches.map(([, w]) => w).join(" | "),
+  ) && ok;
+}
+
+if (existsSync(reconciliationFile)) {
+  const reconciliationContent = readFileSync(reconciliationFile, "utf8");
+
+  // Scoped extraction — the real (write-capable) worker and the true
+  // zero-write dry-run worker live in the same module file, and the real
+  // worker legitimately contains everything the dry-run worker must never
+  // contain (updateMany/create/delete, remove(...)). Every "must not
+  // contain" check below is therefore always scoped to one function's own
+  // extracted body, never a whole-file grep, which would necessarily fail
+  // given the real worker's own legitimate content.
+  const workerStart = reconciliationContent.indexOf("export async function reconcileInvoicePdfArchiveObjects(");
+  const dryRunStart = reconciliationContent.indexOf("export async function reconcileInvoicePdfArchiveObjectsDryRun(");
+  const workerBody =
+    workerStart === -1 ? "" : reconciliationContent.slice(workerStart, dryRunStart === -1 ? undefined : dryRunStart);
+  const dryRunBody = dryRunStart === -1 ? "" : reconciliationContent.slice(dryRunStart);
+
+  // 14c. The real worker's own body calls candidateWhere( at least twice
+  // (the initial candidate SELECT, and again inside the claim UPDATE's own
+  // WHERE) — the same function reused, not two independently-written
+  // predicates that could drift apart.
+  const candidateWhereCallsInWorker = (workerBody.match(/candidateWhere\(/g) ?? []).length;
+  ok = report(
+    `${reconciliationFile}'s real worker calls candidateWhere( at least twice (initial SELECT and claim UPDATE)`,
+    candidateWhereCallsInWorker >= 2,
+    `found ${candidateWhereCallsInWorker} occurrence(s)`,
+  ) && ok;
+
+  // 14d. The dry-run worker's own candidate SELECT also calls
+  // candidateWhere(.
+  ok = report(`${reconciliationFile}'s dry-run worker calls candidateWhere(`, dryRunBody.includes("candidateWhere("), "") && ok;
+
+  // 14e. The post-claim requery — narrowly extracted from the real
+  // worker's own body — requires candidateIds, cleanupClaimToken: runToken,
+  // and a status restriction, and deliberately does NOT call
+  // candidateWhere( within that same narrow block: a row this run just
+  // claimed has a fresh cleanupLockedAt/non-null cleanupClaimToken, which
+  // can satisfy neither candidateWhere()'s "unclaimed" nor "stale" branch
+  // — reapplying it here would make the worker claim rows and then find
+  // none of them.
+  const requeryStart = workerBody.indexOf("const claimed = await prisma.invoicePdfArchiveObject.findMany(");
+  const requeryEnd = requeryStart === -1 ? -1 : workerBody.indexOf(");", requeryStart);
+  const requeryBlock = requeryStart === -1 || requeryEnd === -1 ? "" : workerBody.slice(requeryStart, requeryEnd);
+  ok = report(
+    "the post-claim requery requires candidateIds, cleanupClaimToken: runToken, and a status restriction, and never calls candidateWhere( within its own block",
+    requeryBlock.length > 0 &&
+      requeryBlock.includes("candidateIds") &&
+      requeryBlock.includes("cleanupClaimToken: runToken") &&
+      /status:\s*\{\s*in:/.test(requeryBlock) &&
+      !requeryBlock.includes("candidateWhere("),
+    requeryBlock,
+  ) && ok;
+
+  // 14f. Every release helper — narrowly extracted by name — requires
+  // cleanupClaimToken and a status restriction in its own WHERE clause,
+  // and never requires cleanupLockedAt there (token equality alone is the
+  // proven-sufficient ownership check; see the module's own comment on
+  // releaseAsCleaned).
+  for (const helperName of ["releaseAsCleaned", "releaseAsCleanupPending", "releaseWithFailure"]) {
+    const helperStart = reconciliationContent.indexOf(`async function ${helperName}(`);
+    const helperEnd = helperStart === -1 ? -1 : reconciliationContent.indexOf("\n}", helperStart);
+    const helperBody = helperStart === -1 || helperEnd === -1 ? "" : reconciliationContent.slice(helperStart, helperEnd);
+    const whereMatch = helperBody.match(/where:\s*\{([^}]*)\}/);
+    const whereBody = whereMatch ? whereMatch[1] : "";
+    ok = report(
+      `${helperName}() requires cleanupClaimToken and a status restriction, and never requires cleanupLockedAt, in its own WHERE clause`,
+      whereBody.length > 0 &&
+        whereBody.includes("cleanupClaimToken: runToken") &&
+        /status:\s*\{\s*in:/.test(whereBody) &&
+        !whereBody.includes("cleanupLockedAt"),
+      whereBody,
+    ) && ok;
+  }
+
+  // 14g. The dry-run function body — narrowly extracted, see the comment
+  // above workerBody/dryRunBody — never calls invoicePdfArchiveObject
+  // update/create/delete and never calls remove(.
+  ok = report(
+    `${reconciliationFile}'s dry-run function body contains no invoicePdfArchiveObject update/create/delete and no remove( call`,
+    dryRunBody.length > 0 &&
+      !dryRunBody.includes("invoicePdfArchiveObject.updateMany") &&
+      !dryRunBody.includes("invoicePdfArchiveObject.create") &&
+      !dryRunBody.includes("invoicePdfArchiveObject.delete") &&
+      !/\bremove\(/.test(dryRunBody),
+    dryRunBody,
+  ) && ok;
+
+  // 14h. No bucket-wide listing, no signed-URL creation, no console
+  // logging anywhere in this module (comments stripped first, matching
+  // this script's own established technique).
+  const reconciliationCodeOnly = reconciliationContent.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  ok = report(`${reconciliationFile} never calls a Storage bucket .list()`, !/storage\.from\([^)]*\)\.list\(/.test(reconciliationCodeOnly), "") && ok;
+  ok = report(
+    `${reconciliationFile} never creates a signed URL`,
+    !reconciliationCodeOnly.includes("createSignedUrl") && !reconciliationCodeOnly.includes("createInvoicePdfSignedUrl"),
+    "",
+  ) && ok;
+  ok = report(
+    `${reconciliationFile} contains no console logging`,
+    !/console\.(log|error|warn|info|debug)\(/.test(reconciliationCodeOnly),
+    "",
+  ) && ok;
+
+  // 14k. Both exported workers resolve params.batchSize through the shared
+  // resolveBatchSize( resolver — narrowly scoped to each function's own
+  // extracted body, same technique as 14c-14h above — before ever passing
+  // it to Prisma's own take:. Neither body may pass a raw params.batchSize
+  // (with or without a `?? BATCH_SIZE` fallback) directly into take:, which
+  // would defeat the bounded-batch guarantee for any future internal caller
+  // that supplies an out-of-range value.
+  ok = report(
+    `${reconciliationFile}'s real worker resolves params.batchSize via resolveBatchSize( before its candidate query's take:, never a raw params.batchSize pass-through`,
+    workerBody.includes("resolveBatchSize(params.batchSize)") && !/take:\s*params\.batchSize/.test(workerBody),
+    workerBody,
+  ) && ok;
+  ok = report(
+    `${reconciliationFile}'s dry-run worker resolves params.batchSize via resolveBatchSize( before its candidate query's take:, never a raw params.batchSize pass-through`,
+    dryRunBody.includes("resolveBatchSize(params.batchSize)") && !/take:\s*params\.batchSize/.test(dryRunBody),
+    dryRunBody,
+  ) && ok;
+} else {
+  ok = report(`${reconciliationFile} exists`, false, `Expected ${reconciliationFile} to exist.`) && ok;
+}
+
+// 14i. Both reconciliation routes exist, both import and call
+// requireCronAuth, and both retain a literal maxDuration=60 —
+// reconcile-archive-objects.ts's own module-load-time assertion
+// (CLEANUP_LEASE_MS > this exact value) depends on it never silently
+// drifting.
+for (const file of [reconciliationRouteFile, reconciliationDryRunRouteFile]) {
+  ok = report(`${file} exists`, existsSync(file), existsSync(file) ? "" : `Expected ${file} to exist.`) && ok;
+  if (existsSync(file)) {
+    const content = readFileSync(file, "utf8");
+    ok = report(`${file} declares export const maxDuration = 60`, /export const maxDuration = 60;/.test(content), "") && ok;
+    ok = report(
+      `${file} imports and calls requireCronAuth`,
+      content.includes('from "@/lib/cron/auth"') && /requireCronAuth\(/.test(content),
+      "",
+    ) && ok;
+  }
+}
+
+// 14j. Each route calls exactly its own corresponding worker function —
+// the real route never calls the dry-run function, and the dry-run route
+// never calls the real, write-capable function.
+if (existsSync(reconciliationRouteFile)) {
+  const content = readFileSync(reconciliationRouteFile, "utf8");
+  ok = report(
+    `${reconciliationRouteFile} calls reconcileInvoicePdfArchiveObjects, never the dry-run function`,
+    content.includes("reconcileInvoicePdfArchiveObjects(") && !content.includes("reconcileInvoicePdfArchiveObjectsDryRun"),
+    "",
+  ) && ok;
+}
+if (existsSync(reconciliationDryRunRouteFile)) {
+  const content = readFileSync(reconciliationDryRunRouteFile, "utf8");
+  ok = report(
+    `${reconciliationDryRunRouteFile} calls only reconcileInvoicePdfArchiveObjectsDryRun, never the real write-capable function`,
+    content.includes("reconcileInvoicePdfArchiveObjectsDryRun(") && !/\breconcileInvoicePdfArchiveObjects\(/.test(content),
+    "",
+  ) && ok;
+}
+
 process.exit(ok ? 0 : 1);

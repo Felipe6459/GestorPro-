@@ -896,10 +896,15 @@ model InvoicePdfArchiveObject {
 
   cleanupAttemptCount Int @default(0)
 
-  // A bounded, predefined category only (e.g. "remove_failed",
-  // "not_configured") — never a raw third-party error message, response
-  // body, signed URL, or object path. See src/lib/invoices/pdf/storage.ts's
-  // own closed failure-reason type for the exact allowed values.
+  // A bounded, predefined category only — never a raw third-party error
+  // message, response body, signed URL, or object path. Exactly one of:
+  // "storage_not_configured", "probe_failed", "remove_failed",
+  // "invariant_violation", "invoice_reference_detected" (written by
+  // src/lib/invoices/pdf/reconcile-archive-objects.ts's own closed
+  // ReconciliationFailureCategory union), or "remove_failed"/
+  // "storage_not_configured" (written by
+  // src/lib/invoices/pdf/archive-compensation.ts, a strict subset of the
+  // same set).
   lastCleanupFailureCategory String?
 
   createdAt DateTime @default(now())

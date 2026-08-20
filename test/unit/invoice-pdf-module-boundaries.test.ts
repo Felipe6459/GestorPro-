@@ -152,7 +152,7 @@ describe("module-boundary — no Client Component imports any new PDF module", (
   });
 });
 
-describe("module-boundary — no route/action other than the sub-PR 3b Issue action, the sub-PR 3c staff PDF route, the Portal Invoice PDF route, and the Legacy Archive action imports the PDF modules", () => {
+describe("module-boundary — no route/action other than the sub-PR 3b Issue action, the sub-PR 3c staff PDF route, the Portal Invoice PDF route, the Legacy Archive action, and the Bounded Archival Reconciliation/Cleanup cron routes imports the PDF modules", () => {
   // Sub-PR 3a's own version of this test asserted zero route/action
   // imports at all (nothing was wired yet). Sub-PR 3b intentionally wired
   // exactly one — the dedicated Issue Server Action — per its own
@@ -164,8 +164,11 @@ describe("module-boundary — no route/action other than the sub-PR 3b Issue act
   // createInvoicePdfSignedUrl() exactly like its staff sibling. Invoice
   // System Official Slice 3, Legacy Archive adds a fourth, deliberate
   // entry: the retroactive-archival Server Action, which imports
-  // @/lib/invoices/pdf/legacy-archive-invoice. A precise allowlist (not a
-  // broad directory allowance) still catches any OTHER route/action
+  // @/lib/invoices/pdf/legacy-archive-invoice. Bounded Archival
+  // Reconciliation/Cleanup adds the fifth and sixth, deliberate entries:
+  // the real and dry-run cron Route Handlers, which import
+  // @/lib/invoices/pdf/reconcile-archive-objects. A precise allowlist (not
+  // a broad directory allowance) still catches any OTHER route/action
   // accidentally reaching into src/lib/invoices/pdf/, which would be a
   // real scope violation.
   const EXPECTED_PDF_IMPORTING_FILES = [
@@ -173,6 +176,8 @@ describe("module-boundary — no route/action other than the sub-PR 3b Issue act
     "src/app/(dashboard)/invoices/[id]/edit/legacy-archive-actions.ts",
     "src/app/api/invoices/[id]/pdf/route.ts",
     "src/app/api/portal/invoices/[id]/pdf/route.ts",
+    "src/app/api/cron/invoice-pdf-reconciliation/route.ts",
+    "src/app/api/cron/invoice-pdf-reconciliation/dry-run/route.ts",
   ];
 
   const routeAndActionFiles = walkTsFiles("src/app").filter(
@@ -226,5 +231,26 @@ describe("module-boundary — shared archive-compensation.ts helper (Invoice Sys
     expect(source).toContain('from "./archive-compensation"');
     expect(source).toContain("compensateArchiveUpload");
     expect(source).not.toMatch(/async function compensate\w*\(/);
+  });
+});
+
+describe("module-boundary — reconcile-archive-objects.ts (Bounded Archival Reconciliation/Cleanup)", () => {
+  const source = readSource("src/lib/invoices/pdf/reconcile-archive-objects.ts");
+
+  it('begins its imports with import "server-only";', () => {
+    expect(source).toMatch(/^import "server-only";/m);
+  });
+
+  it("imports probeInvoicePdfObject and removeInvoicePdfObject from the shared storage module — never a duplicated implementation", () => {
+    expect(source).toContain('from "./storage"');
+    expect(source).toContain("probeInvoicePdfObject");
+    expect(source).toContain("removeInvoicePdfObject");
+  });
+
+  it("is never imported by any Client Component ('use client' file)", () => {
+    const clientComponentFiles = walkTsFiles("src").filter((file) => /^"use client";/m.test(readSource(file)));
+    for (const file of clientComponentFiles) {
+      expect(readSource(file)).not.toContain("@/lib/invoices/pdf/reconcile-archive-objects");
+    }
   });
 });

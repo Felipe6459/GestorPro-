@@ -72,6 +72,7 @@ const sensitiveImportTargets = [
   "@/lib/notifications/jobs/digest-candidates",
   "@/lib/notifications/email/format-notification-email",
   "@/lib/cron/auth",
+  "@/lib/invoices/pdf/reconcile-archive-objects",
 ];
 const leaks = [];
 for (const file of clientComponentFiles) {

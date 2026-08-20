@@ -43,13 +43,19 @@ export async function compensateArchiveUpload(
 
   try {
     if (removal.ok) {
+      // Bounded Archival Reconciliation/Cleanup — cleanupLockedAt/
+      // cleanupClaimToken must both be null: a row the reconciliation
+      // worker currently holds claimed must never be overwritten by this
+      // producer-triggered compensation path. If a claim is active, this
+      // update matches zero rows and the row is left exactly as
+      // reconciliation itself owns it.
       await prisma.invoicePdfArchiveObject.updateMany({
-        where: { id: ledgerId, status: "PENDING_UPLOAD" },
+        where: { id: ledgerId, status: "PENDING_UPLOAD", cleanupLockedAt: null, cleanupClaimToken: null },
         data: { status: "CLEANED", cleanedAt: now },
       });
     } else {
       await prisma.invoicePdfArchiveObject.updateMany({
-        where: { id: ledgerId, status: "PENDING_UPLOAD" },
+        where: { id: ledgerId, status: "PENDING_UPLOAD", cleanupLockedAt: null, cleanupClaimToken: null },
         data: {
           status: "CLEANUP_PENDING",
           cleanupAttemptCount: { increment: 1 },
