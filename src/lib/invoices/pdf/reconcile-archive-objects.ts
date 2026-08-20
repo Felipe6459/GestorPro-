@@ -137,6 +137,24 @@ if (CLEANUP_LEASE_MS <= RECONCILIATION_ROUTE_MAX_DURATION_SECONDS * 1000) {
 
 const RECONCILABLE_STATUSES = ["PENDING_UPLOAD", "CLEANUP_PENDING"] as const;
 
+/**
+ * The single resolver both exported workers use to turn an optional
+ * caller-supplied params.batchSize into the exact value passed to Prisma's
+ * own `take` — the only path either worker ever reads params.batchSize
+ * through. Deliberately never clamps: a value outside the closed
+ * [0, BATCH_SIZE] contract is a programmer error in whatever internal
+ * caller supplied it, not a value to silently coerce into range — clamping
+ * would hide that bug instead of surfacing it. Always called first, before
+ * either worker makes any Prisma or Storage call.
+ */
+export function resolveBatchSize(value: number | undefined): number {
+  if (value === undefined) return BATCH_SIZE;
+  if (!Number.isInteger(value) || value < 0 || value > BATCH_SIZE) {
+    throw new RangeError(`batchSize must be an integer from 0 through ${BATCH_SIZE} inclusive, received ${value}`);
+  }
+  return value;
+}
+
 // --- Candidate eligibility ---------------------------------------------------
 
 /**
@@ -504,9 +522,9 @@ export async function reconcileInvoicePdfArchiveObjects(
   params: { now: Date; batchSize?: number },
   overrides: Partial<ReconciliationDeps> = {},
 ): Promise<ReconciliationSummary> {
+  const batchSize = resolveBatchSize(params.batchSize);
   const deps: ReconciliationDeps = { ...defaultDeps, ...overrides };
   const now = params.now;
-  const batchSize = params.batchSize ?? BATCH_SIZE;
   const summary = emptyReconciliationSummary();
 
   // One fresh, cryptographically-random token — the sole ownership key for
@@ -673,13 +691,14 @@ export async function reconcileInvoicePdfArchiveObjectsDryRun(
   params: { now: Date; batchSize?: number },
   overrides: Partial<Pick<ReconciliationDeps, "probe">> = {},
 ): Promise<ReconciliationDryRunSummary> {
+  const batchSize = resolveBatchSize(params.batchSize);
   const probe = overrides.probe ?? probeInvoicePdfObject;
   const summary = emptyDryRunSummary();
 
   const candidates = await prisma.invoicePdfArchiveObject.findMany({
     where: candidateWhere(params.now),
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-    take: params.batchSize ?? BATCH_SIZE,
+    take: batchSize,
     select: { id: true, organizationId: true, invoiceId: true, documentVersion: true, storagePath: true },
   });
   summary.scanned = candidates.length;

@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { seedTestData, cleanupTestData, type TestFixtures } from "../../fixtures/seed";
 import type { Role } from "@/generated/prisma/enums";
+import { ATTACHMENTS_BUCKET } from "@/lib/storage/attachments-config";
 
 /**
  * Bounded Archival Reconciliation/Cleanup — the producer/finalizer vs.
@@ -19,6 +20,7 @@ const { issueInvoice } = await import("@/lib/invoices/pdf/issue-invoice");
 const { compensateArchiveUpload } = await import("@/lib/invoices/pdf/archive-compensation");
 const { buildInvoicePdfStoragePath } = await import("@/lib/invoices/pdf/storage");
 const { reconcileInvoicePdfArchiveObjects } = await import("@/lib/invoices/pdf/reconcile-archive-objects");
+const { testStorageRead } = await import("@/lib/storage/test-storage");
 
 afterAll(() => {
   if (ORIGINAL_TEST_MODE === undefined) delete process.env.TEST_MODE;
@@ -182,6 +184,60 @@ describe("issueInvoice — reconciliation coordination", () => {
       expect(after.pdfStoragePath).toBeNull();
     } finally {
       findFirstSpy.mockRestore();
+    }
+  });
+
+  it("pre-upload ownership query failure: when the ownership recheck rejects, deps.upload is never called, the bounded FINALIZATION_FAILED result is returned, and the PENDING_UPLOAD ledger row survives untouched", async () => {
+    const invoice = await seedDraftInvoice(fixtures);
+    const uploadSpy = vi.fn(async () => ({ ok: true as const }));
+    let capturedArchiveId = "";
+    // A rejected (not merely null) ownership recheck must be bounded exactly
+    // like the null-result case above — this is a distinct scenario, kept
+    // as its own test rather than folded into the one above.
+    const findFirstSpy = vi
+      .spyOn(prisma.invoicePdfArchiveObject, "findFirst")
+      .mockRejectedValueOnce(new Error("synthetic ownership-query failure"));
+    try {
+      const result = await issueInvoice(
+        { actor: actorFor(fixtures, fixtures.owner, "OWNER"), invoiceId: invoice.id, expectedUpdatedAt: invoice.updatedAt.toISOString() },
+        {
+          render: async () => Buffer.from("%PDF-1.3"),
+          upload: uploadSpy,
+          generateArchiveId: () => {
+            capturedArchiveId = randomUUID();
+            return capturedArchiveId;
+          },
+        },
+      );
+
+      expect(result).toEqual({ ok: false, error: "FINALIZATION_FAILED" });
+      expect(uploadSpy).not.toHaveBeenCalled();
+
+      const after = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
+      expect(after.status).toBe("DRAFT");
+      expect(after.pdfStoragePath).toBeNull();
+      expect(after.finalizedAt).toBeNull();
+      expect(after.issuerSnapshot).toBeNull();
+      expect(after.recipientSnapshot).toBeNull();
+
+      const ledger = await prisma.invoicePdfArchiveObject.findUniqueOrThrow({ where: { id: capturedArchiveId } });
+      expect(ledger.status).toBe("PENDING_UPLOAD");
+      expect(ledger.cleanupLockedAt).toBeNull();
+      expect(ledger.cleanupClaimToken).toBeNull();
+      expect(ledger.referencedAt).toBeNull();
+      expect(ledger.cleanedAt).toBeNull();
+
+      const identity = {
+        organizationId: fixtures.orgA.id,
+        invoiceId: invoice.id,
+        documentVersion: invoice.documentVersion,
+        archiveId: capturedArchiveId,
+      };
+      const path = buildInvoicePdfStoragePath(identity);
+      expect(testStorageRead(ATTACHMENTS_BUCKET, path)).toBeNull();
+    } finally {
+      findFirstSpy.mockRestore();
+      if (capturedArchiveId) await prisma.invoicePdfArchiveObject.delete({ where: { id: capturedArchiveId } });
     }
   });
 });

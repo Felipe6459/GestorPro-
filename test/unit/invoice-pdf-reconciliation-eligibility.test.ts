@@ -6,8 +6,15 @@ import type { ReconciliationCandidateRow } from "@/lib/invoices/pdf/reconcile-ar
 // identical, already-established precedent.
 vi.mock("server-only", () => ({}));
 
-const { isReconciliationCandidate, SAFETY_WINDOW_MS, CLEANUP_LEASE_MS, MAX_CLEANUP_ATTEMPTS, MAX_VERCEL_FUNCTION_DURATION_MS } =
-  await import("@/lib/invoices/pdf/reconcile-archive-objects");
+const {
+  isReconciliationCandidate,
+  resolveBatchSize,
+  BATCH_SIZE,
+  SAFETY_WINDOW_MS,
+  CLEANUP_LEASE_MS,
+  MAX_CLEANUP_ATTEMPTS,
+  MAX_VERCEL_FUNCTION_DURATION_MS,
+} = await import("@/lib/invoices/pdf/reconcile-archive-objects");
 
 /**
  * Bounded Archival Reconciliation/Cleanup — pure, unit-testable coverage
@@ -126,6 +133,44 @@ describe("isReconciliationCandidate — status group", () => {
   it("CLEANED is never eligible, regardless of every other field", () => {
     const candidate = row({ status: "CLEANED", createdAt: new Date(0), cleanupAttemptCount: 0 });
     expect(isReconciliationCandidate(candidate, NOW)).toBe(false);
+  });
+});
+
+describe("resolveBatchSize — the single resolver both exported workers use for params.batchSize", () => {
+  it("undefined resolves to BATCH_SIZE", () => {
+    expect(resolveBatchSize(undefined)).toBe(BATCH_SIZE);
+  });
+
+  it("0 is accepted as-is (supports existing deterministic no-candidate tests)", () => {
+    expect(resolveBatchSize(0)).toBe(0);
+  });
+
+  it("1 is accepted as-is", () => {
+    expect(resolveBatchSize(1)).toBe(1);
+  });
+
+  it("BATCH_SIZE itself is accepted as-is (the inclusive upper bound)", () => {
+    expect(resolveBatchSize(BATCH_SIZE)).toBe(BATCH_SIZE);
+  });
+
+  it("-1 (negative) throws a RangeError", () => {
+    expect(() => resolveBatchSize(-1)).toThrow(RangeError);
+  });
+
+  it("BATCH_SIZE + 1 (over the bound) throws a RangeError", () => {
+    expect(() => resolveBatchSize(BATCH_SIZE + 1)).toThrow(RangeError);
+  });
+
+  it("1.5 (fractional) throws a RangeError", () => {
+    expect(() => resolveBatchSize(1.5)).toThrow(RangeError);
+  });
+
+  it("NaN throws a RangeError", () => {
+    expect(() => resolveBatchSize(NaN)).toThrow(RangeError);
+  });
+
+  it("Infinity throws a RangeError", () => {
+    expect(() => resolveBatchSize(Infinity)).toThrow(RangeError);
   });
 });
 

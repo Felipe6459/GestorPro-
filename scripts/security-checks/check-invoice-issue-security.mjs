@@ -782,6 +782,24 @@ if (existsSync(reconciliationFile)) {
     !/console\.(log|error|warn|info|debug)\(/.test(reconciliationCodeOnly),
     "",
   ) && ok;
+
+  // 14k. Both exported workers resolve params.batchSize through the shared
+  // resolveBatchSize( resolver — narrowly scoped to each function's own
+  // extracted body, same technique as 14c-14h above — before ever passing
+  // it to Prisma's own take:. Neither body may pass a raw params.batchSize
+  // (with or without a `?? BATCH_SIZE` fallback) directly into take:, which
+  // would defeat the bounded-batch guarantee for any future internal caller
+  // that supplies an out-of-range value.
+  ok = report(
+    `${reconciliationFile}'s real worker resolves params.batchSize via resolveBatchSize( before its candidate query's take:, never a raw params.batchSize pass-through`,
+    workerBody.includes("resolveBatchSize(params.batchSize)") && !/take:\s*params\.batchSize/.test(workerBody),
+    workerBody,
+  ) && ok;
+  ok = report(
+    `${reconciliationFile}'s dry-run worker resolves params.batchSize via resolveBatchSize( before its candidate query's take:, never a raw params.batchSize pass-through`,
+    dryRunBody.includes("resolveBatchSize(params.batchSize)") && !/take:\s*params\.batchSize/.test(dryRunBody),
+    dryRunBody,
+  ) && ok;
 } else {
   ok = report(`${reconciliationFile} exists`, false, `Expected ${reconciliationFile} to exist.`) && ok;
 }

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { seedTestData, cleanupTestData, type TestFixtures } from "../../fixtures/seed";
 
@@ -435,6 +435,25 @@ describe("reconcileInvoicePdfArchiveObjects / reconcileInvoicePdfArchiveObjectsD
         expect(summary.scanned).toBe(2);
       } finally {
         await Promise.all(rows.map((r) => cleanupLedgerRow(r.id)));
+      }
+    });
+
+    it("an oversized batchSize fails fast — before the candidate query, the claim write, or any probe/remove call", async () => {
+      const findManySpy = vi.spyOn(prisma.invoicePdfArchiveObject, "findMany");
+      const updateManySpy = vi.spyOn(prisma.invoicePdfArchiveObject, "updateMany");
+      const probeSpy = vi.fn(async () => ({ ok: true as const, exists: false }));
+      const removeSpy = vi.fn(async () => ({ ok: true as const }));
+      try {
+        await expect(
+          reconcileInvoicePdfArchiveObjects({ now: new Date(), batchSize: BATCH_SIZE + 1 }, { probe: probeSpy, remove: removeSpy }),
+        ).rejects.toThrow(RangeError);
+        expect(findManySpy).not.toHaveBeenCalled();
+        expect(updateManySpy).not.toHaveBeenCalled();
+        expect(probeSpy).not.toHaveBeenCalled();
+        expect(removeSpy).not.toHaveBeenCalled();
+      } finally {
+        findManySpy.mockRestore();
+        updateManySpy.mockRestore();
       }
     });
 

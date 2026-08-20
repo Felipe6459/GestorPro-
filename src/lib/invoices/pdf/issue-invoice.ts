@@ -397,10 +397,20 @@ export async function issueInvoice(
   // application's own maximum Vercel Function invocation lifetime (see
   // reconcile-archive-objects.ts's own MAX_VERCEL_FUNCTION_DURATION_MS doc
   // comment) — this check does not, by itself, claim to close that TOCTOU.
-  const stillOwned = await prisma.invoicePdfArchiveObject.findFirst({
-    where: { id: identity.archiveId, status: "PENDING_UPLOAD", cleanupLockedAt: null, cleanupClaimToken: null },
-    select: { id: true },
-  });
+  let stillOwned: { id: string } | null;
+  try {
+    stillOwned = await prisma.invoicePdfArchiveObject.findFirst({
+      where: { id: identity.archiveId, status: "PENDING_UPLOAD", cleanupLockedAt: null, cleanupClaimToken: null },
+      select: { id: true },
+    });
+  } catch {
+    // A thrown/rejected ownership query is never allowed to propagate as a
+    // raw exception — deps.upload is never called on this branch either.
+    // No compensation is needed (upload was never attempted); the
+    // PENDING_UPLOAD ledger row this same call already created remains
+    // exactly as-is, durable evidence for a later reconciliation run.
+    return fail("FINALIZATION_FAILED");
+  }
   if (!stillOwned) return fail("FINALIZATION_FAILED");
 
   let uploadResult: InvoicePdfUploadResult;
