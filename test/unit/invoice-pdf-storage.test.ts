@@ -20,10 +20,17 @@ vi.mock("next/headers", () => ({
 const ORIGINAL_TEST_MODE = process.env.TEST_MODE;
 process.env.TEST_MODE = "1";
 
-const { buildInvoicePdfStoragePath, uploadInvoicePdfObject, removeInvoicePdfObject, createInvoicePdfSignedUrl } = await import(
-  "@/lib/invoices/pdf/storage"
-);
+const {
+  buildInvoicePdfStoragePath,
+  uploadInvoicePdfObject,
+  removeInvoicePdfObject,
+  probeInvoicePdfObject,
+  createInvoicePdfSignedUrl,
+} = await import("@/lib/invoices/pdf/storage");
 const { testStorageRead } = await import("@/lib/storage/test-storage");
+// Bounded Archival Reconciliation/Cleanup — operation-specific failure-reason
+// types, unit-tested for compile-time restriction only, below.
+import type { InvoicePdfUploadResult, InvoicePdfRemoveResult } from "@/lib/invoices/pdf/storage";
 
 afterAll(() => {
   if (ORIGINAL_TEST_MODE === undefined) {
@@ -183,6 +190,154 @@ describe("uploadInvoicePdfObject / removeInvoicePdfObject — accept only a stru
     await expect(uploadInvoicePdfObject({ identity: { organizationId: ORG_ID, invoiceId: INVOICE_ID, documentVersion: 1, archiveId: "not-a-uuid" }, body: Buffer.from("x") })).rejects.toThrow(/archiveId/);
     await expect(uploadInvoicePdfObject({ identity: { organizationId: ORG_ID, invoiceId: INVOICE_ID, documentVersion: 0, archiveId: ARCHIVE_ID }, body: Buffer.from("x") })).rejects.toThrow(/documentVersion/);
     await expect(removeInvoicePdfObject({ identity: { organizationId: "not-a-uuid", invoiceId: INVOICE_ID, documentVersion: 1, archiveId: ARCHIVE_ID } })).rejects.toThrow(/organizationId/);
+  });
+});
+
+describe("probeInvoicePdfObject — TEST_MODE branch", () => {
+  it("reports exists: true for an object actually present in the TEST_MODE store", async () => {
+    const archiveId = "aaaaaaaa-1111-4aaa-8aaa-aaaaaaaaaaaa";
+    await uploadInvoicePdfObject({ identity: identity(archiveId), body: Buffer.from("%PDF-1.3 present") });
+
+    const result = await probeInvoicePdfObject({ identity: identity(archiveId) });
+    expect(result).toEqual({ ok: true, exists: true });
+  });
+
+  it("reports exists: false for an object never uploaded", async () => {
+    const archiveId = "bbbbbbbb-2222-4bbb-8bbb-bbbbbbbbbbbb";
+    const result = await probeInvoicePdfObject({ identity: identity(archiveId) });
+    expect(result).toEqual({ ok: true, exists: false });
+  });
+
+  it("reports exists: false after the object has been removed", async () => {
+    const archiveId = "cccccccc-3333-4ccc-8ccc-cccccccccccc";
+    await uploadInvoicePdfObject({ identity: identity(archiveId), body: Buffer.from("%PDF-1.3 to be removed") });
+    await removeInvoicePdfObject({ identity: identity(archiveId) });
+
+    const result = await probeInvoicePdfObject({ identity: identity(archiveId) });
+    expect(result).toEqual({ ok: true, exists: false });
+  });
+
+  it("never confuses a different identity's object with this one's absence", async () => {
+    const targetArchiveId = "dddddddd-4444-4ddd-8ddd-dddddddddddd";
+    const otherArchiveId = "eeeeeeee-5555-4eee-8eee-eeeeeeeeeeee";
+    await uploadInvoicePdfObject({ identity: identity(otherArchiveId), body: Buffer.from("unrelated") });
+
+    const result = await probeInvoicePdfObject({ identity: identity(targetArchiveId) });
+    expect(result).toEqual({ ok: true, exists: false });
+  });
+});
+
+describe("probeInvoicePdfObject — production adapter", () => {
+  const prodIdentity = { organizationId: ORG_ID, invoiceId: INVOICE_ID, documentVersion: 1, archiveId: ARCHIVE_ID };
+
+  async function withProdProbe(run: (probeProd: typeof probeInvoicePdfObject, buildPathProd: typeof buildInvoicePdfStoragePath) => Promise<void>) {
+    const originalTestMode = process.env.TEST_MODE;
+    try {
+      delete process.env.TEST_MODE;
+      vi.resetModules();
+      const { probeInvoicePdfObject: probeProd, buildInvoicePdfStoragePath: buildPathProd } = await import("@/lib/invoices/pdf/storage");
+      await run(probeProd, buildPathProd);
+    } finally {
+      process.env.TEST_MODE = originalTestMode;
+      vi.resetModules();
+    }
+  }
+
+  it("data:true, error:null -> exists: true", async () => {
+    await withProdProbe(async (probeProd) => {
+      const existsMock = vi.fn().mockResolvedValue({ data: true, error: null });
+      const fakeClient = { storage: { from: vi.fn().mockReturnValue({ exists: existsMock }) } } as unknown as Parameters<typeof probeProd>[1];
+
+      const result = await probeProd({ identity: prodIdentity }, fakeClient);
+      expect(result).toEqual({ ok: true, exists: true });
+    });
+  });
+
+  it("data:false, error.status:404 -> exists: false (confirmed absent)", async () => {
+    await withProdProbe(async (probeProd) => {
+      const existsMock = vi.fn().mockResolvedValue({ data: false, error: { status: 404, message: "not found" } });
+      const fakeClient = { storage: { from: vi.fn().mockReturnValue({ exists: existsMock }) } } as unknown as Parameters<typeof probeProd>[1];
+
+      const result = await probeProd({ identity: prodIdentity }, fakeClient);
+      expect(result).toEqual({ ok: true, exists: false });
+    });
+  });
+
+  it("data:false, error.status:400 -> probe_failed, never exists: false — an unexpected provider response given canonical path validation, never treated as evidence of absence", async () => {
+    await withProdProbe(async (probeProd) => {
+      const existsMock = vi.fn().mockResolvedValue({ data: false, error: { status: 400, message: "bad request" } });
+      const fakeClient = { storage: { from: vi.fn().mockReturnValue({ exists: existsMock }) } } as unknown as Parameters<typeof probeProd>[1];
+
+      const result = await probeProd({ identity: prodIdentity }, fakeClient);
+      expect(result).toEqual({ ok: false, reason: "probe_failed" });
+    });
+  });
+
+  it("an unexpected resolved shape (data:false, error:null) -> probe_failed, never inferred as absent", async () => {
+    await withProdProbe(async (probeProd) => {
+      const existsMock = vi.fn().mockResolvedValue({ data: false, error: null });
+      const fakeClient = { storage: { from: vi.fn().mockReturnValue({ exists: existsMock }) } } as unknown as Parameters<typeof probeProd>[1];
+
+      const result = await probeProd({ identity: prodIdentity }, fakeClient);
+      expect(result).toEqual({ ok: false, reason: "probe_failed" });
+    });
+  });
+
+  it("an unexpected resolved shape (data:true, error:non-null) -> probe_failed", async () => {
+    await withProdProbe(async (probeProd) => {
+      const existsMock = vi.fn().mockResolvedValue({ data: true, error: { status: 200, message: "inconsistent" } });
+      const fakeClient = { storage: { from: vi.fn().mockReturnValue({ exists: existsMock }) } } as unknown as Parameters<typeof probeProd>[1];
+
+      const result = await probeProd({ identity: prodIdentity }, fakeClient);
+      expect(result).toEqual({ ok: false, reason: "probe_failed" });
+    });
+  });
+
+  it("a thrown auth/network/5xx failure -> probe_failed, never letting the raw exception escape", async () => {
+    await withProdProbe(async (probeProd) => {
+      const existsMock = vi.fn().mockRejectedValue(new Error("simulated network failure — must never be persisted or thrown"));
+      const fakeClient = { storage: { from: vi.fn().mockReturnValue({ exists: existsMock }) } } as unknown as Parameters<typeof probeProd>[1];
+
+      const result = await probeProd({ identity: prodIdentity }, fakeClient);
+      expect(result).toEqual({ ok: false, reason: "probe_failed" });
+    });
+  });
+
+  it("no client available and none injected -> storage_not_configured, without ever calling exists()", async () => {
+    await withProdProbe(async (probeProd) => {
+      const result = await probeProd({ identity: prodIdentity });
+      expect(result).toEqual({ ok: false, reason: "storage_not_configured" });
+    });
+  });
+
+  it("rejects an invalid structured identity before any external call", async () => {
+    await withProdProbe(async (probeProd) => {
+      await expect(probeProd({ identity: { ...prodIdentity, organizationId: "not-a-uuid" } })).rejects.toThrow(/organizationId/);
+    });
+  });
+});
+
+describe("InvoicePdfUploadResult / InvoicePdfRemoveResult — operation-specific failure reasons (type contract)", () => {
+  // Bounded Archival Reconciliation/Cleanup — a pure compile-time
+  // restriction: uploadInvoicePdfObject() can never fail with
+  // "remove_failed", and removeInvoicePdfObject() can never fail with
+  // "upload_failed". There is no runtime behavior to assert here — each
+  // suppression comment directly below its own assignment IS the
+  // assertion, enforced by `npx tsc --noEmit` (tsconfig.json includes
+  // test/**/*.ts), mirroring the established precedent in
+  // test/unit/invoice-lifecycle.test.ts's own frozen-object check. If a
+  // future edit widens either type back, a suppression comment with
+  // nothing left to suppress becomes its own type-check failure.
+  it("InvoicePdfUploadResult's reason may never be 'remove_failed'", () => {
+    // @ts-expect-error — "remove_failed" is not a valid InvoicePdfUploadFailureReason.
+    const badUpload: InvoicePdfUploadResult = { ok: false, reason: "remove_failed" };
+    void badUpload;
+  });
+
+  it("InvoicePdfRemoveResult's reason may never be 'upload_failed'", () => {
+    // @ts-expect-error — "upload_failed" is not a valid InvoicePdfRemoveFailureReason.
+    const badRemove: InvoicePdfRemoveResult = { ok: false, reason: "upload_failed" };
+    void badRemove;
   });
 });
 

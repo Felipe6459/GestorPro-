@@ -64,7 +64,7 @@ describe("compensateArchiveUpload — state A: removal succeeds, ledger transiti
 
     expect(updateManyMock).toHaveBeenCalledTimes(1);
     expect(updateManyMock).toHaveBeenCalledWith({
-      where: { id: LEDGER_ID, status: "PENDING_UPLOAD" },
+      where: { id: LEDGER_ID, status: "PENDING_UPLOAD", cleanupLockedAt: null, cleanupClaimToken: null },
       data: { status: "CLEANED", cleanedAt: NOW },
     });
   });
@@ -88,7 +88,7 @@ describe("compensateArchiveUpload — state B: removal succeeds, ledger transiti
     // other, successful ledger mutation was ever attempted.
     expect(updateManyMock).toHaveBeenCalledTimes(1);
     expect(updateManyMock).toHaveBeenCalledWith({
-      where: { id: LEDGER_ID, status: "PENDING_UPLOAD" },
+      where: { id: LEDGER_ID, status: "PENDING_UPLOAD", cleanupLockedAt: null, cleanupClaimToken: null },
       data: { status: "CLEANED", cleanedAt: NOW },
     });
   });
@@ -108,7 +108,7 @@ describe("compensateArchiveUpload — state C: removal fails (bounded reason), l
     expect(objectPresent).toBe(true);
     expect(updateManyMock).toHaveBeenCalledTimes(1);
     expect(updateManyMock).toHaveBeenCalledWith({
-      where: { id: LEDGER_ID, status: "PENDING_UPLOAD" },
+      where: { id: LEDGER_ID, status: "PENDING_UPLOAD", cleanupLockedAt: null, cleanupClaimToken: null },
       data: {
         status: "CLEANUP_PENDING",
         cleanupAttemptCount: { increment: 1 },
@@ -134,7 +134,7 @@ describe("compensateArchiveUpload — state D: removal fails, ledger transition 
     // remains PENDING_UPLOAD.
     expect(updateManyMock).toHaveBeenCalledTimes(1);
     expect(updateManyMock).toHaveBeenCalledWith({
-      where: { id: LEDGER_ID, status: "PENDING_UPLOAD" },
+      where: { id: LEDGER_ID, status: "PENDING_UPLOAD", cleanupLockedAt: null, cleanupClaimToken: null },
       data: {
         status: "CLEANUP_PENDING",
         cleanupAttemptCount: { increment: 1 },

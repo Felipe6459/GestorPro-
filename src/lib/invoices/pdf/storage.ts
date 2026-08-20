@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { headers } from "next/headers";
 import { TEST_MODE } from "@/lib/test-mode";
-import { testStorageUploadIfAbsent, testStorageRemove } from "@/lib/storage/test-storage";
+import { testStorageUploadIfAbsent, testStorageRemove, testStorageRead } from "@/lib/storage/test-storage";
 import { getStorageAdminClient } from "@/lib/storage/admin-client";
 import { ATTACHMENTS_BUCKET, SIGNED_URL_TTL_SECONDS } from "@/lib/storage/attachments-config";
 
@@ -53,10 +53,22 @@ export function buildInvoicePdfStoragePath({
   return `organizations/${organizationId}/invoice-pdf/${invoiceId}/v${documentVersion}/${archiveId}.pdf`;
 }
 
-export type InvoicePdfStorageFailureReason = "storage_not_configured" | "upload_failed" | "remove_failed";
+// Bounded Archival Reconciliation/Cleanup — split from the single former
+// InvoicePdfStorageFailureReason so each operation's own result type only
+// ever admits the reasons it can actually produce (upload can never fail
+// with "remove_failed"; remove can never fail with "upload_failed") — a
+// compile-time-enforced contract, not merely a documented convention. See
+// test/unit/invoice-pdf-storage.test.ts's own @ts-expect-error coverage.
+export type InvoicePdfUploadFailureReason = "storage_not_configured" | "upload_failed";
+export type InvoicePdfRemoveFailureReason = "storage_not_configured" | "remove_failed";
 
-export type InvoicePdfUploadResult = { ok: true } | { ok: false; reason: InvoicePdfStorageFailureReason };
-export type InvoicePdfRemoveResult = { ok: true } | { ok: false; reason: InvoicePdfStorageFailureReason };
+// Retained as an aggregate/back-compat alias — no code constructs a bare
+// value of this type directly; it remains a valid supertype for any future
+// caller that genuinely needs "either kind of failure."
+export type InvoicePdfStorageFailureReason = InvoicePdfUploadFailureReason | InvoicePdfRemoveFailureReason;
+
+export type InvoicePdfUploadResult = { ok: true } | { ok: false; reason: InvoicePdfUploadFailureReason };
+export type InvoicePdfRemoveResult = { ok: true } | { ok: false; reason: InvoicePdfRemoveFailureReason };
 
 /**
  * The structured identity of exactly one Invoice PDF archive object — the
@@ -149,6 +161,65 @@ export async function removeInvoicePdfObject(
     return error ? { ok: false, reason: "remove_failed" } : { ok: true };
   } catch {
     return { ok: false, reason: "remove_failed" };
+  }
+}
+
+export type InvoicePdfProbeResult =
+  | { ok: true; exists: boolean }
+  | { ok: false; reason: "storage_not_configured" | "probe_failed" };
+
+/**
+ * Bounded Archival Reconciliation/Cleanup — checks whether exactly one
+ * Invoice PDF archive object exists, without downloading it or listing any
+ * directory/bucket. The path is always rebuilt here via
+ * buildInvoicePdfStoragePath(), exactly like upload/remove above, never
+ * accepted as a raw string.
+ *
+ * Uses the installed @supabase/storage-js's own exists() (a single HEAD
+ * request against one exact object key) — verified directly against its
+ * installed source: it resolves `{ data: true, error: null }` on a 200, and
+ * resolves (never throws) `{ data: false, error }` ONLY for an HTTP 400 or
+ * 404; anything else (network failure, 5xx, auth failure) it re-throws
+ * unconditionally, regardless of client configuration.
+ *
+ * ONLY a resolved `{ data: false }` whose error.status is exactly 404 is
+ * treated as confirmed absence. An HTTP 400 is deliberately NOT treated as
+ * absence — canonical path validation (this function only ever probes a
+ * path already rebuilt from validated identity components) makes a 400
+ * unexpected; an unexpected provider response must never be the evidence
+ * that permits a terminal "cleaned" conclusion, so it — and any other
+ * incoherent resolved shape — is classified the same as a thrown failure:
+ * `probe_failed`, always retryable, never absence.
+ */
+export async function probeInvoicePdfObject(
+  { identity }: { identity: InvoicePdfObjectIdentity },
+  client?: SupabaseClient,
+): Promise<InvoicePdfProbeResult> {
+  const path = buildInvoicePdfStoragePath(identity);
+
+  if (TEST_MODE) {
+    return { ok: true, exists: testStorageRead(ATTACHMENTS_BUCKET, path) !== null };
+  }
+
+  const resolved = resolveClient(client);
+  if (!resolved) return { ok: false, reason: "storage_not_configured" };
+
+  try {
+    const result = await resolved.storage.from(ATTACHMENTS_BUCKET).exists(path);
+
+    if (result.data === true && result.error === null) {
+      return { ok: true, exists: true };
+    }
+    if (result.data === false && result.error !== null && result.error.status === 404) {
+      return { ok: true, exists: false };
+    }
+    // Includes data:false + status 400 (unexpected given canonical path
+    // validation — see the header comment) and any other combination the
+    // installed SDK's own exists() source is not documented to produce.
+    // Never inferred as absence.
+    return { ok: false, reason: "probe_failed" };
+  } catch {
+    return { ok: false, reason: "probe_failed" };
   }
 }
 
