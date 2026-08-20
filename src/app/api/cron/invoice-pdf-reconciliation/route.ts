@@ -17,14 +17,19 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * Vercel Cron (once activated in a later, separate PR) or a manual
- * authorized call sends a GET with `Authorization: Bearer <CRON_SECRET>`.
- * No session, Membership, or portal cookie is ever read here — CRON_SECRET
- * is the entire auth boundary, checked once via the shared helper before
- * anything else runs. Not yet scheduled in vercel.json — this route is
- * deployed but dormant until a separate activation PR adds its schedule
- * entry, after a manual dry-run and one manual real invocation have both
- * been verified.
+ * Vercel Cron, or a manual authorized call, sends a GET with
+ * `Authorization: Bearer <CRON_SECRET>`. No session, Membership, or portal
+ * cookie is ever read here — CRON_SECRET remains the complete auth
+ * boundary, checked once via the shared helper before anything else runs.
+ *
+ * Now scheduled once daily in vercel.json. Activation followed a successful
+ * authorized production dry-run, operator review of its result, and one
+ * successful authorized manual invocation of this real route. Both of
+ * those production summaries were all-zero, because no reconciliation
+ * candidates existed at activation time — that exercise verified live
+ * auth and routing end to end and the zero-candidate code path; it did not
+ * exercise, and does not claim to have exercised, this route's write path
+ * (claim/probe/remove/release) against a real candidate.
  */
 export async function GET(request: Request) {
   const authError = requireCronAuth(request);
