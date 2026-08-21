@@ -847,8 +847,10 @@ existing Portal Analytics "Download-link requests" metric (see
 only and is not redefined by this route. Legacy Archive (§8.3) is now
 implemented (PR #79, merged as
 `9f8a802b0bcf07535706d7dfe1a8733913021d8e`) — see §8.3's own operational
-status note below; orphan reconciliation (§8.5) remains target design
-only.
+status note below. **Orphan reconciliation (§8.5) is now implemented and
+activated too (PR #82/PR #83) — see §8.5's own operational status note
+below.** With this, official Invoice System Slice 3 has no remaining
+piece.
 
 ### 8.3 Legacy invoices
 
@@ -952,6 +954,51 @@ available is sufficient:
   correctly left untouched; an object younger than the safety window left
   untouched (protects a legitimate in-flight upload); re-running the job
   twice is a no-op the second time.
+
+**Operational status (recorded in the 2026-08-21 documentation refresh
+after PR #83, merged as
+`1b0a8864eebefff6668470c9980f9fff3930b702`): this section's normative
+goals — bounded, idempotent, tenant-safe, a referenced archive never
+touched regardless of age, a safety window protecting a legitimate
+in-flight upload, sanitized-only reporting — are now all implemented and
+activated in production, via a mechanism that differs from the literal
+Storage-listing design written above.** PR #82 (merged as
+`d221a9f8f26e035f5531797f8db2ba8493a07af1`) implemented
+`reconcileInvoicePdfArchiveObjects()` and a true zero-write dry-run
+sibling (`src/lib/invoices/pdf/reconcile-archive-objects.ts`) — **never a
+bucket-wide `list()` call, since the `InvoicePdfArchiveObject` ledger
+(added later, by sub-PR 3b/PR #73, after this section was originally
+written) makes every reconciliation candidate a bounded, indexed database
+query instead.** Each candidate's own exact object is addressed
+individually via `probeInvoicePdfObject()`/`removeInvoicePdfObject()` —
+never a directory/prefix operation — so the tenant-safety and
+never-touch-a-referenced-object guarantees above hold structurally, not
+just by convention. The safety window (`SAFETY_WINDOW_MS`, 30 minutes) is
+proven, not merely recommended, to exceed the documented maximum Vercel
+Function invocation lifetime, closing exactly the "protects a legitimate
+in-flight upload" requirement above. A claim-token-based ownership
+protocol (never `cleanupLockedAt` equality alone) and a stale-claim lease
+(`CLEANUP_LEASE_MS`, 10 minutes) provide the concurrency safety this
+section's own bullets assumed a job would need. Only a fixed, bounded
+failure category is ever persisted — never a raw Storage/database error,
+path, or signed URL — satisfying the "no raw Storage error detail or
+object path is ever logged" requirement exactly. PR #82 shipped both the
+real and dry-run routes **dormant, with no recurring schedule**; PR #83
+then added exactly one `vercel.json` cron entry, scheduling only the real
+route once daily at `0 7 * * *` UTC — the dry-run route remains
+permanently unscheduled, existing solely for manual, authorized,
+pre-activation verification. Activation followed a manual dry-run,
+operator review, and one manual real invocation (all HTTP 200, all-zero,
+since no candidates existed at the time), and a successful first
+automatic scheduled execution was subsequently observed (production
+request-log evidence: `2026-08-21T07:57:58.118Z` UTC, HTTP 200, `info`-
+level, inside the scheduled hour, no error/timeout/duplicate nearby) —
+see `GPT_PROJECT_CONTEXT.md`'s Part 2 "Production activation of bounded
+Invoice PDF archival reconciliation/cleanup" subsection for the complete
+chronology and its own stated limitation (this evidence proves the
+scheduled invocation completed successfully; it does not prove a
+non-empty candidate/write path has yet been exercised in production).
+**With this, official Invoice System Slice 3 has no remaining piece.**
 
 ---
 
