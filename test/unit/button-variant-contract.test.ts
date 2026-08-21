@@ -11,8 +11,11 @@ import { describe, expect, it } from "vitest";
  * conflict is decided by the compiled stylesheet's own utility order (a
  * Tailwind content-scan/build-time detail), never by the className
  * string's own left-to-right order. `variant` replaces that fragile
- * pattern with two mutually exclusive class sets that can never both be
- * present on one element to conflict at all.
+ * pattern with a set of mutually exclusive class strings — exactly one is
+ * ever rendered per element — that can never combine to conflict at all.
+ * A third variant (dangerOutline) was added in the consistency-pass
+ * follow-up to close the same latent risk on InvoiceLifecycleControls'
+ * Cancel invoice button, which used a distinct text-red-600 override.
  *
  * No DOM/component-rendering harness exists in this repo (see
  * invoice-issue-controls-contract.test.ts's own header comment) — this is
@@ -22,7 +25,10 @@ import { describe, expect, it } from "vitest";
 
 const source = readFileSync("src/components/ui/button.tsx", "utf8");
 
-function extractClassValue(variant: "primary" | "secondary"): string {
+const ALL_VARIANTS = ["primary", "secondary", "dangerOutline"] as const;
+type Variant = (typeof ALL_VARIANTS)[number];
+
+function extractClassValue(variant: Variant): string {
   const match = source.match(new RegExp(`${variant}:\\s*"([^"]*)"`));
   expect(match).not.toBeNull();
   return match![1];
@@ -40,23 +46,31 @@ function tailwindColorUtilities(classString: string): string[] {
 }
 
 describe("Button — variant classes never overlap on the same color utility (contract)", () => {
-  it("the primary and secondary variants exist as distinct, non-empty class strings", () => {
-    expect(extractClassValue("primary").length).toBeGreaterThan(0);
-    expect(extractClassValue("secondary").length).toBeGreaterThan(0);
+  it("every variant exists as a distinct, non-empty class string", () => {
+    for (const variant of ALL_VARIANTS) {
+      expect(extractClassValue(variant).length).toBeGreaterThan(0);
+    }
   });
 
-  it("primary and secondary never share a bg-*/text-* utility — the exact class of conflict that produced invisible button text", () => {
-    const primaryColors = tailwindColorUtilities(extractClassValue("primary"));
-    const secondaryColors = tailwindColorUtilities(extractClassValue("secondary"));
-    const overlap = primaryColors.filter((cls) => secondaryColors.includes(cls));
-    expect(overlap).toEqual([]);
-  });
-
-  it("neither variant's own class string is itself internally self-conflicting (at most one bg-* and one text-* utility each)", () => {
-    for (const variant of ["primary", "secondary"] as const) {
+  it("no variant's own class string is itself internally self-conflicting (at most one bg-* and one text-* utility each, and never the identical utility for both)", () => {
+    // Two DIFFERENT variants sharing a bg-* or text-* utility (e.g.
+    // secondary and dangerOutline both using bg-white) is fine and
+    // expected — variant is a single mutually-exclusive selection, so two
+    // variants' classes are never both applied to one element at once.
+    // The real invariant carried over from the original bug is narrower:
+    // within ONE variant's own class string, its background and
+    // foreground utilities must never be the same color (that is what
+    // "invisible button text" actually means), and neither utility may
+    // appear more than once (which would itself be ambiguous).
+    for (const variant of ALL_VARIANTS) {
       const colors = tailwindColorUtilities(extractClassValue(variant));
-      expect(colors.filter((c) => c.startsWith("bg-")).length).toBeLessThanOrEqual(1);
-      expect(colors.filter((c) => c.startsWith("text-")).length).toBeLessThanOrEqual(1);
+      const bg = colors.filter((c) => c.startsWith("bg-"));
+      const text = colors.filter((c) => c.startsWith("text-"));
+      expect(bg.length).toBeLessThanOrEqual(1);
+      expect(text.length).toBeLessThanOrEqual(1);
+      if (bg.length === 1 && text.length === 1) {
+        expect(bg[0].replace(/^bg-/, "")).not.toBe(text[0].replace(/^text-/, ""));
+      }
     }
   });
 

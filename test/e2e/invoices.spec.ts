@@ -1522,4 +1522,110 @@ test.describe("Button visibility correction — Invoice System Slice 4 post-depl
     await dbQuery("invoicePdfArchiveObject", "deleteMany", { where: { invoiceId: invoice.id } });
     await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
   });
+
+  /**
+   * Consistency pass — the same raw color-override className pattern was
+   * found (and fixed) on three more Button call sites: InvoiceForm's own
+   * "Add line" button, InvoiceLegacyArchiveControls, and
+   * InvoiceLifecycleControls (both its status-transition buttons and its
+   * Cancel invoice button, which used a distinct text-red-600 override —
+   * now the dedicated dangerOutline variant). Same getComputedStyle()
+   * proof as above for each.
+   */
+  test("the Add line button (itemized Invoice form) renders with a non-matching foreground/background color", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    await page.goto("/invoices/new");
+    await page.getByRole("radio", { name: "Itemized" }).check();
+
+    const addLineButton = page.getByRole("button", { name: "Add line" });
+    await expect(addLineButton).toHaveAccessibleName(/\S/);
+    const style = await addLineButton.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { color: s.color, backgroundColor: s.backgroundColor };
+    });
+    expect(style.color).not.toBe(style.backgroundColor);
+  });
+
+  test("the Archive Legacy Invoice button renders with a non-matching foreground/background color", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    const invoice = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-BUTTON-VIS-ARCHIVE-${fixtures.runId}`,
+        status: "SENT",
+        amount: "10.00",
+        subtotal: "10.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+
+    await page.goto(`/invoices/${invoice.id}/edit`);
+    const archiveButton = page.getByRole("button", { name: "Archive Legacy Invoice" });
+    await expect(archiveButton).toHaveAccessibleName(/\S/);
+    const style = await archiveButton.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { color: s.color, backgroundColor: s.backgroundColor };
+    });
+    expect(style.color).not.toBe(style.backgroundColor);
+
+    await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
+  });
+
+  test("the lifecycle transition buttons and the Cancel invoice button (dangerOutline variant) all render with a non-matching foreground/background color", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    const invoice = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-BUTTON-VIS-LIFECYCLE-${fixtures.runId}`,
+        status: "SENT",
+        amount: "10.00",
+        subtotal: "10.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+
+    await page.goto(`/invoices/${invoice.id}/edit`);
+
+    async function colors(locator: ReturnType<typeof page.getByRole>) {
+      return locator.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return { color: s.color, backgroundColor: s.backgroundColor };
+      });
+    }
+
+    const markAsPaid = page.getByRole("button", { name: "Mark as paid" });
+    const markAsOverdue = page.getByRole("button", { name: "Mark as overdue" });
+    const cancelInvoice = page.getByRole("button", { name: "Cancel invoice" });
+
+    await expect(markAsPaid).toHaveAccessibleName(/\S/);
+    await expect(markAsOverdue).toHaveAccessibleName(/\S/);
+    await expect(cancelInvoice).toHaveAccessibleName(/\S/);
+
+    const paidStyle = await colors(markAsPaid);
+    const overdueStyle = await colors(markAsOverdue);
+    const cancelStyle = await colors(cancelInvoice);
+    expect(paidStyle.color).not.toBe(paidStyle.backgroundColor);
+    expect(overdueStyle.color).not.toBe(overdueStyle.backgroundColor);
+    // The Cancel button's dangerOutline variant (red text on white) is the
+    // one call site with a genuinely distinct color combination from the
+    // rest of this describe block. Not asserting a literal color string
+    // here — this browser's getComputedStyle() reports color-function
+    // values (e.g. lab(...)) rather than legacy rgb(...) for some
+    // Tailwind-generated colors, so "not equal to background" is the
+    // portable, format-agnostic check, same as every other assertion in
+    // this describe block.
+    expect(cancelStyle.color).not.toBe(cancelStyle.backgroundColor);
+    // Distinct from the neutral secondary buttons' own foreground color —
+    // proves this button really did get its own dedicated variant, not a
+    // coincidentally-non-matching shade of the same secondary style.
+    expect(cancelStyle.color).not.toBe(paidStyle.color);
+
+    await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
+  });
 });

@@ -22,6 +22,7 @@ import { SpinnerIcon } from "@/components/ui/icons";
 const VARIANT_CLASSES = {
   primary: "bg-black text-white hover:bg-gray-800",
   secondary: "border border-gray-300 bg-white text-gray-900 hover:bg-gray-50",
+  dangerOutline: "border border-gray-300 bg-white text-red-600 hover:bg-red-50",
 } as const;
 
 export type ButtonVariant = keyof typeof VARIANT_CLASSES;

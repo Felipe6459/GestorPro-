@@ -72,7 +72,7 @@ export function InvoiceLifecycleControls({
           disabled={pending}
           loading={pending}
           onClick={() => runTransition(target)}
-          className="border border-gray-300 bg-white text-gray-900 hover:bg-gray-50"
+          variant="secondary"
         >
           {TRANSITION_LABELS[`${status}:${target}`] ?? target}
         </Button>
@@ -83,7 +83,7 @@ export function InvoiceLifecycleControls({
             type="button"
             disabled={pending}
             onClick={() => cancelDialogRef.current?.open()}
-            className="border border-gray-300 bg-white text-red-600 hover:bg-red-50"
+            variant="dangerOutline"
           >
             Cancel invoice
           </Button>
