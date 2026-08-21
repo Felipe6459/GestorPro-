@@ -26,8 +26,10 @@ const {
   removeInvoicePdfObject,
   probeInvoicePdfObject,
   createInvoicePdfSignedUrl,
+  downloadInvoicePdfObject,
 } = await import("@/lib/invoices/pdf/storage");
 const { testStorageRead } = await import("@/lib/storage/test-storage");
+const { MAX_PDF_BYTES } = await import("@/lib/invoices/pdf/buffer-validation");
 // Bounded Archival Reconciliation/Cleanup — operation-specific failure-reason
 // types, unit-tested for compile-time restriction only, below.
 import type { InvoicePdfUploadResult, InvoicePdfRemoveResult } from "@/lib/invoices/pdf/storage";
@@ -525,5 +527,201 @@ describe("createInvoicePdfSignedUrl — production adapter", () => {
       process.env.TEST_MODE = originalTestMode;
       vi.resetModules();
     }
+  });
+});
+
+// Invoice System Slice 4, PR 4a — the identity-only byte-read operation
+// added for the (still-unwired) future send-invoice-email path.
+describe("downloadInvoicePdfObject — TEST_MODE branch", () => {
+  it("returns the exact bytes previously uploaded", async () => {
+    const archiveId = "ffffffff-1111-4fff-8fff-ffffffffffff";
+    const body = Buffer.from("%PDF-1.3 exact bytes to download");
+    await uploadInvoicePdfObject({ identity: identity(archiveId), body });
+
+    const result = await downloadInvoicePdfObject({ identity: identity(archiveId) });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("unreachable");
+    expect(result.bytes.equals(body)).toBe(true);
+    expect(result.contentType).toBe("application/pdf");
+  });
+
+  it("returns not_found for an object never uploaded", async () => {
+    const archiveId = "aaaaaaaa-2222-4aaa-8aaa-aaaaaaaaaaab";
+    const result = await downloadInvoicePdfObject({ identity: identity(archiveId) });
+    expect(result).toEqual({ ok: false, reason: "not_found" });
+  });
+
+  it("returns not_found after the object has been removed", async () => {
+    const archiveId = "bbbbbbbb-3333-4bbb-8bbb-bbbbbbbbbbbc";
+    await uploadInvoicePdfObject({ identity: identity(archiveId), body: Buffer.from("%PDF-1.3 to be removed") });
+    await removeInvoicePdfObject({ identity: identity(archiveId) });
+
+    const result = await downloadInvoicePdfObject({ identity: identity(archiveId) });
+    expect(result).toEqual({ ok: false, reason: "not_found" });
+  });
+
+  it("never confuses a different identity's object with this one's absence", async () => {
+    const targetArchiveId = "cccccccc-4444-4ccc-8ccc-ccccccccccce";
+    const otherArchiveId = "dddddddd-5555-4ddd-8ddd-ddddddddddde";
+    await uploadInvoicePdfObject({ identity: identity(otherArchiveId), body: Buffer.from("%PDF-1.3 unrelated") });
+
+    const result = await downloadInvoicePdfObject({ identity: identity(targetArchiveId) });
+    expect(result).toEqual({ ok: false, reason: "not_found" });
+  });
+
+  it("rejects an invalid PDF signature found on the stored object — bounded invalid_object, never the raw byte content", async () => {
+    // uploadInvoicePdfObject() itself performs no signature validation, so
+    // a non-PDF payload is written directly via testStorageUpload() to
+    // simulate a corrupted/tampered stored object.
+    const { testStorageUpload } = await import("@/lib/storage/test-storage");
+    const archiveId = "eeeeeeee-6666-4eee-8eee-eeeeeeeeeeef";
+    const path = buildInvoicePdfStoragePath(identity(archiveId));
+    testStorageUpload("attachments", path, Buffer.from("not a pdf at all"), "application/pdf");
+
+    const result = await downloadInvoicePdfObject({ identity: identity(archiveId) });
+    expect(result).toEqual({ ok: false, reason: "invalid_object" });
+  });
+
+  it("rejects a stored object exactly one byte over MAX_PDF_BYTES", async () => {
+    const { testStorageUpload } = await import("@/lib/storage/test-storage");
+    const archiveId = "ffffffff-7777-4fff-8fff-fffffffffff0";
+    const oversized = Buffer.concat([Buffer.from("%PDF-1.3"), Buffer.alloc(MAX_PDF_BYTES - 8 + 1, 0x41)]);
+    expect(oversized.length).toBe(MAX_PDF_BYTES + 1);
+    const path = buildInvoicePdfStoragePath(identity(archiveId));
+    testStorageUpload("attachments", path, oversized, "application/pdf");
+
+    const result = await downloadInvoicePdfObject({ identity: identity(archiveId) });
+    expect(result).toEqual({ ok: false, reason: "invalid_object" });
+  });
+
+  it("accepts a stored object at exactly MAX_PDF_BYTES", async () => {
+    const { testStorageUpload } = await import("@/lib/storage/test-storage");
+    const archiveId = "aaaaaaaa-8888-4aaa-8aaa-aaaaaaaaaaa1";
+    const exact = Buffer.concat([Buffer.from("%PDF-1.3"), Buffer.alloc(MAX_PDF_BYTES - 8, 0x41)]);
+    expect(exact.length).toBe(MAX_PDF_BYTES);
+    const path = buildInvoicePdfStoragePath(identity(archiveId));
+    testStorageUpload("attachments", path, exact, "application/pdf");
+
+    const result = await downloadInvoicePdfObject({ identity: identity(archiveId) });
+    expect(result.ok).toBe(true);
+  });
+
+  it("never calls a Supabase client — the TEST_MODE branch returns before any client is resolved, even when one is explicitly supplied", async () => {
+    const archiveId = "bbbbbbbb-9999-4bbb-8bbb-bbbbbbbbbbb2";
+    await uploadInvoicePdfObject({ identity: identity(archiveId), body: Buffer.from("%PDF-1.3 present") });
+
+    const fromSpy = vi.fn();
+    const fakeClient = { storage: { from: fromSpy } } as unknown as Parameters<typeof downloadInvoicePdfObject>[1];
+
+    const result = await downloadInvoicePdfObject({ identity: identity(archiveId) }, fakeClient);
+    expect(result.ok).toBe(true);
+    expect(fromSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid structured identity before any external call", async () => {
+    await expect(
+      downloadInvoicePdfObject({ identity: { organizationId: "not-a-uuid", invoiceId: INVOICE_ID, documentVersion: 1, archiveId: ARCHIVE_ID } }),
+    ).rejects.toThrow(/organizationId/);
+  });
+});
+
+describe("downloadInvoicePdfObject — production adapter", () => {
+  const prodIdentity = { organizationId: ORG_ID, invoiceId: INVOICE_ID, documentVersion: 1, archiveId: ARCHIVE_ID };
+
+  async function withProdDownload(run: (downloadProd: typeof downloadInvoicePdfObject) => Promise<void>) {
+    const originalTestMode = process.env.TEST_MODE;
+    try {
+      delete process.env.TEST_MODE;
+      vi.resetModules();
+      const { downloadInvoicePdfObject: downloadProd } = await import("@/lib/invoices/pdf/storage");
+      await run(downloadProd);
+    } finally {
+      process.env.TEST_MODE = originalTestMode;
+      vi.resetModules();
+    }
+  }
+
+  function fakeBlob(bytes: Buffer) {
+    return { arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) };
+  }
+
+  it("downloads the exact bytes on success via storage.from(bucket).download(path)", async () => {
+    await withProdDownload(async (downloadProd) => {
+      const body = Buffer.from("%PDF-1.3 production bytes");
+      const downloadMock = vi.fn().mockResolvedValue({ data: fakeBlob(body), error: null });
+      const fromMock = vi.fn().mockReturnValue({ download: downloadMock });
+      const fakeClient = { storage: { from: fromMock } } as unknown as Parameters<typeof downloadProd>[1];
+
+      const result = await downloadProd({ identity: prodIdentity }, fakeClient);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("unreachable");
+      expect(result.bytes.equals(body)).toBe(true);
+      expect(result.contentType).toBe("application/pdf");
+      expect(fromMock).toHaveBeenCalledWith("attachments");
+      expect(downloadMock).toHaveBeenCalledWith(buildInvoicePdfStoragePath(prodIdentity));
+    });
+  });
+
+  it("error.status 404 -> not_found (confirmed absent)", async () => {
+    await withProdDownload(async (downloadProd) => {
+      const downloadMock = vi.fn().mockResolvedValue({ data: null, error: { status: 404, message: "not found" } });
+      const fakeClient = { storage: { from: vi.fn().mockReturnValue({ download: downloadMock }) } } as unknown as Parameters<typeof downloadProd>[1];
+
+      const result = await downloadProd({ identity: prodIdentity }, fakeClient);
+      expect(result).toEqual({ ok: false, reason: "not_found" });
+    });
+  });
+
+  it("error.status other than 404 -> download_failed, never inferred as absent", async () => {
+    await withProdDownload(async (downloadProd) => {
+      const downloadMock = vi.fn().mockResolvedValue({ data: null, error: { status: 500, message: "server error" } });
+      const fakeClient = { storage: { from: vi.fn().mockReturnValue({ download: downloadMock }) } } as unknown as Parameters<typeof downloadProd>[1];
+
+      const result = await downloadProd({ identity: prodIdentity }, fakeClient);
+      expect(result).toEqual({ ok: false, reason: "download_failed" });
+    });
+  });
+
+  it("an unexpected resolved shape (data:null, error:null) -> download_failed, never inferred as absent", async () => {
+    await withProdDownload(async (downloadProd) => {
+      const downloadMock = vi.fn().mockResolvedValue({ data: null, error: null });
+      const fakeClient = { storage: { from: vi.fn().mockReturnValue({ download: downloadMock }) } } as unknown as Parameters<typeof downloadProd>[1];
+
+      const result = await downloadProd({ identity: prodIdentity }, fakeClient);
+      expect(result).toEqual({ ok: false, reason: "download_failed" });
+    });
+  });
+
+  it("a thrown auth/network/5xx failure -> download_failed, never letting the raw exception escape", async () => {
+    await withProdDownload(async (downloadProd) => {
+      const downloadMock = vi.fn().mockRejectedValue(new Error("simulated network failure — must never be persisted or thrown"));
+      const fakeClient = { storage: { from: vi.fn().mockReturnValue({ download: downloadMock }) } } as unknown as Parameters<typeof downloadProd>[1];
+
+      const result = await downloadProd({ identity: prodIdentity }, fakeClient);
+      expect(result).toEqual({ ok: false, reason: "download_failed" });
+    });
+  });
+
+  it("maps an invalid PDF signature in the downloaded bytes to invalid_object", async () => {
+    await withProdDownload(async (downloadProd) => {
+      const downloadMock = vi.fn().mockResolvedValue({ data: fakeBlob(Buffer.from("not a pdf")), error: null });
+      const fakeClient = { storage: { from: vi.fn().mockReturnValue({ download: downloadMock }) } } as unknown as Parameters<typeof downloadProd>[1];
+
+      const result = await downloadProd({ identity: prodIdentity }, fakeClient);
+      expect(result).toEqual({ ok: false, reason: "invalid_object" });
+    });
+  });
+
+  it("no client available and none injected -> storage_not_configured, without ever calling download()", async () => {
+    await withProdDownload(async (downloadProd) => {
+      const result = await downloadProd({ identity: prodIdentity });
+      expect(result).toEqual({ ok: false, reason: "storage_not_configured" });
+    });
+  });
+
+  it("rejects an invalid structured identity before any external call", async () => {
+    await withProdDownload(async (downloadProd) => {
+      await expect(downloadProd({ identity: { ...prodIdentity, organizationId: "not-a-uuid" } })).rejects.toThrow(/organizationId/);
+    });
   });
 });

@@ -5,6 +5,7 @@ import { TEST_MODE } from "@/lib/test-mode";
 import { testStorageUploadIfAbsent, testStorageRemove, testStorageRead } from "@/lib/storage/test-storage";
 import { getStorageAdminClient } from "@/lib/storage/admin-client";
 import { ATTACHMENTS_BUCKET, SIGNED_URL_TTL_SECONDS } from "@/lib/storage/attachments-config";
+import { validatePdfBuffer } from "./buffer-validation";
 
 /**
  * Invoice System Slice 3, sub-PR 3b — private Invoice PDF storage.
@@ -315,5 +316,65 @@ export async function createInvoicePdfSignedUrl(
     return error || !data?.signedUrl ? { ok: false, reason: "signed_url_failed" } : { ok: true, url: data.signedUrl };
   } catch {
     return { ok: false, reason: "signed_url_failed" };
+  }
+}
+
+// Invoice System Slice 4, PR 4a — unwired foundation. Nothing in
+// production imports this function yet; it exists so PR 4b's own
+// send-invoice-email service has a trusted byte-read operation to call.
+export type InvoicePdfDownloadFailureReason = "storage_not_configured" | "not_found" | "download_failed" | "invalid_object";
+
+export type InvoicePdfDownloadResult =
+  | { ok: true; bytes: Buffer; contentType: string }
+  | { ok: false; reason: InvoicePdfDownloadFailureReason };
+
+/**
+ * Downloads the exact bytes of one archived Invoice PDF object identified
+ * by `identity` — the path is always rebuilt here via
+ * `buildInvoicePdfStoragePath()`, never accepted as a raw string, exactly
+ * like every other operation above. No signed URL, no public URL: the
+ * bytes are read directly through the private Storage admin client
+ * boundary, never a round trip through a browser-facing link.
+ *
+ * The returned bytes are re-validated with the same `validatePdfBuffer()`
+ * used at write time (issue-invoice.ts, legacy-archive-invoice.ts) rather
+ * than duplicating signature/size-limit logic — defense against a
+ * corrupted or tampered stored object — collapsed into the single bounded
+ * `invalid_object` reason (never the granular EMPTY/INVALID_SIGNATURE/
+ * TOO_LARGE detail, which is an internal integrity signal, not something
+ * a caller can act on).
+ */
+export async function downloadInvoicePdfObject(
+  { identity }: { identity: InvoicePdfObjectIdentity },
+  client?: SupabaseClient,
+): Promise<InvoicePdfDownloadResult> {
+  const path = buildInvoicePdfStoragePath(identity);
+
+  if (TEST_MODE) {
+    const stored = testStorageRead(ATTACHMENTS_BUCKET, path);
+    if (!stored) return { ok: false, reason: "not_found" };
+    const validation = validatePdfBuffer(stored.body);
+    if (!validation.ok) return { ok: false, reason: "invalid_object" };
+    return { ok: true, bytes: stored.body, contentType: stored.contentType };
+  }
+
+  const resolved = resolveClient(client);
+  if (!resolved) return { ok: false, reason: "storage_not_configured" };
+
+  try {
+    const { data, error } = await resolved.storage.from(ATTACHMENTS_BUCKET).download(path);
+    if (error || !data) {
+      // Mirrors probeInvoicePdfObject()'s own precedent: only an exact
+      // HTTP 404 is treated as confirmed absence; any other error shape
+      // (network failure, 5xx, auth failure, unexpected combination) is
+      // never inferred as absence.
+      return { ok: false, reason: error?.status === 404 ? "not_found" : "download_failed" };
+    }
+    const bytes = Buffer.from(await data.arrayBuffer());
+    const validation = validatePdfBuffer(bytes);
+    if (!validation.ok) return { ok: false, reason: "invalid_object" };
+    return { ok: true, bytes, contentType: PDF_CONTENT_TYPE };
+  } catch {
+    return { ok: false, reason: "download_failed" };
   }
 }

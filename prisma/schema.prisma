@@ -794,13 +794,28 @@ model InvoiceLineItem {
 }
 
 // Invoice System Slice 1 (docs/invoicing-architecture.md §4.3). Schema
-// reserved now; no code sends an email or creates a row in Slice 1 — Slice
-// 4 owns the real send path. requestedByUserId follows the established
-// actor/audit-FK convention (User? + onDelete: SetNull, see Task.assigneeId/
-// Activity.actorId/Attachment.uploadedById/Comment.authorId). The partial
-// unique index enforcing "at most one PENDING attempt per invoice" (§4.3/
-// §9.2) is deliberately NOT added in this migration — Slice 4 owns it,
-// since it only matters once a real send path exists.
+// reserved since Slice 1; no production code sends an email or creates a
+// row here yet — Slice 4 owns the real send path. requestedByUserId
+// follows the established actor/audit-FK convention (User? + onDelete:
+// SetNull, see Task.assigneeId/Activity.actorId/Attachment.uploadedById/
+// Comment.authorId).
+//
+// Invoice System Slice 4, PR 4a — the partial unique index enforcing "at
+// most one PENDING attempt per invoice" (§4.3/§9.2) now exists, added by
+// raw SQL in migration 20260914090000_add_invoice_email_attempt_pending_index:
+//   CREATE UNIQUE INDEX "invoice_email_attempt_one_pending"
+//     ON "InvoiceEmailAttempt" ("invoiceId")
+//     WHERE "status" = 'PENDING';
+// It remains intentionally unrepresentable in this Prisma schema DSL
+// (Prisma has no partial-index syntax in this project's own configuration
+// — the same reason NotificationDelivery's own would-be partial index was
+// deliberately replaced with a plain composite index instead, see that
+// model's own comment) — this comment is its only representation here.
+// Deliberately NOT `@@unique([invoiceId, status])`: that would forbid
+// every legitimate historical non-PENDING row for the same invoice
+// (multiple ACCEPTED/FAILED/UNKNOWN attempts across retries/resends are
+// all expected and allowed) — only a genuinely partial index scoped to
+// `status = 'PENDING'` expresses the actual invariant.
 model InvoiceEmailAttempt {
   id        String  @id @default(uuid()) @db.Uuid
   invoiceId String  @db.Uuid
