@@ -100,7 +100,7 @@ export function InvoiceSendControls({
         disabled={disabled || pending || latest?.status === "PENDING"}
         loading={pending}
         onClick={() => dialogRef.current?.open()}
-        className="border border-gray-300 bg-white text-gray-900 hover:bg-gray-50"
+        variant="secondary"
       >
         {buttonLabel}
       </Button>

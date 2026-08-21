@@ -71,4 +71,27 @@ describe("InvoiceLegacyArchiveControls — client Server Action rejection handli
     expect(source).toMatch(/^"use client";/m);
     expect(source).not.toContain("@/lib/invoices/pdf");
   });
+
+  // Correction — Invoice System Slice 4 post-deploy fix, consistency pass.
+  // This button previously used the same raw color-override className as
+  // the Issue/Send buttons (see button-variant-contract.test.ts and
+  // invoice-issue-controls-contract.test.ts) — the same latent
+  // white-on-white risk, now closed the same way.
+  it('the Archive Legacy Invoice Button uses variant="secondary", never a raw bg-*/text-* override className', () => {
+    expect(source).toContain('variant="secondary"');
+    // Non-greedy [\s\S]*?> would truncate at the first ">" it meets, which
+    // is the one inside this tag's own onClick={() => ...} arrow function —
+    // so any occurrence of "=>" is matched as a unit first, never mistaken
+    // for the end of the opening tag.
+    const buttonMatch = source.match(/<Button\b(?:=>|[^>])*>/);
+    expect(buttonMatch).not.toBeNull();
+    const classNameMatch = buttonMatch![0].match(/className="([^"]*)"/);
+    const COLOR_UTILITY_PATTERN = /^(bg|text)-(black|white|transparent|current|inherit|[a-z]+-\d{2,3})$/;
+    const colorUtilities = (classNameMatch?.[1] ?? "").split(/\s+/).filter((cls) => COLOR_UTILITY_PATTERN.test(cls));
+    expect(colorUtilities).toEqual([]);
+  });
+
+  it('the button always renders the non-empty literal label "Archive Legacy Invoice"', () => {
+    expect(source).toMatch(/>\s*Archive Legacy Invoice\s*</);
+  });
 });

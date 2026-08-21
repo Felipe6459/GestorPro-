@@ -245,7 +245,7 @@ export function InvoiceForm({
               />
             ))}
           </div>
-          <Button type="button" onClick={addLineItem} className="mt-3 bg-white text-gray-900 border border-gray-300 hover:bg-gray-50">
+          <Button type="button" onClick={addLineItem} variant="secondary" className="mt-3">
             Add line
           </Button>
         </div>
