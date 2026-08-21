@@ -1421,3 +1421,105 @@ test.describe("Send Invoice Email — Invoice System Official Slice 4, PR 4b", (
     await dbQuery("client", "deleteMany", { where: { id: client.id } });
   });
 });
+
+test.describe("Button visibility correction — Invoice System Slice 4 post-deploy fix", () => {
+  /**
+   * A real production defect: the Issue/Send buttons' own foreground and
+   * background colors resolved to the identical value (white-on-white),
+   * genuinely invisible — reproduced directly via getComputedStyle before
+   * this fix, and root-caused to a same-specificity Tailwind class
+   * conflict between the shared Button component's own hardcoded base
+   * classes and a caller-appended override className. `toBeVisible()`
+   * alone (what every other test in this file already asserts) does NOT
+   * catch this — an element with non-zero layout and no `display:none`/
+   * `visibility:hidden` is "visible" to Playwright even when its text is
+   * genuinely unreadable to a human. These tests assert the actual
+   * computed color values directly, which is what would have caught the
+   * regression in the first place.
+   */
+  test("the Issue invoice and Issue & Send buttons render with a real, non-matching foreground/background color, in both enabled and disabled (dirty-form) states", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    const invoice = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-BUTTON-VIS-${fixtures.runId}`,
+        status: "DRAFT",
+        amount: "10.00",
+        subtotal: "10.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+
+    await page.goto(`/invoices/${invoice.id}/edit`);
+
+    const issueButton = page.getByRole("button", { name: "Issue invoice" });
+    const sendButton = page.getByRole("button", { name: "Issue & Send" });
+
+    async function colors(locator: typeof issueButton) {
+      return locator.evaluate((el) => {
+        const s = getComputedStyle(el);
+        return { color: s.color, backgroundColor: s.backgroundColor };
+      });
+    }
+
+    // Enabled state: both must have a real, non-empty accessible name and
+    // a foreground color that is NOT identical to the background color.
+    await expect(issueButton).toHaveAccessibleName(/\S/);
+    await expect(sendButton).toHaveAccessibleName(/\S/);
+    const issueEnabled = await colors(issueButton);
+    const sendEnabled = await colors(sendButton);
+    expect(issueEnabled.color).not.toBe(issueEnabled.backgroundColor);
+    expect(sendEnabled.color).not.toBe(sendEnabled.backgroundColor);
+
+    // Dirty-form (disabled) state: the buttons remain present with a
+    // readable label — disabling must never collapse to invisible text.
+    await page.getByRole("textbox", { name: "Amount" }).fill("11.00");
+    await expect(page.getByText("Save changes before issuing and sending.")).toBeVisible();
+    await expect(issueButton).toBeDisabled();
+    await expect(sendButton).toBeDisabled();
+    await expect(issueButton).toHaveAccessibleName(/\S/);
+    await expect(sendButton).toHaveAccessibleName(/\S/);
+    const issueDisabled = await colors(issueButton);
+    const sendDisabled = await colors(sendButton);
+    expect(issueDisabled.color).not.toBe(issueDisabled.backgroundColor);
+    expect(sendDisabled.color).not.toBe(sendDisabled.backgroundColor);
+
+    await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
+  });
+
+  test("the Send invoice button on an already-archived invoice also renders with a non-matching foreground/background color", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    const invoice = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-BUTTON-VIS-ARCHIVED-${fixtures.runId}`,
+        status: "DRAFT",
+        amount: "10.00",
+        subtotal: "10.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+
+    await page.goto(`/invoices/${invoice.id}/edit`);
+    await page.getByRole("button", { name: "Issue invoice" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Issue invoice" }).click();
+    await expect(page.getByText("Invoice issued")).toBeVisible();
+
+    const sendButton = page.getByRole("button", { name: "Send invoice" });
+    await expect(sendButton).toHaveAccessibleName(/\S/);
+    const style = await sendButton.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { color: s.color, backgroundColor: s.backgroundColor };
+    });
+    expect(style.color).not.toBe(style.backgroundColor);
+
+    await dbQuery("invoicePdfArchiveObject", "deleteMany", { where: { invoiceId: invoice.id } });
+    await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
+  });
+});

@@ -59,4 +59,27 @@ describe("InvoiceIssueControls — client Server Action rejection handling (sour
     // parenthesis) — never a second, implicit retry call.
     expect(occurrences.length).toBe(1);
   });
+
+  // Correction — Invoice System Slice 4 post-deploy fix. The button's own
+  // label ("Issue invoice") uses the shared Button component's `variant`
+  // prop, never a raw color-utility className appended alongside the
+  // component's own hardcoded base classes — that exact pattern produced
+  // a reproduced production defect (invisible white-on-white button
+  // text). See button-variant-contract.test.ts for the shared component's
+  // own contract.
+  it("the Issue invoice Button uses variant=\"secondary\", never a raw bg-*/text-* override className", () => {
+    expect(source).toContain('variant="secondary"');
+    const buttonMatch = source.match(/<Button[\s\S]*?>/);
+    expect(buttonMatch).not.toBeNull();
+    const classNameMatch = buttonMatch![0].match(/className="([^"]*)"/);
+    // Matches a genuine Tailwind color utility (bg-black, text-gray-900,
+    // ...) — excludes non-color text-* utilities (text-sm, text-center, ...).
+    const COLOR_UTILITY_PATTERN = /^(bg|text)-(black|white|transparent|current|inherit|[a-z]+-\d{2,3})$/;
+    const colorUtilities = (classNameMatch?.[1] ?? "").split(/\s+/).filter((cls) => COLOR_UTILITY_PATTERN.test(cls));
+    expect(colorUtilities).toEqual([]);
+  });
+
+  it("the button label \"Issue invoice\" is a literal, non-empty JSX text child", () => {
+    expect(source).toMatch(/>\s*Issue invoice\s*</);
+  });
 });
