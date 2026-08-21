@@ -1250,3 +1250,174 @@ test.describe("Legacy Archive — Invoice System Official Slice 3", () => {
     await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
   });
 });
+
+test.describe("Send Invoice Email — Invoice System Official Slice 4, PR 4b", () => {
+  /** A dedicated Client with a real email — fixtures.clientA has none by default (test/fixtures/seed.ts). */
+  async function seedClientWithEmail(email: string | null) {
+    return dbQuery<{ id: string }>("client", "create", {
+      data: { name: "E2E Send Email Client", organizationId: fixtures.orgA.id, userId: fixtures.owner.id, email },
+    });
+  }
+
+  async function seedDraftInvoice(clientId: string, overrides: Record<string, unknown> = {}) {
+    return dbQuery<{ id: string; updatedAt: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-SEND-${fixtures.runId}-${Math.random().toString(36).slice(2, 8)}`,
+        status: "DRAFT",
+        amount: "150.00",
+        subtotal: "150.00",
+        discountAmount: "0.00",
+        taxAmount: "0.00",
+        projectId: fixtures.project.id,
+        clientId,
+        organizationId: fixtures.orgA.id,
+        ...overrides,
+      },
+    });
+  }
+
+  test("OWNER: Issue & Send on a DRAFT moves it to SENT and settles ACCEPTED in one confirmed action", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    const client = await seedClientWithEmail(`owner-send-${fixtures.runId}@example.com`);
+    const invoice = await seedDraftInvoice(client.id);
+
+    await page.goto(`/invoices/${invoice.id}/edit`);
+    const button = page.getByRole("button", { name: "Issue & Send" });
+    await expect(button).toBeVisible();
+    await button.click();
+    await page.getByRole("dialog").getByRole("button", { name: "Issue & Send" }).click();
+
+    await expect(page.getByText(/accepted for sending/i)).toBeVisible();
+    await expect(page.getByText("Issued", { exact: true })).toBeVisible();
+    await expect(page.getByText("Accepted by provider")).toBeVisible();
+
+    const after = await dbQuery<{ status: string }>("invoice", "findUniqueOrThrow", { where: { id: invoice.id } });
+    expect(after.status).toBe("SENT");
+    const attempts = await dbQuery<{ status: string }[]>("invoiceEmailAttempt", "findMany", { where: { invoiceId: invoice.id } });
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0].status).toBe("ACCEPTED");
+
+    await dbQuery("invoiceEmailAttempt", "deleteMany", { where: { invoiceId: invoice.id } });
+    await dbQuery("invoicePdfArchiveObject", "deleteMany", { where: { invoiceId: invoice.id } });
+    await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
+    await dbQuery("client", "deleteMany", { where: { id: client.id } });
+  });
+
+  test("OWNER: Send invoice on an already-archived invoice succeeds, and the control relabels to Resend invoice", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    const client = await seedClientWithEmail(`archived-send-${fixtures.runId}@example.com`);
+    const draft = await seedDraftInvoice(client.id);
+
+    await page.goto(`/invoices/${draft.id}/edit`);
+    await page.getByRole("button", { name: "Issue invoice" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Issue invoice" }).click();
+    await expect(page.getByText("Invoice issued")).toBeVisible();
+
+    const sendButton = page.getByRole("button", { name: "Send invoice" });
+    await expect(sendButton).toBeVisible();
+    await sendButton.click();
+    await page.getByRole("dialog").getByRole("button", { name: "Send invoice" }).click();
+    await expect(page.getByText(/accepted for sending/i)).toBeVisible();
+
+    await expect(page.getByRole("button", { name: "Resend invoice" })).toBeVisible();
+    // exact: true — "Send invoice" would otherwise substring-match "Resend invoice" too.
+    await expect(page.getByRole("button", { name: "Send invoice", exact: true })).toHaveCount(0);
+
+    await dbQuery("invoiceEmailAttempt", "deleteMany", { where: { invoiceId: draft.id } });
+    await dbQuery("invoicePdfArchiveObject", "deleteMany", { where: { invoiceId: draft.id } });
+    await dbQuery("invoice", "deleteMany", { where: { id: draft.id } });
+    await dbQuery("client", "deleteMany", { where: { id: client.id } });
+  });
+
+  test("ADMIN and MEMBER see no send control on a DRAFT or an already-archived invoice", async ({ context, baseURL, page }) => {
+    const client = await seedClientWithEmail(`non-owner-${fixtures.runId}@example.com`);
+    const draft = await seedDraftInvoice(client.id);
+
+    for (const [role, user] of [["ADMIN", fixtures.admin], ["MEMBER", fixtures.member]] as const) {
+      await actAsRole(context, baseURL!, user, fixtures.orgA.id);
+      await page.goto(`/invoices/${draft.id}/edit`);
+      await expect(page.getByRole("button", { name: "Issue & Send" }), role).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /^send invoice$/i }), role).toHaveCount(0);
+    }
+
+    await dbQuery("invoice", "deleteMany", { where: { id: draft.id } });
+    await dbQuery("client", "deleteMany", { where: { id: client.id } });
+  });
+
+  test("a missing recipient email surfaces a clear error and creates no attempt", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    const client = await seedClientWithEmail(null);
+    const draft = await seedDraftInvoice(client.id);
+    await page.goto(`/invoices/${draft.id}/edit`);
+    await page.getByRole("button", { name: "Issue invoice" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Issue invoice" }).click();
+    await expect(page.getByText("Invoice issued")).toBeVisible();
+
+    await page.getByRole("button", { name: "Send invoice" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Send invoice" }).click();
+    await expect(page.getByText(/add a valid email address/i)).toBeVisible();
+
+    const attempts = await dbQuery<unknown[]>("invoiceEmailAttempt", "findMany", { where: { invoiceId: draft.id } });
+    expect(attempts).toHaveLength(0);
+
+    await dbQuery("invoicePdfArchiveObject", "deleteMany", { where: { invoiceId: draft.id } });
+    await dbQuery("invoice", "deleteMany", { where: { id: draft.id } });
+    await dbQuery("client", "deleteMany", { where: { id: client.id } });
+  });
+
+  test("an UNKNOWN latest attempt shows an explicit warning, and resending requires the explicit acknowledgement", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    const recipientEmail = `unknown-warning-${fixtures.runId}@example.com`;
+    const client = await seedClientWithEmail(recipientEmail);
+    const draft = await seedDraftInvoice(client.id);
+    await page.goto(`/invoices/${draft.id}/edit`);
+    await page.getByRole("button", { name: "Issue invoice" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Issue invoice" }).click();
+    await expect(page.getByText("Invoice issued")).toBeVisible();
+
+    await dbQuery("invoiceEmailAttempt", "create", {
+      data: { invoiceId: draft.id, recipientEmail, status: "UNKNOWN", idempotencyKey: crypto.randomUUID(), failureReason: "provider_outcome_unknown" },
+    });
+
+    await page.reload();
+    await expect(page.getByText("Status unknown")).toBeVisible();
+    const resendButton = page.getByRole("button", { name: "Send invoice" });
+    await resendButton.click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByText(/may already have been accepted/i)).toBeVisible();
+    await dialog.getByRole("button", { name: "Resend anyway" }).click();
+
+    await expect(page.getByText(/accepted for sending/i)).toBeVisible();
+    const attempts = await dbQuery<{ status: string }[]>("invoiceEmailAttempt", "findMany", {
+      where: { invoiceId: draft.id },
+      orderBy: { attemptedAt: "desc" },
+    });
+    expect(attempts[0].status).toBe("ACCEPTED");
+    expect(attempts).toHaveLength(2);
+
+    await dbQuery("invoiceEmailAttempt", "deleteMany", { where: { invoiceId: draft.id } });
+    await dbQuery("invoicePdfArchiveObject", "deleteMany", { where: { invoiceId: draft.id } });
+    await dbQuery("invoice", "deleteMany", { where: { id: draft.id } });
+    await dbQuery("client", "deleteMany", { where: { id: client.id } });
+  });
+
+  test("reloading after a successful send never re-triggers a duplicate dispatch", async ({ context, baseURL, page }) => {
+    await actAsRole(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    const client = await seedClientWithEmail(`no-duplicate-${fixtures.runId}@example.com`);
+    const draft = await seedDraftInvoice(client.id);
+    await page.goto(`/invoices/${draft.id}/edit`);
+    await page.getByRole("button", { name: "Issue & Send" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Issue & Send" }).click();
+    await expect(page.getByText(/accepted for sending/i)).toBeVisible();
+
+    await page.reload();
+    await expect(page.getByText("Accepted by provider")).toBeVisible();
+    const attemptsAfterReload = await dbQuery<unknown[]>("invoiceEmailAttempt", "findMany", { where: { invoiceId: draft.id } });
+    expect(attemptsAfterReload).toHaveLength(1);
+
+    await dbQuery("invoiceEmailAttempt", "deleteMany", { where: { invoiceId: draft.id } });
+    await dbQuery("invoicePdfArchiveObject", "deleteMany", { where: { invoiceId: draft.id } });
+    await dbQuery("invoice", "deleteMany", { where: { id: draft.id } });
+    await dbQuery("client", "deleteMany", { where: { id: client.id } });
+  });
+});

@@ -138,6 +138,15 @@ export const PORTAL_INVOICE_PDF_DOWNLOAD_LIMIT: RateLimitConfig = {
   windowMs: HOUR_MS,
 };
 
+// Invoice System Slice 4 — OWNER-only Invoice send/resend. Isolated from
+// invitation/notification delivery and keyed by the authenticated staff
+// user id before the first Invoice-domain query.
+export const INVOICE_EMAIL_SEND_LIMIT: RateLimitConfig = {
+  scope: "invoice-email-send",
+  limit: 20,
+  windowMs: HOUR_MS,
+};
+
 // Sale-Ready Phase A.1 (Business Identity), PR4 — per OWNER user id (only
 // OWNER can ever call this). A logo is replaced rarely in normal use; this
 // ceiling is about abuse (e.g. a compromised OWNER session scripting

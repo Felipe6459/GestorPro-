@@ -38,6 +38,13 @@ describe("buildInvoiceEmailContent — deterministic content", () => {
     expect(result.text).toContain("1/5/2026");
   });
 
+  it("omits the due-date clause when the Invoice has no due date", () => {
+    const result = buildInvoiceEmailContent({ ...BASE_INPUT, dueDate: null });
+    expect(result.html).not.toContain(", due ");
+    expect(result.text).not.toContain(", due ");
+    expect(result.html).toContain("The invoice is attached");
+  });
+
   it("includes the invoice number and issuer/recipient display names in both html and text", () => {
     const result = buildInvoiceEmailContent(BASE_INPUT);
     for (const value of ["INV-2026-001", "Acme Corp", "Freelance Studio LLC"]) {
