@@ -188,12 +188,18 @@ if (existsSync(lifecycleFile)) {
   ) && ok;
 }
 
-// 10. No InvoiceEmailAttempt writer was introduced in this sub-PR — that
-// remains Slice 4's. A bare mention in a doc comment referencing Slice 4
-// is fine; an actual Prisma write call is not.
-const emailAttemptWrite = grep("invoiceEmailAttempt\\.(create|createMany|upsert)", "src/lib/invoices/");
+// 10. Invoice System Slice 4, PR 4b — the one approved InvoiceEmailAttempt
+// writer is src/lib/invoices/email/send-invoice-email.ts; every other file
+// under src/lib/invoices/ (Issue, Legacy Archive, reconciliation, etc.)
+// remains a strict non-writer for this model, exactly as it was before
+// PR 4b existed.
+const APPROVED_EMAIL_ATTEMPT_WRITER = "src/lib/invoices/email/send-invoice-email.ts";
+const emailAttemptWrite = grep("invoiceEmailAttempt\\.(create|createMany|upsert)", "src/lib/invoices/")
+  .split("\n")
+  .filter((line) => line && !line.startsWith(`${APPROVED_EMAIL_ATTEMPT_WRITER}:`))
+  .join("\n");
 ok = report(
-  "no InvoiceEmailAttempt writer exists under src/lib/invoices/ (Slice 4's, not this sub-PR's)",
+  `no InvoiceEmailAttempt writer exists under src/lib/invoices/ outside ${APPROVED_EMAIL_ATTEMPT_WRITER}`,
   emailAttemptWrite === "",
   emailAttemptWrite,
 ) && ok;
@@ -840,6 +846,86 @@ if (existsSync(reconciliationDryRunRouteFile)) {
     content.includes("reconcileInvoicePdfArchiveObjectsDryRun(") && !/\breconcileInvoicePdfArchiveObjects\(/.test(content),
     "",
   ) && ok;
+}
+
+// 15. Invoice System Slice 4 — live OWNER-only send path. These checks
+// replace the former "no writer exists" era with positive, fail-closed
+// invariants around the one approved writer and action boundary.
+const invoiceEmailActionFile = "src/app/(dashboard)/invoices/[id]/edit/send-email-actions.ts";
+const invoiceEmailServiceFile = "src/lib/invoices/email/send-invoice-email.ts";
+for (const file of [invoiceEmailActionFile, invoiceEmailServiceFile]) {
+  ok = report(`${file} exists`, existsSync(file), existsSync(file) ? "" : `Expected ${file} to exist.`) && ok;
+}
+
+if (existsSync(invoiceEmailActionFile)) {
+  const action = readFileSync(invoiceEmailActionFile, "utf8");
+  const limitIndex = action.indexOf("checkRateLimit(INVOICE_EMAIL_SEND_LIMIT, user.id)");
+  const serviceIndex = action.indexOf("sendInvoiceEmail(");
+  ok = report("Invoice email action resolves trusted membership", action.includes("getCurrentMembership()"), "") && ok;
+  ok = report("Invoice email action independently enforces OWNER", action.includes("assertCanAccessPaymentDetails"), "") && ok;
+  ok = report(
+    "Invoice email action uses its dedicated per-user limiter before entering the domain service",
+    limitIndex !== -1 && serviceIndex !== -1 && limitIndex < serviceIndex,
+    "",
+  ) && ok;
+}
+
+if (existsSync(invoiceEmailServiceFile)) {
+  const service = readFileSync(invoiceEmailServiceFile, "utf8");
+  const codeOnly = service.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+  const ledgerIndex = service.indexOf("prisma.invoicePdfArchiveObject.findFirst");
+  const rebuildIndex = service.indexOf("buildInvoicePdfStoragePath(identity)", ledgerIndex);
+  const downloadIndex = service.indexOf("deps.downloadPdf({ identity })");
+  const dispatchIndex = service.indexOf("deps.sendEmail({");
+  ok = report("Invoice email service independently enforces OWNER", service.includes("assertCanAccessPaymentDetails(actor.role)"), "") && ok;
+  ok = report("Invoice email service reuses issueInvoice through deps.issue", service.includes("deps.issue("), "") && ok;
+  for (const predicate of ["organizationId: actor.organizationId", "invoiceId", "storagePath: invoice.pdfStoragePath!", "documentVersion: invoice.documentVersion", 'status: "REFERENCED"', "referencedAt: { not: null }"]) {
+    ok = report(`Invoice email ledger proof contains ${predicate}`, service.includes(predicate), "") && ok;
+  }
+  ok = report(
+    "Invoice email canonical ledger proof precedes PDF byte download, which precedes provider dispatch",
+    ledgerIndex !== -1 && rebuildIndex > ledgerIndex && downloadIndex > rebuildIndex && dispatchIndex > downloadIndex,
+    "",
+  ) && ok;
+  ok = report("Invoice email service never creates a public URL", !codeOnly.includes("getPublicUrl"), "") && ok;
+  ok = report("Invoice email service contains no console logging", !/console\.(log|error|warn|info|debug)\(/.test(codeOnly), "") && ok;
+  ok = report("Invoice email service never creates Activity or Notification rows", !/createActivity|notification\.(create|createMany)|createNotification/.test(codeOnly), "") && ok;
+  ok = report(
+    "Invoice email service never writes a PortalDownloadRequest row",
+    !/PortalDownloadRequest|recordPortalDownloadRequest/.test(codeOnly),
+    "",
+  ) && ok;
+  // Every InvoiceEmailAttempt read/write in this file goes through the
+  // exact `invoice: { organizationId }` relation filter — never a bare
+  // idempotencyKey/attemptId/invoiceId lookup on its own. Eight is the
+  // exact count as of this file's own authoring (readExactAttempt,
+  // readPendingAttempt, readLatestAttempt, the guarded settlement
+  // updateMany, its own count-0 reread, the settlement catch-block
+  // fallback updateMany, and the post-create conflict re-query) — a
+  // regression that drops any one of them below this count is exactly
+  // the "unscoped idempotency query" class of bug this check exists to
+  // catch.
+  const tenantScopedAttemptOps = (codeOnly.match(/invoice:\s*\{\s*organizationId/g) ?? []).length;
+  ok = report(
+    "every InvoiceEmailAttempt operation is tenant-scoped via the invoice.organizationId relation",
+    tenantScopedAttemptOps >= 7,
+    `Expected at least 7 tenant-scoped InvoiceEmailAttempt operations, found ${tenantScopedAttemptOps}.`,
+  ) && ok;
+}
+
+const invoiceEmailHistoryFile = "src/lib/invoices/email/attempt-history.ts";
+if (existsSync(invoiceEmailHistoryFile)) {
+  const history = readFileSync(invoiceEmailHistoryFile, "utf8");
+  ok = report("Invoice email attempt-history loader enforces OWNER", history.includes("assertCanAccessPaymentDetails"), "") && ok;
+  ok = report(
+    "Invoice email attempt-history loader is tenant/invoice scoped via the invoice.organizationId relation",
+    /invoice:\s*\{\s*organizationId/.test(history),
+    "",
+  ) && ok;
+  ok = report("Invoice email attempt-history loader is bounded to 20 rows", history.includes("take: 20"), "") && ok;
+  for (const forbidden of ["idempotencyKey: true", "providerMessageId: true", "failureReason: true"]) {
+    ok = report(`Invoice email attempt-history loader never selects ${forbidden}`, !history.includes(forbidden), "") && ok;
+  }
 }
 
 process.exit(ok ? 0 : 1);

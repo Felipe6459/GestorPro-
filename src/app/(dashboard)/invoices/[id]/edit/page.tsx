@@ -11,6 +11,7 @@ import { canAccessPaymentDetails } from "@/lib/organization-setup/authorization"
 import { classifyInvoiceArchival } from "@/lib/invoices/pdf/classify-archival";
 import { updateInvoiceAction } from "./actions";
 import { InvoiceAttachmentsSection } from "./attachments-section";
+import { loadInvoiceEmailAttempts } from "@/lib/invoices/email/attempt-history";
 
 export default async function EditInvoicePage({
   params,
@@ -18,7 +19,7 @@ export default async function EditInvoicePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { organizationId, membership } = await getCurrentMembership();
+  const { user, organizationId, membership } = await getCurrentMembership();
   // Invoice System Official Slice 3, sub-PR 3b — Issue is OWNER-only,
   // reusing the exact same authorization boundary payment details already
   // established (src/lib/organization-setup/authorization.ts). This only
@@ -60,6 +61,9 @@ export default async function EditInvoicePage({
   const archivalClassification = classifyInvoiceArchival(invoice);
   const hasArchivedPdf = archivalClassification.kind === "archived";
   const canArchiveLegacy = archivalClassification.kind === "legacy_eligible" && canIssue;
+  const canSendEmail = hasArchivedPdf && canIssue;
+  const actor = { organizationId, userId: user.id, userName: user.name, role: membership.role };
+  const emailAttempts = canSendEmail ? await loadInvoiceEmailAttempts(actor, invoice.id) : [];
 
   // The full project option list is fetched only for the DRAFT branch —
   // the read-only view never offers a project-changing control.
@@ -143,6 +147,8 @@ export default async function EditInvoicePage({
             internalNotes={invoice.internalNotes}
             hasArchivedPdf={hasArchivedPdf}
             canArchiveLegacy={canArchiveLegacy}
+            canSendEmail={canSendEmail}
+            emailAttempts={emailAttempts}
             expectedUpdatedAt={invoice.updatedAt.toISOString()}
             totals={buildInvoiceTotalsViewModel({
               amount: invoice.amount,

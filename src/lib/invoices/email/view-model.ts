@@ -42,7 +42,7 @@ export type InvoiceEmailViewModelInput = {
   totalAmount: CurrencyAmountInput;
   currency: string;
   /** A date-only value, per parseDateOnly()'s own UTC-midnight contract — never a real timestamp. */
-  dueDate: Date;
+  dueDate: Date | null;
   /**
    * Already resolved and validated by the caller (e.g. via
    * resolveTrustedInvoiceEmailOrigin() plus the invoice's own id/portal
@@ -78,12 +78,12 @@ function formatTotal(input: InvoiceEmailViewModelInput): string {
   return formatInvoiceCurrencyAmount(input.totalAmount, input.currency, input.locale) ?? `${input.currency} ${String(input.totalAmount)}`;
 }
 
-function renderHtml(input: InvoiceEmailViewModelInput, formattedTotal: string, formattedDueDate: string): string {
+function renderHtml(input: InvoiceEmailViewModelInput, formattedTotal: string, formattedDueDate: string | null): string {
   const invoiceNumber = escapeHtml(input.invoiceNumber);
   const recipientDisplayName = escapeHtml(input.recipientDisplayName);
   const issuerDisplayName = escapeHtml(input.issuerDisplayName);
   const total = escapeHtml(formattedTotal);
-  const dueDate = escapeHtml(formattedDueDate);
+  const dueDateClause = formattedDueDate ? `, due ${escapeHtml(formattedDueDate)}` : "";
 
   const portalLinkHtml = input.portalInvoiceUrl
     ? `<p style="margin: 24px 0;">
@@ -97,7 +97,7 @@ function renderHtml(input: InvoiceEmailViewModelInput, formattedTotal: string, f
 <html>
   <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: #111827; line-height: 1.5; margin: 0; padding: 24px;">
     <p>Dear ${recipientDisplayName},</p>
-    <p>${issuerDisplayName} has issued invoice <strong>${invoiceNumber}</strong> for <strong>${total}</strong>, due ${dueDate}. The invoice is attached to this email as a PDF.</p>
+    <p>${issuerDisplayName} has issued invoice <strong>${invoiceNumber}</strong> for <strong>${total}</strong>${dueDateClause}. The invoice is attached to this email as a PDF.</p>
     ${portalLinkHtml}
     <p style="color: #6b7280; font-size: 12px; margin-top: 32px;">
       If you have any questions about this invoice, please contact ${issuerDisplayName} directly.
@@ -106,11 +106,11 @@ function renderHtml(input: InvoiceEmailViewModelInput, formattedTotal: string, f
 </html>`;
 }
 
-function renderText(input: InvoiceEmailViewModelInput, formattedTotal: string, formattedDueDate: string): string {
+function renderText(input: InvoiceEmailViewModelInput, formattedTotal: string, formattedDueDate: string | null): string {
   const lines = [
     `Dear ${input.recipientDisplayName},`,
     "",
-    `${input.issuerDisplayName} has issued invoice ${input.invoiceNumber} for ${formattedTotal}, due ${formattedDueDate}. The invoice is attached to this email as a PDF.`,
+    `${input.issuerDisplayName} has issued invoice ${input.invoiceNumber} for ${formattedTotal}${formattedDueDate ? `, due ${formattedDueDate}` : ""}. The invoice is attached to this email as a PDF.`,
   ];
 
   if (input.portalInvoiceUrl) {
@@ -134,7 +134,7 @@ function renderText(input: InvoiceEmailViewModelInput, formattedTotal: string, f
  */
 export function buildInvoiceEmailContent(input: InvoiceEmailViewModelInput): InvoiceEmailContent {
   const formattedTotal = formatTotal(input);
-  const formattedDueDate = formatDateOnlyForDisplay(input.dueDate, input.locale);
+  const formattedDueDate = input.dueDate ? formatDateOnlyForDisplay(input.dueDate, input.locale) : null;
 
   return {
     subject: `Invoice ${input.invoiceNumber} from ${input.issuerDisplayName}`,

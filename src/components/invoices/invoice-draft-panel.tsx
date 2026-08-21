@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { InvoiceForm } from "./invoice-form";
 import { InvoiceIssueControls } from "./invoice-issue-controls";
+import { InvoiceSendControls } from "./invoice-send-controls";
 import type { InvoiceFormState } from "@/types";
 import type { InvoiceLineItemFormValue } from "@/lib/invoices/line-items-form";
 
@@ -74,6 +75,12 @@ export function InvoiceDraftPanel({
       {canIssue && (
         <div className="mt-6 border-t border-gray-200 pt-6">
           <InvoiceIssueControls
+            invoiceId={invoiceId}
+            invoiceNumber={invoiceNumber}
+            expectedUpdatedAt={expectedUpdatedAt}
+            disabled={dirty}
+          />
+          <InvoiceSendControls
             invoiceId={invoiceId}
             invoiceNumber={invoiceNumber}
             expectedUpdatedAt={expectedUpdatedAt}

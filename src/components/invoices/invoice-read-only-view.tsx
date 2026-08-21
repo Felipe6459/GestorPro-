@@ -6,6 +6,8 @@ import { formatDateOnlyForDisplay } from "@/lib/invoices/date-only";
 import { InvoiceLifecycleControls } from "./invoice-lifecycle-controls";
 import { InvoiceInternalNotesForm } from "./invoice-internal-notes-form";
 import { InvoiceLegacyArchiveControls } from "./invoice-legacy-archive-controls";
+import { InvoiceSendControls } from "./invoice-send-controls";
+import type { InvoiceEmailAttemptSummary } from "@/lib/invoices/email/attempt-history";
 import type { InvoiceStatusValue } from "@/lib/validation/invoice";
 import type { InvoiceTotalsViewModel } from "@/lib/invoices/totals-view-model";
 
@@ -47,6 +49,8 @@ export function InvoiceReadOnlyView({
   internalNotes,
   hasArchivedPdf,
   canArchiveLegacy,
+  canSendEmail,
+  emailAttempts,
   expectedUpdatedAt,
   totals,
 }: {
@@ -64,6 +68,8 @@ export function InvoiceReadOnlyView({
   internalNotes: string | null;
   hasArchivedPdf: boolean;
   canArchiveLegacy: boolean;
+  canSendEmail: boolean;
+  emailAttempts: InvoiceEmailAttemptSummary[];
   expectedUpdatedAt: string;
   totals: InvoiceTotalsViewModel;
 }) {
@@ -168,6 +174,10 @@ export function InvoiceReadOnlyView({
 
       {canArchiveLegacy && (
         <InvoiceLegacyArchiveControls invoiceId={invoiceId} invoiceNumber={invoiceNumber} expectedUpdatedAt={expectedUpdatedAt} />
+      )}
+
+      {canSendEmail && (
+        <InvoiceSendControls invoiceId={invoiceId} invoiceNumber={invoiceNumber} attempts={emailAttempts} />
       )}
 
       <InvoiceLifecycleControls invoiceId={invoiceId} status={status} invoiceNumber={invoiceNumber} />
