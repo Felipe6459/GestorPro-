@@ -730,19 +730,18 @@ model Invoice {
   taxRatePercent Decimal?            @db.Decimal(5, 2)
   taxLabel       InvoiceTaxLabel     @default(TAX)
 
-  // Deliberately nullable in Slice 1 (unlike §4.1's final target, which
-  // shows these non-null with a DB default) — an old application version
-  // still running during a rolling deploy window could insert a row before
-  // this backfill/write path exists everywhere. Every Slice 1 write path
-  // (flat create/edit) populates these correctly from the moment this
-  // slice ships; the migration backfills every pre-existing row once,
-  // immediately after these columns are added (§12 step 2). The NOT NULL
-  // contract is Slice 5's, explicitly (§12 step 4) — never assumed here.
-  // `amount` (existing column, unchanged meaning) remains the sole
-  // canonical total every Dashboard/Analytics/Search/Portal query reads.
-  subtotal       Decimal? @db.Decimal(10, 2)
-  discountAmount Decimal? @db.Decimal(10, 2)
-  taxAmount      Decimal? @db.Decimal(10, 2)
+  // Invoice System Official Slice 5b — the deferred contract-phase change
+  // (docs/invoicing-architecture.md §4.1/§12 step 4), applied by migration
+  // 20260915090000_add_invoice_totals_not_null_contract. Every real write
+  // path has supplied all three from calculateInvoiceTotals()'s own
+  // always-non-null Decimal result since Slice 1 shipped; that migration's
+  // own guard verifies this against real data before applying NOT NULL —
+  // it performs no backfill of its own. `amount` (existing column,
+  // unchanged meaning) remains the sole canonical total every
+  // Dashboard/Analytics/Search/Portal query reads.
+  subtotal       Decimal @default(0) @db.Decimal(10, 2)
+  discountAmount Decimal @default(0) @db.Decimal(10, 2)
+  taxAmount      Decimal @default(0) @db.Decimal(10, 2)
 
   // Finalization/archival — schema reserved now, unwritten by any code
   // path in Slice 1 (Slice 3 is the sole future writer, §8.1 step 5).
