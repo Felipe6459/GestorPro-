@@ -125,26 +125,34 @@ reads or writes it. `issueDate` defaults to `now()` at creation and is
   for the `>0`/`NaN` check); `status`, `dueDate`, `notes` optional/validated.
   No `currency`/`issueDate` field is parsed at all.
 
-### 1.3 Portal — the still-existing DRAFT visibility problem
+### 1.3 Portal — the DRAFT visibility problem (RESOLVED, Slice 5a/PR #89)
 
+**Status: resolved.** At the time this section was originally written,
 `src/lib/client-portal/queries.ts`'s `OPEN_INVOICE_STATUSES` **still
-includes `"DRAFT"`** today:
+included `"DRAFT"`**:
 ```ts
 const OPEN_INVOICE_STATUSES: readonly InvoiceStatus[] = ["DRAFT", "SENT", "OVERDUE"];
 ```
-Three real, currently-live leak points, unfixed as of this document:
+with three real, then-currently-live leak points:
 
 1. `getPortalInvoice(clientId, organizationId, invoiceId)` — **no status
-   filter at all**; a DRAFT invoice's full detail page is reachable today
-   by anyone who can reach/guess its id.
+   filter at all**; a DRAFT invoice's full detail page was reachable by
+   anyone who could reach/guess its id.
 2. `getPortalInvoices(clientId, organizationId, filter)` — the `"all"`
-   filter (the default tab, no `?status=`) applies no status filter; the
-   `"open"` filter includes `DRAFT` via `OPEN_INVOICE_STATUSES`.
+   filter (the default tab, no `?status=`) applied no status filter; the
+   `"open"` filter included `DRAFT` via `OPEN_INVOICE_STATUSES`.
 3. `getPortalOverview(clientId, organizationId)` — `recentInvoices`
    (no status filter) and `openInvoicesAgg` (via `OPEN_INVOICE_STATUSES`,
    folding a DRAFT's amount into the portal's `outstandingAmount` KPI).
 
-§10 defines the target fix for all three.
+**All three were fixed exactly as §10 specifies, by official Slice 5a
+(PR #89):** a new `VISIBLE_PORTAL_STATUSES` (`SENT`/`OVERDUE`/`PAID`/
+`CANCELLED`) is now applied to `getPortalInvoice`/`getPortalInvoices`/
+`getPortalOverview`, and `OPEN_INVOICE_STATUSES` no longer includes
+`DRAFT`. A `DRAFT` invoice is genuinely unreachable through any Portal
+surface today (proven at the E2E layer, not merely absent from a list).
+The historical description above is preserved for provenance; §10 below
+is the target design this fix now matches exactly.
 
 ### 1.4 Absent today
 
@@ -262,7 +270,7 @@ installed — `src/lib/email/resend-client.ts` sends via a raw
   environment). See `GPT_PROJECT_CONTEXT.md`'s "Production migration
   incident and resolution" for the full account.
 - Portal DRAFT visibility (§1.3) was explicitly **out of scope** for PR
-  #63 and remains unfixed until §10 ships (Slice 5).
+  #63 — it was fixed later, by official Slice 5a (PR #89); see §1.3.
 
 ---
 
@@ -389,11 +397,17 @@ model Invoice {
   taxRatePercent Decimal?            @db.Decimal(5, 2)
   taxLabel       InvoiceTaxLabel     @default(TAX)
 
-  subtotal       Decimal @db.Decimal(10, 2) @default(0)
-  discountAmount Decimal @db.Decimal(10, 2) @default(0)
-  taxAmount      Decimal @db.Decimal(10, 2) @default(0)
+  subtotal       Decimal @db.Decimal(10, 2) @default(0)  // IMPLEMENTED — Slice 5b/PR #90, migration 20260915090000; NOT NULL/default-0 shown here is the live schema, not a future target
+  discountAmount Decimal @db.Decimal(10, 2) @default(0)  // IMPLEMENTED — Slice 5b/PR #90, same migration
+  taxAmount      Decimal @db.Decimal(10, 2) @default(0)  // IMPLEMENTED — Slice 5b/PR #90, same migration
   // amount (existing column, unchanged meaning) = subtotal - discountAmount + taxAmount
   // — remains the sole canonical total every Dashboard/Analytics/Search/Portal query reads.
+  // Deferred, expand-phase state (Slice 1 through Slice 5a): these three
+  // columns were nullable, with no database default, so an old app
+  // version mid-rolling-deploy could still insert a row before the
+  // dual-write path existed everywhere. Slice 5b's own migration verified
+  // (count-only guard, no backfill) that every row already had a real
+  // value before applying this NOT NULL/DEFAULT 0 contract.
 
   finalizedAt        DateTime?  // set exactly once, by the successful DRAFT -> SENT archive/finalization commit (§8.1) — never by any other transition, never before the PDF archive exists
   issuerSnapshot      Json?     // { schemaVersion: 1, ... } — §7, written in the same transaction as finalizedAt
@@ -406,7 +420,7 @@ model Invoice {
   lineItems     InvoiceLineItem[]
   emailAttempts InvoiceEmailAttempt[]
 
-  @@unique([organizationId, invoiceNumber])  // TARGET — see §4.5/§12 for the migration from [clientId, invoiceNumber]
+  @@unique([organizationId, invoiceNumber])  // IMPLEMENTED — Slice 5c/PR #91, migration 20260916090000, applied and verified in production; see §4.5/§12 for the migration design from [clientId, invoiceNumber]
 }
 
 enum InvoiceDiscountType { NONE PERCENTAGE FIXED }
@@ -526,16 +540,24 @@ is already handled gracefully today.
 ### 4.5 Invoice numbering — target and migration risk
 
 **Target: `@@unique([organizationId, invoiceNumber])`** — the conventional
-issuer-level numbering invariant, replacing today's
-`@@unique([clientId, invoiceNumber])`. This is **contingent on a real-data
-collision preflight** (§12.4) run before the migration that changes the
-constraint: it must abort/report if any organization has two clients
-sharing an invoiceNumber today, and must **never silently rename an
-existing invoice number** to resolve a collision — any real collision
-found must be surfaced to a human for a manual decision. If that preflight
-cannot be confidently run against real deployed data, the fallback is to
-**preserve `[clientId, invoiceNumber]`** as an explicitly documented v1
-limitation rather than risk a blind constraint change.
+issuer-level numbering invariant. **Status: implemented (Slice 5c, PR
+#91).** Migration `20260916090000_invoice_number_unique_per_organization`
+replaced `@@unique([clientId, invoiceNumber])` with this target exactly,
+preserving case-sensitive comparison. The migration was gated on a real
+production **collision preflight** (§12.4/§12.5) run immediately before
+deploy: all three blocking conditions (duplicate `(organizationId,
+invoiceNumber)` groups, blank/whitespace numbers, Invoice/Project/Client
+ownership inconsistency) returned zero — no collision was found, so no
+rename decision was ever required. The migration itself never renames or
+repairs — it aborts loudly on any blocking condition, count-only, exactly
+as designed below. The historical fallback plan described in the rest of
+this section (preserving `[clientId, invoiceNumber]` if a preflight could
+not be confidently run) was not needed. **Residual limitation:**
+`Invoice.organizationId`/Client ownership consistency is maintained by
+the two Invoice writers and this migration's own one-time guard, not by
+a permanent composite FK/CHECK constraint — see migration
+`20260916090000_invoice_number_unique_per_organization`'s own header
+comment for the full reasoning; not duplicated here.
 
 ### 4.6 Flat vs. legacy vs. newly-issued classification
 
@@ -1418,16 +1440,21 @@ any external database by that task (§1.6/§12). **Applied to the verified
 production database on 2026-08-17** (recorded in this 2026-08-18
 documentation refresh) — see §1.6's operational update.
 
-**Slice status summary (recorded in this 2026-08-22 documentation refresh
-after PR #87): Slices 1–4 are all ✅ COMPLETE. Slice 5 is unstarted — the
-immediate next Invoice task.** Slice 4 in particular — email attachment,
+**Slice status summary (recorded in this documentation-only Slice 5d
+closure refresh, after PR #92): Slices 1–5 are all ✅ COMPLETE. No
+planned Invoice System slice remains.** Slice 4 — email attachment,
 attempt state, idempotency — shipped via sub-PR 4a (PR #85) and sub-PR 4b
 (PR #86), was corrected for a reproduced production button-visibility
 defect (PR #87), and has since been verified working end to end in a
 real production environment, including one real Send request settling
 `ACCEPTED` and reaching a controlled test mailbox with a correct PDF
 attachment — see §9.2's own operational status note below for the full
-chronology.
+chronology. **Slice 5 — Portal DRAFT-visibility (5a/PR #89), the totals
+`NOT NULL` contract (5b/PR #90), organization-wide Invoice-number
+uniqueness (5c/PR #91), and safe itemized demo-seed closure (5d/PR
+#92) — has since shipped in full**, closing this document's own
+five-slice plan; see the Slice 5 entry below for the per-sub-PR
+breakdown and the archived-seed narrowing rationale.
 
 **Slice 0 — this document.** `docs/invoicing-architecture.md`, committed
 before any code. *(This slice.)*
@@ -1561,27 +1588,61 @@ through Slice 3's service before ever sending.**
   additive/expand-only relative to Slice 1's schema.
 
 **Slice 5 — portal visibility/presentation, contract migration, final
-security/integration/E2E/seed/docs closure.**
+security/integration/E2E/seed/docs closure. ✅ COMPLETE.** "5a"/"5b"/
+"5c"/"5d" below are informal development-time subdivisions of this one
+official slice (PR #89/#90/#91/#92 respectively) — the same convention
+already established for "2a"/"2b" and "3a"/"3b"/"3c"; they are not
+additional entries in this document's own five-slice count.
 - *Dependencies*: all prior slices.
-- *Scope*: the full §10 portal-visibility fix (all four query surfaces);
-  the §11 log-hygiene static check (if adopted); the full §13 test matrix
-  closure (§13.4); seed-data update (a demo itemized+archived invoice);
-  README Roadmap-item update; this document's own finalization if any
-  design detail shifted during implementation. **Owns the Slice-5
-  contract migration explicitly** (§12 step 4): verification that every
-  backfilled/dual-written column is fully consistent, then the `NOT
-  NULL`/constraint changes that bring the schema to §4's final target
-  shape; owns the organization-wide invoice-number uniqueness constraint
-  and its real-data collision preflight (§4.5/§12.5) if not already
-  landed in Slice 1.
+- *Scope, and what shipped*:
+  - **5a (PR #89): the full §10 portal-visibility fix, all four query
+    surfaces.** See §1.3.
+  - **5b (PR #90): the Slice-5 contract migration** (§12 step 4) —
+    verification that every backfilled/dual-written column is fully
+    consistent, then the `NOT NULL`/`DEFAULT 0` changes that bring
+    `subtotal`/`discountAmount`/`taxAmount` to §4's final target shape.
+    Applied and verified in production. See §4.1.
+  - **5c (PR #91): the organization-wide invoice-number uniqueness
+    constraint and its real-data collision preflight** (§4.5/§12.5).
+    Applied and verified in production, zero blocking collision counts,
+    no deliberate production collision write. See §4.5.
+  - **5d (PR #92): seed-data update — narrowed to a safe itemized,
+    non-archived demo Invoice**, not the originally-worded "itemized+
+    archived" pair. A genuinely archived seed row was rejected: it would
+    require either a real external Storage write from an ordinary local
+    `prisma/seed.ts` run (a disproportionate new risk this script has
+    never carried) or a database-only row that falsely looks archived
+    while a real "Download PDF" click would fail — both unacceptable.
+    The real itemized+archive+download capability is already shipped,
+    production-verified (Slice 3/4), and covered by existing
+    integration/E2E tests using this repo's own `TEST_MODE` Storage
+    stub — this narrowing is a local-demo-database convenience decision
+    only, not a gap in Invoice System functionality.
+  - The §11 log-hygiene static check was not separately adopted as its
+    own new script — see §14's general note on security-check scope.
+  - The full §13 test matrix closure (§13.4) — covered across 5a/5b/5c's
+    own migration-contract, integration, and E2E coverage.
+  - README Roadmap-item update — the stale "no PDF/email flow" bullet
+    was removed as part of this same documentation closure.
+  - This document's own finalization — the bounded operational-status
+    updates in this closure pass (§1.3, §4.1, §4.5, §14, §15).
 - *Non-goals*: the `GPT_PROJECT_CONTEXT.md` refresh is explicitly
-  **excluded** from this slice.
-- *Migration/deployment*: the contract-phase migration described above —
-  the one step every earlier slice explicitly deferred to this slice,
-  never left ownerless.
+  **excluded** from this slice's own official scope — it is instead
+  the separate, final documentation-only step described immediately
+  below, and was completed alongside this same closure.
+- *Migration/deployment*: the contract-phase migration (5b) and the
+  organization-wide uniqueness migration (5c) — the two steps every
+  earlier slice explicitly deferred to this slice, never left ownerless.
+  Both applied to production, in that order, each gated on its own
+  read-only preflight and a fresh verified backup.
 
 **Final, separate step (not a slice): a documentation-only
-`GPT_PROJECT_CONTEXT.md` refresh**, only after Slice 5 merges.
+`GPT_PROJECT_CONTEXT.md` refresh**, only after Slice 5 merges. **✅
+COMPLETE** — this closure pass updates both `GPT_PROJECT_CONTEXT.md` and
+this document together; per each file's own established rule, a
+documentation-only commit does not itself move the application-state
+baseline (which remains `main` @ `a0b70a35c6371c7478b80ab036da0fda6e4bc31f`,
+PR #92).
 
 ---
 
@@ -1606,11 +1667,18 @@ freeze a guess into the architecture:
   "layered on top of the DB guarantee, never a replacement for it"
   design — confirmed working end to end by the real production Send
   verified after PR #87 (see §9.2's own operational status note).
-- **Real deployed-database collision risk** for the `[organizationId,
-  invoiceNumber]` uniqueness migration (§4.5/§12.5) — this repository's
-  own seed/test data shows zero collisions, but that is not proof about
-  any real production dataset; the preflight check itself (§12.5) is
-  what actually gates this, not this document's own analysis.
+- **RESOLVED — real deployed-database collision risk** for the
+  `[organizationId, invoiceNumber]` uniqueness migration (§4.5/§12.5).
+  The real production collision preflight (§12.5) was run immediately
+  before the Slice 5c/PR #91 migration deploy: all three blocking counts
+  (duplicate groups, blank/whitespace numbers, ownership inconsistency)
+  were zero. The migration then applied cleanly and was catalog-verified
+  afterward (new index present and unique, old index absent, collision
+  recheck still zero). No deliberate duplicate write was ever
+  manufactured against production to prove this — the evidence is the
+  real preflight query, the migration's own guard, the migration-contract
+  tests, the integration/concurrency tests, the E2E suite, and exact-head
+  CI, combined.
 
 ---
 

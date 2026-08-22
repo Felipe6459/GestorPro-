@@ -344,7 +344,6 @@ Ideas for future iterations — not required for the product to work today:
 
 - **Custom domain verification.** Settings → Domain lets an organization save a custom domain, but real DNS verification isn't implemented yet — a saved domain stays in a "pending" state indefinitely. This is intentional and disclosed in the UI itself, not a bug.
 - **Trial-ending reminders / billing reconciliation.** See [Billing](#billing) below — both are optional, defense-in-depth additions, not required for correctness.
-- **Invoice PDF export / email delivery** — invoices currently exist only as database records with a status field; there's no PDF generation or send-by-email flow.
 
 ## Billing
 
