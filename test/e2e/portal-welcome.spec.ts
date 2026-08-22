@@ -201,8 +201,25 @@ test.describe("Placement isolation", () => {
     await gotoAndSettle(page, `${baseURL}/portal/invoices`);
     await expect(welcomeBanner(page)).toHaveCount(0);
 
-    await gotoAndSettle(page, `${baseURL}/portal/invoices/${fixtures.invoice.id}`);
+    // fixtures.invoice is DRAFT and, since Invoice System Official Slice 5
+    // (docs/invoicing-architecture.md §10), a DRAFT invoice's Portal detail
+    // page now correctly 404s — this check's own intent is "a real,
+    // rendering Invoice detail page never shows the banner," so a
+    // dedicated SENT invoice is used here instead of relying on the fixed
+    // DRAFT-visibility bug.
+    const visibleInvoice = await dbQuery<{ id: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-WELCOME-VISIBLE-${fixtures.runId}`,
+        status: "SENT",
+        amount: "10.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+    await gotoAndSettle(page, `${baseURL}/portal/invoices/${visibleInvoice.id}`);
     await expect(welcomeBanner(page)).toHaveCount(0);
+    await dbQuery("invoice", "deleteMany", { where: { id: visibleInvoice.id } });
 
     await gotoAndSettle(page, `${baseURL}/portal/profile`);
     await expect(welcomeBanner(page)).toHaveCount(0);

@@ -20,6 +20,12 @@ describe("Client Portal authorization — PortalUser A cannot see Client B's dat
   let fixtures: TestFixtures;
   let projectB: { id: string };
   let invoiceB: { id: string };
+  // fixtures.invoice is DRAFT and, since Invoice System Official Slice 5
+  // (docs/invoicing-architecture.md §10), is correctly never Portal-visible
+  // — these cross-client isolation proofs need an invoice that a
+  // same-client lookup CAN resolve, so a dedicated SENT invoice for
+  // Client A is used instead of relying on the fixed DRAFT-visibility bug.
+  let visibleInvoiceA: { id: string };
 
   beforeAll(async () => {
     fixtures = await seedTestData();
@@ -43,10 +49,21 @@ describe("Client Portal authorization — PortalUser A cannot see Client B's dat
         issueDate: new Date(),
       },
     });
+    visibleInvoiceA = await prisma.invoice.create({
+      data: {
+        invoiceNumber: "INV-A-VISIBLE-1",
+        clientId: fixtures.clientA.id,
+        projectId: fixtures.project.id,
+        organizationId: fixtures.orgA.id,
+        amount: "300.00",
+        status: "SENT",
+        issueDate: new Date(),
+      },
+    });
   });
 
   afterAll(async () => {
-    await prisma.invoice.deleteMany({ where: { id: invoiceB.id } });
+    await prisma.invoice.deleteMany({ where: { id: { in: [invoiceB.id, visibleInvoiceA.id] } } });
     await prisma.project.deleteMany({ where: { id: projectB.id } });
     await cleanupTestData(fixtures);
   });
@@ -63,8 +80,8 @@ describe("Client Portal authorization — PortalUser A cannot see Client B's dat
     const crossClient = await getPortalInvoice(fixtures.clientA.id, fixtures.orgA.id, invoiceB.id);
     expect(crossClient).toBeNull();
 
-    const ownInvoice = await getPortalInvoice(fixtures.clientA.id, fixtures.orgA.id, fixtures.invoice.id);
-    expect(ownInvoice?.id).toBe(fixtures.invoice.id);
+    const ownInvoice = await getPortalInvoice(fixtures.clientA.id, fixtures.orgA.id, visibleInvoiceA.id);
+    expect(ownInvoice?.id).toBe(visibleInvoiceA.id);
   });
 
   it("getPortalProjects: never returns another Client's projects", async () => {
@@ -76,7 +93,7 @@ describe("Client Portal authorization — PortalUser A cannot see Client B's dat
   it("getPortalInvoices: never returns another Client's invoices", async () => {
     const invoices = await getPortalInvoices(fixtures.clientA.id, fixtures.orgA.id, "all");
     expect(invoices.some((i) => i.id === invoiceB.id)).toBe(false);
-    expect(invoices.some((i) => i.id === fixtures.invoice.id)).toBe(true);
+    expect(invoices.some((i) => i.id === visibleInvoiceA.id)).toBe(true);
   });
 
   it("getPortalClientAttachments: scoped by clientId + organizationId together", async () => {

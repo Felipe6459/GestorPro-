@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { seedE2EFixtures, cleanupTestData, type TestFixtures } from "./fixtures";
+import { seedE2EFixtures, cleanupTestData, dbQuery, type TestFixtures } from "./fixtures";
 import { injectTestSession } from "../support/e2e-session";
 
 // C. Client Portal — a portal-only identity (fixtures.portalUser, whose id
@@ -47,13 +47,30 @@ test("Projects, Invoices, and Profile render for the portal identity", async ({ 
   await expect(page).toHaveURL(/\/portal\/projects/);
   await expect(page.getByRole("link", { name: fixtures.project.name })).toBeVisible();
 
+  // fixtures.invoice is DRAFT and, since Invoice System Official Slice 5
+  // (docs/invoicing-architecture.md §10), is correctly never Portal-visible
+  // — a dedicated SENT invoice proves the Invoices tab itself renders real
+  // content, without relying on the fixed DRAFT-visibility bug.
+  const visibleInvoice = await dbQuery<{ id: string; invoiceNumber: string }>("invoice", "create", {
+    data: {
+      invoiceNumber: `E2E-PORTAL-VISIBLE-${fixtures.runId}`,
+      status: "SENT",
+      amount: "10.00",
+      projectId: fixtures.project.id,
+      clientId: fixtures.clientA.id,
+      organizationId: fixtures.orgA.id,
+    },
+  });
+
   await page.goto("/portal/invoices");
   await expect(page).toHaveURL(/\/portal\/invoices/);
-  await expect(page.getByRole("row", { name: new RegExp(fixtures.invoice.invoiceNumber) })).toBeVisible();
+  await expect(page.getByRole("row", { name: new RegExp(visibleInvoice.invoiceNumber) })).toBeVisible();
 
   await page.goto("/portal/profile");
   await expect(page).toHaveURL(/\/portal\/profile/);
   await expect(page.getByRole("main").getByText(fixtures.portalUser.email)).toBeVisible();
+
+  await dbQuery("invoice", "deleteMany", { where: { id: visibleInvoice.id } });
 });
 
 test("sign out clears the portal session, and /portal then redirects to /portal/login", async ({ page }) => {
