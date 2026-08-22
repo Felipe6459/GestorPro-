@@ -763,7 +763,12 @@ model Invoice {
   // its own archive attempts; no code path reads it in this sub-PR.
   pdfArchiveObjects InvoicePdfArchiveObject[]
 
-  @@unique([clientId, invoiceNumber])
+  // Invoice System Official Slice 5c (docs/invoicing-architecture.md
+  // §4.5/§12.5) — Invoice-number uniqueness is organization-wide, not
+  // per-Client. Replaces the prior [clientId, invoiceNumber] tuple; see
+  // migration 20260916090000_invoice_number_unique_per_organization for
+  // the guarded expand/contract sequence and its own residual-risk note.
+  @@unique([organizationId, invoiceNumber])
   @@index([status])
   @@index([dueDate])
   @@index([projectId])

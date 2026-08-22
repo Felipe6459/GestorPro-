@@ -56,7 +56,7 @@ async function createDraft(fixtures: TestFixtures, overrides: Record<string, str
   await expectRedirect(createInvoiceAction({ error: null }, buildFormData(invoiceNumber, fixtures.project.id, overrides)));
   resetAuthMock();
   return prisma.invoice.findUniqueOrThrow({
-    where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } },
+    where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber } },
     include: { lineItems: true },
   });
 }

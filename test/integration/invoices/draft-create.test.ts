@@ -71,7 +71,7 @@ describe("createInvoiceAction — DRAFT creation, flat and itemized", () => {
     resetAuthMock();
 
     const created = await prisma.invoice.findUniqueOrThrow({
-      where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } },
+      where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber } },
       include: { lineItems: true },
     });
     expect(created.status).toBe("DRAFT");
@@ -94,7 +94,7 @@ describe("createInvoiceAction — DRAFT creation, flat and itemized", () => {
     resetAuthMock();
 
     const created = await prisma.invoice.findUniqueOrThrow({
-      where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } },
+      where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber } },
       include: { lineItems: { orderBy: { position: "asc" } } },
     });
     expect(created.status).toBe("DRAFT");
@@ -128,7 +128,7 @@ describe("createInvoiceAction — DRAFT creation, flat and itemized", () => {
     resetAuthMock();
 
     const created = await prisma.invoice.findUniqueOrThrow({
-      where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } },
+      where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber } },
     });
     expect(created.subtotal?.toFixed(2)).toBe("922.49");
     expect(created.discountAmount?.toFixed(2)).toBe("92.25");
@@ -166,7 +166,7 @@ describe("createInvoiceAction — DRAFT creation, flat and itemized", () => {
     resetAuthMock();
 
     const created = await prisma.invoice.findUniqueOrThrow({
-      where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } },
+      where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber } },
     });
     const activity = await prisma.activity.findFirstOrThrow({
       where: { entityId: created.id, action: "CREATED" },
@@ -192,7 +192,7 @@ describe("createInvoiceAction — DRAFT creation, flat and itemized", () => {
     resetAuthMock();
 
     const created = await prisma.invoice.findUniqueOrThrow({
-      where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } },
+      where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber } },
       include: { lineItems: true },
     });
     expect(created.lineItems).toEqual([]);

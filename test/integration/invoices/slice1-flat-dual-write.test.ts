@@ -97,7 +97,7 @@ describe("Invoice flat dual-write compatibility — through the real Slice 2b ac
     resetAuthMock();
 
     const created = await prisma.invoice.findUniqueOrThrow({
-      where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } },
+      where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber } },
       include: { lineItems: true, emailAttempts: true },
     });
 
@@ -131,7 +131,7 @@ describe("Invoice flat dual-write compatibility — through the real Slice 2b ac
       ),
     );
     const created = await prisma.invoice.findUniqueOrThrow({
-      where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } },
+      where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber } },
     });
     expect(created.subtotal?.toFixed(2)).toBe("50.00");
 
@@ -185,7 +185,7 @@ describe("Invoice flat dual-write compatibility — through the real Slice 2b ac
     resetAuthMock();
 
     const created = await prisma.invoice.findUniqueOrThrow({
-      where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } },
+      where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber } },
     });
     // amount is written exactly as submitted, independent of subtotal.
     expect(created.amount.toFixed(2)).toBe("999.99");

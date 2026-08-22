@@ -92,7 +92,7 @@ describe("Invoice mutation + Activity atomicity", () => {
     expect(caught).toBeTruthy();
 
     const created = await prisma.invoice.findUniqueOrThrow({
-      where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } },
+      where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber } },
       include: { lineItems: true },
     });
     expect(created.lineItems).toHaveLength(1);
