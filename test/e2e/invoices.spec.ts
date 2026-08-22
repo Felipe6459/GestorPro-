@@ -1629,3 +1629,78 @@ test.describe("Button visibility correction — Invoice System Slice 4 post-depl
     await dbQuery("invoice", "deleteMany", { where: { id: invoice.id } });
   });
 });
+
+test.describe("Invoice System Official Slice 5c — organization-wide Invoice-number uniqueness", () => {
+  let secondClientId: string;
+  let secondProjectId: string;
+
+  test.beforeAll(async () => {
+    // The shared fixture only ever seeds one Client per organization — a
+    // second Client inside the SAME org (fixtures.orgA) does not exist
+    // anywhere else and is created here, inline, bounded to this one
+    // describe block.
+    const secondClient = await dbQuery<{ id: string }>("client", "create", {
+      data: { name: `E2E Slice 5c Second Client ${fixtures.runId}`, userId: fixtures.owner.id, organizationId: fixtures.orgA.id },
+    });
+    secondClientId = secondClient.id;
+    const secondProject = await dbQuery<{ id: string }>("project", "create", {
+      data: {
+        name: `E2E Slice 5c Second Project ${fixtures.runId}`,
+        clientId: secondClientId,
+        organizationId: fixtures.orgA.id,
+        ownerId: fixtures.owner.id,
+        status: "IN_PROGRESS",
+      },
+    });
+    secondProjectId = secondProject.id;
+  });
+
+  test.afterAll(async () => {
+    await dbQuery("project", "deleteMany", { where: { id: secondProjectId } });
+    await dbQuery("client", "deleteMany", { where: { id: secondClientId } });
+  });
+
+  test.beforeEach(async ({ context, baseURL }) => {
+    await injectTestSession(context, { id: fixtures.owner.id, email: fixtures.owner.email }, baseURL!);
+  });
+
+  test("two Clients in the same organization cannot persist the same Invoice number — the second attempt shows the existing duplicate-number message, no duplicate row or partial side effect remains", async ({ page }) => {
+    const invoiceNumber = `E2E-ORGUNIQ-${fixtures.runId}`;
+
+    // First Invoice, under the original Client/Project — succeeds.
+    await page.goto("/invoices/new");
+    await page.getByLabel("Invoice number").fill(invoiceNumber);
+    await page.getByLabel("Project").selectOption(fixtures.project.id);
+    await page.getByRole("textbox", { name: "Amount" }).fill("100.00");
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/invoices/new") && r.request().method() === "POST"),
+      page.getByRole("button", { name: "Create invoice" }).click(),
+    ]);
+    await expect(page).toHaveURL(/\/invoices(\?|$)/);
+
+    // Second attempt, same organization, DIFFERENT Client/Project, same
+    // number — must now be rejected (previously allowed under the old
+    // client-scoped constraint).
+    await page.goto("/invoices/new");
+    await page.getByLabel("Invoice number").fill(invoiceNumber);
+    await page.getByLabel("Project").selectOption(secondProjectId);
+    await page.getByRole("textbox", { name: "Amount" }).fill("200.00");
+    await Promise.all([
+      page.waitForResponse((r) => r.url().includes("/invoices/new") && r.request().method() === "POST"),
+      page.getByRole("button", { name: "Create invoice" }).click(),
+    ]);
+
+    // Still on the create page — the existing duplicate-number message is
+    // shown, never a raw/synthetic database error.
+    await expect(page).toHaveURL(/\/invoices\/new/);
+    await expect(page.getByText("An invoice with this number already exists.")).toBeVisible();
+
+    // No duplicate Invoice was persisted on the second Client, and no
+    // partial side effect (e.g. an orphaned line item) remains anywhere.
+    const matching = await dbQuery<{ id: string; clientId: string }[]>("invoice", "findMany", { where: { invoiceNumber } });
+    expect(matching).toHaveLength(1);
+    expect(matching[0].clientId).toBe(fixtures.clientA.id);
+
+    await dbQuery("invoice", "deleteMany", { where: { invoiceNumber } });
+  });
+});

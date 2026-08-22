@@ -9,6 +9,7 @@ import { withToast } from "@/lib/toast-url";
 import { createActivity } from "@/lib/activity/create-activity";
 import { buildInvoiceSnapshotMetadata } from "@/lib/activity/invoice-metadata";
 import { calculateInvoiceTotals } from "@/lib/invoices/calculations";
+import { mapInvoiceWriteError } from "@/lib/invoices/write-conflict-mapper";
 import type { InvoiceFormState } from "@/types";
 
 export async function createInvoiceAction(
@@ -118,16 +119,16 @@ export async function createInvoiceAction(
       });
     });
   } catch (err) {
-    if (
-      err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === "P2002"
-    ) {
-      return {
-        error: null,
-        fieldErrors: {
-          invoiceNumber: "An invoice with this number already exists.",
-        },
-      };
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      if (mapInvoiceWriteError(err) === "INVOICE_NUMBER_CONFLICT") {
+        return {
+          error: null,
+          fieldErrors: {
+            invoiceNumber: "An invoice with this number already exists.",
+          },
+        };
+      }
+      return { error: "This invoice could not be saved due to a conflicting change. Please try again." };
     }
     throw err;
   }

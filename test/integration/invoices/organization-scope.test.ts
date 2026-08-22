@@ -129,7 +129,7 @@ describe("Invoice.organizationId — real production write/read paths", () => {
         createInvoiceAction({ error: null }, buildInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id })),
       );
 
-      const created = await prisma.invoice.findUnique({ where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } } });
+      const created = await prisma.invoice.findUnique({ where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber } } });
       expect(created).not.toBeNull();
       expect(created?.organizationId).toBe(fixtures.orgA.id);
       expect(created?.clientId).toBe(fixtures.clientA.id);
@@ -164,7 +164,7 @@ describe("Invoice.organizationId — real production write/read paths", () => {
         createInvoiceAction({ error: null }, buildInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id })),
       );
       const created = await prisma.invoice.findUniqueOrThrow({
-        where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } },
+        where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber } },
       });
 
       await expectRedirect(
@@ -191,7 +191,7 @@ describe("Invoice.organizationId — real production write/read paths", () => {
         createInvoiceAction({ error: null }, buildInvoiceFormData({ invoiceNumber, projectId: fixtures.project.id })),
       );
       const created = await prisma.invoice.findUniqueOrThrow({
-        where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber } },
+        where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber } },
       });
 
       const result = await updateInvoiceAction(

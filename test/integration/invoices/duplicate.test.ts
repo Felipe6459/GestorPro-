@@ -332,7 +332,7 @@ describe("createInvoiceAction via duplicate-derived FormData — real action, ta
     resetAuthMock();
 
     const created = await prisma.invoice.findUniqueOrThrow({
-      where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber: defaults.invoiceNumber } },
+      where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber: defaults.invoiceNumber } },
       include: { lineItems: true },
     });
     expect(created.id).not.toBe(source.id);
@@ -382,7 +382,7 @@ describe("createInvoiceAction via duplicate-derived FormData — real action, ta
     resetAuthMock();
 
     const created = await prisma.invoice.findUniqueOrThrow({
-      where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber: defaults.invoiceNumber } },
+      where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber: defaults.invoiceNumber } },
       include: { lineItems: { orderBy: { position: "asc" } } },
     });
 
@@ -454,7 +454,7 @@ describe("createInvoiceAction via duplicate-derived FormData — real action, ta
     // fixture is flat, so zero InvoiceLineItem rows is the expected
     // baseline both now and after the rejected second attempt below.
     const firstCreated = await prisma.invoice.findUniqueOrThrow({
-      where: { clientId_invoiceNumber: { clientId: fixtures.clientA.id, invoiceNumber: defaults.invoiceNumber } },
+      where: { organizationId_invoiceNumber: { organizationId: fixtures.orgA.id, invoiceNumber: defaults.invoiceNumber } },
     });
     const lineItemsAfterFirst = await prisma.invoiceLineItem.findMany({ where: { invoiceId: firstCreated.id } });
     const activityAfterFirst = await prisma.activity.findMany({
