@@ -1091,6 +1091,62 @@ document does not, and must not, claim exactly-once semantics.
   logging convention. Raw provider errors, the recipient address, and PDF
   bytes/base64 content are **never logged**, ever.
 
+**Operational status (recorded in the 2026-08-22 documentation refresh
+after PR #87, merged as `e50d3fe081b879078a4774f15c5e5a74158d25b0`): this
+section's design is now implemented in full and verified working end to
+end in a real production environment — official Invoice System Slice 4
+has no remaining piece.** The foundation shipped first, deliberately
+unwired (sub-PR 4a/PR #85, merged as
+`120d382b283739b9abb238241a4707e7e97a6a65`): the extended
+`sendEmailViaResend()`/`checkEmailProviderReadiness()` contract exactly
+as specified above, a pure Invoice-PDF byte-download helper, the trusted-
+application-origin resolver for the optional Portal link, and a pure
+email content view-model. **Sub-PR 4b (PR #86, merged as
+`b32e50d486d234de920f0a2ae545e0e248fb0675`) then shipped the live send
+path** — the real `InvoiceEmailAttempt` writer, the combined Send/Issue-
+&-Send Server Action + service exactly as designed (Send on a `DRAFT`
+target invokes Slice 3's own Issue/archive service first, in the same
+operation, never a separate finalization path), the full idempotency
+design (a fresh UUIDv4 per click, the unique `idempotencyKey` constraint,
+and — via a new migration,
+`20260914090000_add_invoice_email_attempt_pending_index` — the partial
+unique `WHERE status = 'PENDING'` index this section's own §9.2 specifies
+as the hard DB-enforced concurrency backstop), the `PENDING`/`ACCEPTED`/
+`FAILED`/`UNKNOWN` settlement contract with the 120-second stale-`PENDING`
+sweep to `UNKNOWN` (never `FAILED`), and the explicit-acknowledgement/
+fresh-`idempotencyKey` resend rule for an `UNKNOWN` attempt. A reproduced
+production defect on the Issue/Send buttons themselves (invisible
+white-on-white text, unrelated to this section's own send-path design)
+was found and corrected by **PR #87** (merged as
+`e50d3fe081b879078a4774f15c5e5a74158d25b0`) — see §8.2's own UI notes and
+`GPT_PROJECT_CONTEXT.md`'s Part 2 "Button-visibility correction"
+subsection for the full root-cause/fix account, which is UI-styling-only
+and does not affect any guarantee described in this section. **Production
+verification**: the sub-PR 4b migration was backed up, precondition-
+checked (zero existing duplicate-`PENDING` rows), and deployed; a real
+QA Invoice was issued exactly once through the normal UI and its archived
+PDF verified; the first live Send request was correctly rejected
+(`EMAIL_NOT_CONFIGURED`, no `InvoiceEmailAttempt` row created) because
+the production environment was missing `RESEND_API_KEY` — diagnosed via
+a strict read-only Vercel environment-variable metadata audit, never a
+value access; the key was then added to Production and the sender
+variable updated, the same commit redeployed, and exactly one newly
+authorized Send request settled `ACCEPTED`, with exactly one attempt
+persisting after a hard reload and exactly one email reaching a
+controlled test mailbox with a correct PDF attachment. See
+`GPT_PROJECT_CONTEXT.md`'s Part 2 "Invoice System Official Slice 4" and
+"Production deployment and first live Invoice-email verification"
+subsections for the complete chronology. **Important operational
+limitation, not a code defect**: this verification used Resend's own
+testing-domain sender and a mailbox associated with the Resend account
+itself — this configuration is intentionally test-only and cannot send
+to arbitrary real Client addresses. Real-customer rollout requires a
+separately verified custom sending domain and an appropriate Production
+sender address before this feature is used for any real customer — a
+deployment/operational-readiness prerequisite, tracked separately, that
+does not reopen this section's own implementation, which is complete and
+verified working exactly as designed.
+
 ---
 
 ## 10. APPROVED TARGET DESIGN — Portal Visibility
@@ -1362,6 +1418,17 @@ any external database by that task (§1.6/§12). **Applied to the verified
 production database on 2026-08-17** (recorded in this 2026-08-18
 documentation refresh) — see §1.6's operational update.
 
+**Slice status summary (recorded in this 2026-08-22 documentation refresh
+after PR #87): Slices 1–4 are all ✅ COMPLETE. Slice 5 is unstarted — the
+immediate next Invoice task.** Slice 4 in particular — email attachment,
+attempt state, idempotency — shipped via sub-PR 4a (PR #85) and sub-PR 4b
+(PR #86), was corrected for a reproduced production button-visibility
+defect (PR #87), and has since been verified working end to end in a
+real production environment, including one real Send request settling
+`ACCEPTED` and reaching a controlled test mailbox with a correct PDF
+attachment — see §9.2's own operational status note below for the full
+chronology.
+
 **Slice 0 — this document.** `docs/invoicing-architecture.md`, committed
 before any code. *(This slice.)*
 
@@ -1533,7 +1600,12 @@ freeze a guess into the architecture:
   of this from source; must be checked against Resend's current official
   API documentation immediately before Slice 4 begins. The conservative
   internal size cap (§9.1) must be derived from that real limit, adjusted
-  for base64 expansion — not a number invented here.
+  for base64 expansion — not a number invented here. **Resolved by sub-PR
+  4a/PR #85**: `sendEmailViaResend()` was extended to send a client-
+  provided `Idempotency-Key` header on every request, per §9.2's own
+  "layered on top of the DB guarantee, never a replacement for it"
+  design — confirmed working end to end by the real production Send
+  verified after PR #87 (see §9.2's own operational status note).
 - **Real deployed-database collision risk** for the `[organizationId,
   invoiceNumber]` uniqueness migration (§4.5/§12.5) — this repository's
   own seed/test data shows zero collisions, but that is not proof about
