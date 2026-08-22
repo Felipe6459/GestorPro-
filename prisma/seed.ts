@@ -4,6 +4,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { ensureDemoOrganization, ensureMembership } from "./seed-organization";
 import { seedCollaborationDemo } from "./seed-collaboration";
+import { calculateInvoiceTotals } from "../src/lib/invoices/calculations";
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -308,6 +309,50 @@ async function seedPrimaryUserData(organizationId: string, userId: string) {
   ]);
   await prisma.invoice.create({
     data: { invoiceNumber: "INV-1009", amount: "3200.00", status: "CANCELLED", issueDate: daysFromNow(-65), dueDate: daysFromNow(-35), notes: "Campaign cancelled by client before launch.", projectId: q1Campaign.id, clientId: vantage.id, organizationId },
+  });
+
+  // Invoice System Official Slice 5d — the one seeded itemized (non-
+  // archived) demo Invoice: proves the itemized create path in a fresh
+  // local demo database. Deliberately SENT (Portal-visible, per Slice
+  // 5a) — never finalizedAt/pdfStoragePath/an InvoicePdfArchiveObject
+  // row — a real, unarchived itemized invoice, not a fabricated archive.
+  const itemizedDemoCalc = calculateInvoiceTotals({
+    subtotalSource: {
+      mode: "lineItems",
+      lineItems: [
+        { description: "Homepage redesign", quantity: "1", unitPrice: "3500.00" },
+        { description: "Blog template build", quantity: "1", unitPrice: "1200.00" },
+      ],
+    },
+    discount: { type: "NONE" },
+    taxRatePercent: null,
+  });
+  if (!itemizedDemoCalc.ok) {
+    throw new Error(`Seed itemized demo Invoice failed to calculate: ${itemizedDemoCalc.error.code}`);
+  }
+  await prisma.invoice.create({
+    data: {
+      invoiceNumber: "INV-1010",
+      amount: itemizedDemoCalc.total,
+      subtotal: itemizedDemoCalc.subtotal,
+      discountAmount: itemizedDemoCalc.discountAmount,
+      taxAmount: itemizedDemoCalc.taxAmount,
+      status: "SENT",
+      issueDate: daysFromNow(-1),
+      dueDate: daysFromNow(29),
+      projectId: websiteRedesign.id,
+      clientId: northwind.id,
+      organizationId,
+      lineItems: {
+        create: itemizedDemoCalc.lineItems.map((lineItem, index) => ({
+          description: lineItem.description,
+          quantity: lineItem.quantity,
+          unitPrice: lineItem.unitPrice,
+          lineTotal: lineItem.lineTotal,
+          position: index,
+        })),
+      },
+    },
   });
 
   return { northwindClientId: northwind.id, websiteRedesignProjectId: websiteRedesign.id, invoiceMobile1Id: invoiceMobile1.id };
