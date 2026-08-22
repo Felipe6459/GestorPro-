@@ -928,4 +928,86 @@ if (existsSync(invoiceEmailHistoryFile)) {
   }
 }
 
+// 16. Invoice System Official Slice 5 — Portal DRAFT-visibility
+// correction. A narrow static guard against a future regression of the
+// one enum-value-inclusion invariant this fix depends on: DRAFT must
+// never appear in either Portal-visible status set, and every
+// Portal-facing Invoice query must filter through one of those two
+// shared constants rather than a hand-rolled inline status check that
+// could silently drift from them. Full behavioral proof (tenant
+// isolation, 404-equivalence, cross-org/cross-client fail-closed
+// behavior) lives in integration/E2E tests, not here — this check exists
+// only for the one property a static text scan can prove more cheaply
+// and durably than a runtime test: the literal array contents.
+const clientPortalQueriesFile = "src/lib/client-portal/queries.ts";
+if (existsSync(clientPortalQueriesFile)) {
+  const queriesContent = readFileSync(clientPortalQueriesFile, "utf8");
+
+  const visibleStatusesMatch = queriesContent.match(/const VISIBLE_PORTAL_STATUSES: readonly InvoiceStatus\[\] = \[([^\]]*)\]/);
+  const openStatusesMatch = queriesContent.match(/const OPEN_INVOICE_STATUSES: readonly InvoiceStatus\[\] = \[([^\]]*)\]/);
+  const visibleStatusesLiteral = visibleStatusesMatch ? visibleStatusesMatch[1] : "";
+  const openStatusesLiteral = openStatusesMatch ? openStatusesMatch[1] : "";
+
+  ok = report(
+    "VISIBLE_PORTAL_STATUSES is defined and never includes DRAFT",
+    visibleStatusesLiteral.length > 0 && !/"DRAFT"/.test(visibleStatusesLiteral),
+    visibleStatusesLiteral,
+  ) && ok;
+  ok = report(
+    "OPEN_INVOICE_STATUSES is defined and never includes DRAFT",
+    openStatusesLiteral.length > 0 && !/"DRAFT"/.test(openStatusesLiteral),
+    openStatusesLiteral,
+  ) && ok;
+
+  // 16a. getPortalInvoice's own findFirst call filters through
+  // VISIBLE_PORTAL_STATUSES — narrowly extracted to that one function's
+  // body, not a whole-file scan, so this fails if a future edit moves the
+  // predicate out of the query itself (e.g. into a post-fetch JS filter,
+  // which would defeat the "same as nonexistent/cross-tenant" 404
+  // equivalence this fix relies on).
+  const getPortalInvoiceStart = queriesContent.indexOf("export async function getPortalInvoice(");
+  const getPortalInvoiceBody = getPortalInvoiceStart === -1 ? "" : queriesContent.slice(getPortalInvoiceStart);
+  ok = report(
+    "getPortalInvoice's own Prisma query filters status through VISIBLE_PORTAL_STATUSES",
+    /findFirst\(\{[\s\S]*?VISIBLE_PORTAL_STATUSES[\s\S]*?\}\)/.test(getPortalInvoiceBody),
+    "",
+  ) && ok;
+
+  // 16b. getPortalInvoices' own "all" branch resolves to
+  // VISIBLE_PORTAL_STATUSES, never `undefined`/no filter — extracted to
+  // the statusWhere ternary itself, not the whole function, so an
+  // unrelated later `undefined` elsewhere in the file can never satisfy
+  // this by accident.
+  const statusWhereMatch = queriesContent.match(/const statusWhere =[\s\S]*?;\n/);
+  const statusWhereBlock = statusWhereMatch ? statusWhereMatch[0] : "";
+  ok = report(
+    'getPortalInvoices\' own statusWhere ternary resolves "all" to VISIBLE_PORTAL_STATUSES, never undefined/no filter',
+    statusWhereBlock.includes("VISIBLE_PORTAL_STATUSES") && !/:\s*undefined\s*;/.test(statusWhereBlock),
+    statusWhereBlock,
+  ) && ok;
+
+  // 16c. getPortalOverview's own recentInvoices query filters through
+  // VISIBLE_PORTAL_STATUSES — extracted to the function body, not a
+  // whole-file scan.
+  const getPortalOverviewStart = queriesContent.indexOf("export async function getPortalOverview(");
+  const getPortalOverviewEnd = queriesContent.indexOf("export async function getPortalProjects(");
+  const getPortalOverviewBody =
+    getPortalOverviewStart === -1 ? "" : queriesContent.slice(getPortalOverviewStart, getPortalOverviewEnd === -1 ? undefined : getPortalOverviewEnd);
+  ok = report(
+    "getPortalOverview's own recentInvoices query filters status through VISIBLE_PORTAL_STATUSES",
+    /findMany\(\{[\s\S]*?VISIBLE_PORTAL_STATUSES[\s\S]*?\}\)/.test(getPortalOverviewBody),
+    "",
+  ) && ok;
+
+  // 16d. getPortalOverview's own open-Invoice aggregate filters through
+  // OPEN_INVOICE_STATUSES.
+  ok = report(
+    "getPortalOverview's own open-Invoice aggregate filters status through OPEN_INVOICE_STATUSES",
+    /aggregate\(\{[\s\S]*?OPEN_INVOICE_STATUSES[\s\S]*?\}\)/.test(getPortalOverviewBody),
+    "",
+  ) && ok;
+} else {
+  ok = report(`${clientPortalQueriesFile} exists`, false, `Expected ${clientPortalQueriesFile} to exist.`) && ok;
+}
+
 process.exit(ok ? 0 : 1);

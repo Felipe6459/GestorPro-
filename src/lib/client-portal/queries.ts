@@ -7,10 +7,20 @@ import { classifyInvoiceArchival } from "@/lib/invoices/pdf/classify-archival";
 // the word means the same thing in both places.
 const ACTIVE_PROJECT_STATUS: ProjectStatus = "IN_PROGRESS";
 
+// Invoice System Official Slice 5 (docs/invoicing-architecture.md §10) —
+// the one authoritative Portal-visible status set. DRAFT is never
+// visible to a portal identity on any surface: not the list ("all" or
+// "open"), not the detail page, not the overview's recent-invoices or
+// open-aggregate. A DRAFT invoice belongs to the still-in-progress
+// pre-Issue workflow, which is never shown to a client.
+const VISIBLE_PORTAL_STATUSES: readonly InvoiceStatus[] = ["SENT", "OVERDUE", "PAID", "CANCELLED"];
+
 // PAID and CANCELLED are deliberately excluded from "open" — an invoice
 // the client no longer owes money on, or one that was called off, isn't
-// outstanding work.
-const OPEN_INVOICE_STATUSES: readonly InvoiceStatus[] = ["DRAFT", "SENT", "OVERDUE"];
+// outstanding work. DRAFT is excluded too — see VISIBLE_PORTAL_STATUSES
+// above; "open" is always a subset of "visible," never a separate escape
+// hatch that could re-admit DRAFT.
+const OPEN_INVOICE_STATUSES: readonly InvoiceStatus[] = ["SENT", "OVERDUE"];
 
 export const PORTAL_INVOICE_FILTERS = ["all", "open", "paid"] as const;
 export type PortalInvoiceFilter = (typeof PORTAL_INVOICE_FILTERS)[number];
@@ -154,7 +164,7 @@ export async function getPortalOverview(
         select: PROJECT_SUMMARY_SELECT,
       }),
       prisma.invoice.findMany({
-        where: { clientId, organizationId },
+        where: { clientId, organizationId, status: { in: [...VISIBLE_PORTAL_STATUSES] } },
         orderBy: { createdAt: "desc" },
         take: 5,
         select: INVOICE_SUMMARY_SELECT,
@@ -217,12 +227,16 @@ export async function getPortalInvoices(
   organizationId: string,
   filter: PortalInvoiceFilter,
 ): Promise<PortalInvoiceSummary[]> {
+  // "all" is never unfiltered — it means "every Portal-visible status,"
+  // not "every status in the database." DRAFT is excluded from every
+  // branch here, not only "open" (Invoice System Official Slice 5,
+  // docs/invoicing-architecture.md §10).
   const statusWhere =
     filter === "open"
       ? { in: [...OPEN_INVOICE_STATUSES] }
       : filter === "paid"
         ? ("PAID" as const)
-        : undefined;
+        : { in: [...VISIBLE_PORTAL_STATUSES] };
 
   const invoices = await prisma.invoice.findMany({
     where: {
@@ -232,7 +246,7 @@ export async function getPortalInvoices(
       // and the invoice's own project to belong to this same Client, in
       // case any of these ever disagree.
       organizationId,
-      ...(statusWhere ? { status: statusWhere } : {}),
+      status: statusWhere,
       project: { clientId },
     },
     orderBy: { createdAt: "desc" },
@@ -253,7 +267,17 @@ export async function getPortalInvoice(
   invoiceId: string,
 ): Promise<PortalInvoiceDetail | null> {
   const invoice = await prisma.invoice.findFirst({
-    where: { id: invoiceId, clientId, organizationId, project: { clientId } },
+    where: {
+      id: invoiceId,
+      clientId,
+      organizationId,
+      project: { clientId },
+      // Invoice System Official Slice 5 (docs/invoicing-architecture.md
+      // §10) — a DRAFT invoice must never resolve here, exactly like a
+      // nonexistent/cross-tenant id: this returns null, and the caller's
+      // existing notFound() produces the identical generic 404.
+      status: { in: [...VISIBLE_PORTAL_STATUSES] },
+    },
     select: {
       ...INVOICE_SUMMARY_SELECT,
       paidAt: true,

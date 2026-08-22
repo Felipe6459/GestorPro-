@@ -298,3 +298,65 @@ test.describe("Portal Invoice PDF access", () => {
     }
   });
 });
+
+test.describe("Portal DRAFT-visibility correction — Invoice System Official Slice 5", () => {
+  test("a DRAFT invoice is absent from the Portal 'all' and 'open' tabs, direct navigation to its detail page 404s, and an eligible non-DRAFT invoice remains visible and opens normally", async ({
+    context,
+    baseURL,
+    page,
+  }) => {
+    const draftInvoice = await dbQuery<{ id: string; invoiceNumber: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-PORTAL-DRAFT-VIS-${fixtures.runId}`,
+        status: "DRAFT",
+        amount: "80.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+    const visibleInvoice = await dbQuery<{ id: string; invoiceNumber: string }>("invoice", "create", {
+      data: {
+        invoiceNumber: `E2E-PORTAL-VISIBLE-VIS-${fixtures.runId}`,
+        status: "SENT",
+        amount: "90.00",
+        projectId: fixtures.project.id,
+        clientId: fixtures.clientA.id,
+        organizationId: fixtures.orgA.id,
+      },
+    });
+
+    try {
+      await actAsPortalUser(context, baseURL!, { id: fixtures.portalUser.id, email: fixtures.portalUser.email });
+
+      // "all" tab — DRAFT absent, the eligible invoice present.
+      await page.goto("/portal/invoices");
+      await expect(page.getByRole("row", { name: new RegExp(draftInvoice.invoiceNumber) })).toHaveCount(0);
+      await expect(page.getByRole("row", { name: new RegExp(visibleInvoice.invoiceNumber) })).toBeVisible();
+
+      // "open" tab — same again.
+      await page.goto("/portal/invoices?status=open");
+      await expect(page.getByRole("row", { name: new RegExp(draftInvoice.invoiceNumber) })).toHaveCount(0);
+      await expect(page.getByRole("row", { name: new RegExp(visibleInvoice.invoiceNumber) })).toBeVisible();
+
+      // Direct navigation to the DRAFT detail URL — a genuine not-found
+      // outcome, not merely an absent list row. (dashboard)/invoices'
+      // own loading.tsx precedent (see comments.spec.ts's identical note)
+      // means the shell streams with 200 before notFound() fires deeper —
+      // the rendered content is the correct thing to assert on here, not
+      // the HTTP status, which cannot change after the stream starts.
+      // Never leaks the invoice's own number/id/internal data on the
+      // resulting page.
+      await page.goto(`/portal/invoices/${draftInvoice.id}`);
+      await expect(page.getByText("Page not found")).toBeVisible();
+      await expect(page.getByText(draftInvoice.invoiceNumber)).toHaveCount(0);
+      await expect(page.getByText(draftInvoice.id)).toHaveCount(0);
+
+      // The eligible non-DRAFT invoice still opens normally.
+      await page.goto(`/portal/invoices/${visibleInvoice.id}`);
+      await expect(page.getByRole("heading", { name: visibleInvoice.invoiceNumber })).toBeVisible();
+    } finally {
+      await dbQuery("invoice", "deleteMany", { where: { id: { in: [draftInvoice.id, visibleInvoice.id] } } });
+    }
+  });
+});
