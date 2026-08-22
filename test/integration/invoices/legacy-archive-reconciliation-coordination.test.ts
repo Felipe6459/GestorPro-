@@ -28,16 +28,26 @@ afterAll(() => {
 
 const INVOICE_NUMBER_PREFIX = "INV-LEGACY-COORD";
 
-/** A genuine legacy_eligible fixture — non-DRAFT, every archive field null, by construction. */
+/**
+ * A genuine legacy_eligible fixture — non-DRAFT, every *archive* field
+ * (finalizedAt/pdfStoragePath/pdfGeneratedAt/snapshots — §4.6's own
+ * classification) null by construction. subtotal/discountAmount/
+ * taxAmount are unrelated to legacy_eligible classification and, since
+ * Invoice System Official Slice 5b's NOT NULL contract, can never be
+ * null for any real row — set here to the exact values Slice 1's own
+ * historical backfill would have produced for a pre-feature flat
+ * invoice (subtotal = amount, discount/tax = 0), not an arbitrary
+ * non-null placeholder.
+ */
 async function seedLegacyInvoice(fixtures: TestFixtures) {
   return prisma.invoice.create({
     data: {
       invoiceNumber: `${INVOICE_NUMBER_PREFIX}-${fixtures.runId}-${randomUUID().slice(0, 8)}`,
       status: "SENT",
       amount: "500.00",
-      subtotal: null,
-      discountAmount: null,
-      taxAmount: null,
+      subtotal: "500.00",
+      discountAmount: "0.00",
+      taxAmount: "0.00",
       discountType: "NONE",
       taxLabel: "TAX",
       currency: "USD",

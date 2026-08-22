@@ -40,9 +40,9 @@ const INVOICE_NUMBER_PREFIX = "INV-LEGACY";
 type LegacyInvoiceOverrides = {
   status?: InvoiceStatus;
   amount?: string;
-  subtotal?: string | null;
-  discountAmount?: string | null;
-  taxAmount?: string | null;
+  subtotal?: string;
+  discountAmount?: string;
+  taxAmount?: string;
   discountType?: "NONE" | "PERCENTAGE" | "FIXED";
   discountValue?: string | null;
   taxRatePercent?: string | null;
@@ -53,7 +53,17 @@ type LegacyInvoiceOverrides = {
   lineItems?: { description: string; quantity: string; unitPrice: string; lineTotal: string; position: number }[];
 };
 
-/** A genuine legacy_eligible fixture — non-DRAFT, every archive field null, by construction. */
+/**
+ * A genuine legacy_eligible fixture — non-DRAFT, every *archive* field
+ * (finalizedAt/pdfStoragePath/pdfGeneratedAt/snapshots — §4.6's own
+ * classification) null by construction. subtotal/discountAmount/
+ * taxAmount are unrelated to legacy_eligible classification and, since
+ * Invoice System Official Slice 5b's NOT NULL contract, can never be
+ * null for any real row — set here to the exact values Slice 1's own
+ * historical backfill would have produced for a pre-feature flat
+ * invoice (subtotal = amount, discount/tax = 0), not an arbitrary
+ * non-null placeholder.
+ */
 async function seedLegacyInvoice(fixtures: TestFixtures, overrides: LegacyInvoiceOverrides = {}) {
   const { lineItems, ...rest } = overrides;
   return prisma.invoice.create({
@@ -61,9 +71,9 @@ async function seedLegacyInvoice(fixtures: TestFixtures, overrides: LegacyInvoic
       invoiceNumber: `${INVOICE_NUMBER_PREFIX}-${fixtures.runId}-${randomUUID().slice(0, 8)}`,
       status: "SENT",
       amount: "500.00",
-      subtotal: null,
-      discountAmount: null,
-      taxAmount: null,
+      subtotal: "500.00",
+      discountAmount: "0.00",
+      taxAmount: "0.00",
       discountType: "NONE",
       taxLabel: "TAX",
       currency: "USD",
@@ -210,6 +220,15 @@ describe("archiveLegacyInvoice — Invoice System Official Slice 3, Legacy Archi
   it("OWNER successfully archives an itemized SENT invoice — line items recomputed from quantity/unitPrice, never trusting a stale persisted lineTotal, and no synthetic row is ever persisted", async () => {
     const invoice = await seedLegacyInvoice(fixtures, {
       amount: "220.00",
+      // Consistent with the real line items below (10×$20.00 + 1×$20.00 =
+      // $220.00) — since Invoice System Official Slice 5b's NOT NULL
+      // contract, seedLegacyInvoice's own default subtotal/discountAmount/
+      // taxAmount ("500.00"/"0.00"/"0.00") would otherwise mismatch this
+      // test's own $220.00 amount and fail archiveLegacyInvoice's
+      // financial-preservation check for an unrelated reason.
+      subtotal: "220.00",
+      discountAmount: "0.00",
+      taxAmount: "0.00",
       lineItems: [
         { description: "Design work", quantity: "10", unitPrice: "20.00", lineTotal: "999.99", position: 0 },
         { description: "Hosting", quantity: "1", unitPrice: "20.00", lineTotal: "20.00", position: 1 },
@@ -261,24 +280,25 @@ describe("archiveLegacyInvoice — Invoice System Official Slice 3, Legacy Archi
       expect(after.taxAmount?.toFixed(2)).toBe("0.00");
     });
 
-    it("each derived field independently null is safely filled while the other two (already non-null and matching) are preserved", async () => {
-      for (const nullField of ["subtotal", "discountAmount", "taxAmount"] as const) {
-        const base = { amount: "500.00", subtotal: "500.00", discountAmount: "0.00", taxAmount: "0.00" };
-        const invoice = await seedLegacyInvoice(fixtures, { ...base, [nullField]: null });
-
-        const result = await archiveLegacyInvoice({
-          actor: actorFor(fixtures, fixtures.owner, "OWNER"),
-          invoiceId: invoice.id,
-          expectedUpdatedAt: invoice.updatedAt.toISOString(),
-        });
-
-        expect(result.ok, `expected ${nullField}=null to archive successfully`).toBe(true);
-        const after = await prisma.invoice.findUniqueOrThrow({ where: { id: invoice.id } });
-        expect(after.subtotal?.toFixed(2)).toBe("500.00");
-        expect(after.discountAmount?.toFixed(2)).toBe("0.00");
-        expect(after.taxAmount?.toFixed(2)).toBe("0.00");
-      }
-    });
+    // Removed (Invoice System Official Slice 5b): this test previously
+    // proved archiveLegacyInvoice()'s own conditional null-fill branch
+    // (`...(subtotalWasNull ? { subtotal: calculation.subtotal } : {})` in
+    // src/lib/invoices/pdf/legacy-archive-invoice.ts, and the equivalent
+    // for discountAmount/taxAmount) — reachable only when one of these
+    // three columns was null. Since Slice 5b's NOT NULL contract
+    // (migration 20260915090000_add_invoice_totals_not_null_contract),
+    // no Invoice row — real or test-seeded — can ever have a null
+    // subtotal/discountAmount/taxAmount again; the database itself now
+    // rejects it. That conditional-fill branch is therefore permanently
+    // unreachable, structurally so, not merely unlikely — the exact same
+    // "kept anyway as a defensive check, no longer testable because the
+    // triggering condition cannot be constructed" situation this
+    // repository already accepts elsewhere for its own defense-in-depth
+    // guards. No production behavior changed: the branch simply never
+    // fires, exactly as intended once the database guarantees its own
+    // precondition can never occur. The still-reachable case — every
+    // field already non-null and matching — remains covered by the test
+    // immediately above.
 
     it("calculation failure (malformed line items) fails with INVALID_FINANCIAL_STATE, invoice fully unchanged", async () => {
       const invoice = await seedLegacyInvoice(fixtures, {

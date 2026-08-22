@@ -8,13 +8,22 @@ import { seedTestData, cleanupTestData, type TestFixtures } from "../../fixtures
 import { actAs, resetAuthMock } from "../../support/auth-mock";
 
 /**
- * Proves Slice 2b tolerates a genuine pre-Slice-1 legacy row — nullable
- * subtotal/discountAmount/taxAmount, zero line items — through every code
- * path this slice adds, without crashing and without fabricating data.
- * `amount` remains the canonical total every Dashboard/Analytics/Search/
- * Portal query already reads (docs/invoicing-architecture.md §11); this
- * slice writes nothing that would change what those queries see for an
- * untouched legacy row.
+ * Proves Slice 2b tolerates a minimal, pre-Slice-1-shaped legacy row —
+ * zero line items, and (since Invoice System Official Slice 5b's NOT
+ * NULL contract, migration 20260915090000_add_invoice_totals_not_null_
+ * contract) subtotal/discountAmount/taxAmount silently defaulted to 0
+ * rather than genuinely null — through every code path this slice adds,
+ * without crashing and without fabricating data. Before Slice 5b, a row
+ * created without these three columns explicitly set had them as
+ * literal SQL NULL; that state is now schema-impossible to construct at
+ * all (the database itself rejects it), so this file's own fixtures and
+ * assertions were updated to the new, only-reachable shape — the code
+ * paths under test (view-model rendering, lifecycle transitions,
+ * internalNotes) are otherwise unchanged, and buildInvoiceTotalsViewModel
+ * itself was not modified. `amount` remains the canonical total every
+ * Dashboard/Analytics/Search/Portal query already reads
+ * (docs/invoicing-architecture.md §11); this slice writes nothing that
+ * would change what those queries see for an untouched legacy row.
  */
 const INVOICE_NUMBER_PREFIX = "INV-LEGACY";
 
@@ -25,8 +34,10 @@ describe("legacy invoice compatibility", () => {
 
   beforeAll(async () => {
     fixtures = await seedTestData();
-    // Deliberately omits subtotal/discountAmount/taxAmount — exactly the
-    // pre-Slice-1 shape (nullable, unbackfilled).
+    // Deliberately omits subtotal/discountAmount/taxAmount — the closest
+    // reachable equivalent to the pre-Slice-1 shape now that Slice 5b's
+    // NOT NULL contract defaults an omitted value to 0 rather than
+    // permitting a literal null.
     legacyDraft = await prisma.invoice.create({
       data: {
         invoiceNumber: `${INVOICE_NUMBER_PREFIX}-${fixtures.runId}-draft`,
@@ -54,15 +65,15 @@ describe("legacy invoice compatibility", () => {
     await cleanupTestData(fixtures);
   });
 
-  it("a legacy row fetched fresh from the DB has null subtotal/discountAmount/taxAmount", async () => {
+  it("a legacy row fetched fresh from the DB has subtotal/discountAmount/taxAmount defaulted to 0.00, never null", async () => {
     const fetched = await prisma.invoice.findUniqueOrThrow({ where: { id: legacyDraft.id } });
-    expect(fetched.subtotal).toBeNull();
-    expect(fetched.discountAmount).toBeNull();
-    expect(fetched.taxAmount).toBeNull();
+    expect(fetched.subtotal.toFixed(2)).toBe("0.00");
+    expect(fetched.discountAmount.toFixed(2)).toBe("0.00");
+    expect(fetched.taxAmount.toFixed(2)).toBe("0.00");
     expect(fetched.amount.toFixed(2)).toBe("321.00");
   });
 
-  it("buildInvoiceTotalsViewModel renders it safely — displayedSubtotal falls back to amount, no fabricated rows", async () => {
+  it("buildInvoiceTotalsViewModel renders it safely — displays the real, defaulted-zero subtotal, no fabricated discount/tax rows, and amount remains the total regardless", async () => {
     const fetched = await prisma.invoice.findUniqueOrThrow({ where: { id: legacyDraft.id } });
     const totals = buildInvoiceTotalsViewModel({
       amount: fetched.amount,
@@ -75,9 +86,18 @@ describe("legacy invoice compatibility", () => {
       taxLabel: fetched.taxLabel,
       currency: fetched.currency,
     });
-    expect(totals.displayedSubtotal).toBe("$321.00");
+    // subtotal is now a real, persisted 0.00 (Slice 5b's DEFAULT 0) —
+    // buildInvoiceTotalsViewModel's own `subtotal ?? amount` fallback
+    // (still separately covered, unit-level, for a genuinely-null input,
+    // by test/unit/invoice-totals-view-model.test.ts, unchanged) is no
+    // longer exercised by a real database round-trip, since a real
+    // fetched invoice.subtotal can never be null again. This is not a
+    // fallback anymore — it is the literal persisted value.
+    expect(totals.displayedSubtotal).toBe("$0.00");
     expect(totals.discountRow).toBeNull();
     expect(totals.taxRow).toBeNull();
+    // total always reads invoice.amount directly, never subtotal — always
+    // the real $321.00 regardless of this change.
     expect(totals.total).toBe("$321.00");
   });
 
@@ -86,7 +106,7 @@ describe("legacy invoice compatibility", () => {
     expect(fetched.lineItems).toEqual([]);
   });
 
-  it("lifecycle transitions work correctly on a legacy SENT row with null transitional totals", async () => {
+  it("lifecycle transitions work correctly on a legacy SENT row with defaulted-zero transitional totals", async () => {
     actAs(fixtures.owner, fixtures.orgA.id);
     const result = await changeInvoiceStatusAction(legacySent.id, "PAID");
     resetAuthMock();
@@ -95,12 +115,12 @@ describe("legacy invoice compatibility", () => {
     const after = await prisma.invoice.findUniqueOrThrow({ where: { id: legacySent.id } });
     expect(after.status).toBe("PAID");
     expect(after.paidAt).not.toBeNull();
-    // subtotal/discountAmount/taxAmount remain untouched (still null) —
-    // the lifecycle action never writes them.
-    expect(after.subtotal).toBeNull();
+    // subtotal/discountAmount/taxAmount remain untouched (still their
+    // defaulted 0.00) — the lifecycle action never writes them.
+    expect(after.subtotal.toFixed(2)).toBe("0.00");
   });
 
-  it("internalNotes can be set on a legacy row with null transitional totals", async () => {
+  it("internalNotes can be set on a legacy row with defaulted-zero transitional totals", async () => {
     const legacyCancelled = await prisma.invoice.create({
       data: {
         invoiceNumber: `${INVOICE_NUMBER_PREFIX}-${fixtures.runId}-${randomUUID().slice(0, 8)}`,
