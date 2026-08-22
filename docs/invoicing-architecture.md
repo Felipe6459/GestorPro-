@@ -8,7 +8,10 @@ document's publication — no schema change, migration, application code,
 dependency, test, PDF, email, or lifecycle behavior described here exists on
 `main` yet. This is the sole deliverable of Slice 0; every later slice
 (§14) builds on the decisions recorded here, and none of them should start
-without this document being read and agreed on first.
+without this document being read and agreed on first. Historical framing:
+the TARGET / UNIMPLEMENTED language below records this document's original
+Slice 0 design state and is not a current implementation-status claim; for
+authoritative current implementation status, see §1 and §14.
 
 Grounded in a full read of current `main` source (`prisma/schema.prisma`,
 every `src/app/(dashboard)/invoices/**` and `src/app/portal/(app)/invoices/**`
