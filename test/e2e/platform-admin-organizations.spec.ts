@@ -443,7 +443,15 @@ test.describe("Organization Details (PR3.3)", () => {
     const row = page.getByRole("row", { name: new RegExp(orgAName) });
     await row.getByRole("link", { name: /View/ }).click();
     await page.waitForURL(new RegExp(`${BASE_PATH}/${fixtures.orgA.id}$`));
-    await expect(page.getByRole("heading", { level: 1, name: orgAName })).toBeVisible();
+    // Stability Correction F3 (hardening against an observed CI flake, not
+    // locally reproduced): `waitForURL` above only proves the URL
+    // changed, not that this detail route's own async Server Component
+    // render (it has its own loading.tsx Suspense boundary) has settled —
+    // the default 5s assertion timeout was the one previously used here,
+    // tighter than most other readiness checks in this suite. The
+    // assertion itself — correct heading level and organization name — is
+    // unchanged; only its own timeout is extended under constrained CI CPU.
+    await expect(page.getByRole("heading", { level: 1, name: orgAName })).toBeVisible({ timeout: 15_000 });
   });
 
   test("an ordinary tenant user is redirected away from an organization detail page too", async ({ context, baseURL }) => {
