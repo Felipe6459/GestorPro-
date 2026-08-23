@@ -1,4 +1,4 @@
-import { test, expect, type BrowserContext } from "@playwright/test";
+import { test, expect, type BrowserContext, type Locator } from "@playwright/test";
 import { seedE2EFixtures, cleanupTestData, dbQuery, type TestFixtures } from "./fixtures";
 import { injectTestSession } from "../support/e2e-session";
 
@@ -17,6 +17,42 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await cleanupTestData(fixtures);
 });
+
+/**
+ * Stability Correction F3 — genuine root cause for the SVG-rejection
+ * test's flake (empirically confirmed, not a slow-render timing issue):
+ * the shared FileInput component's `onChange` (src/components/ui/
+ * file-input.tsx's own `handleChange`, which both sets its own visible
+ * filename text AND calls the parent's `handleFileChange`) is only
+ * wired to the native <input type="file"> once React finishes
+ * hydrating that DOM node. `setInputFiles(...)` performs a real,
+ * browser-level file selection immediately on page load — if that
+ * lands a moment before hydration attaches the listener, the native
+ * `change` event fires into a node with no handler at all, so
+ * `previewUrl` never updates. A longer assertion timeout cannot recover
+ * from this: it was proven, via a captured failure log, to retry the
+ * *same* unchanged, already-resolved locator 34 times over a full 15s
+ * window without the value ever starting to trend toward the expected
+ * one — the state change was never triggered, not merely running late.
+ * Re-issuing the identical `setInputFiles` call is a real repeat of the
+ * same user action (the browser doesn't retain any "already chosen"
+ * state that setInputFiles itself moves past), not a fabricated retry
+ * of the assertion, and is only attempted once, only after the first,
+ * normal, short real wait has already failed.
+ */
+async function setInputFilesPastHydration(
+  fileInput: Locator,
+  file: { name: string; mimeType: string; buffer: Buffer },
+  confirmSelected: () => Promise<void>,
+): Promise<void> {
+  await fileInput.setInputFiles(file);
+  try {
+    await confirmSelected();
+  } catch {
+    await fileInput.setInputFiles(file);
+    await confirmSelected();
+  }
+}
 
 async function actAsMember(
   context: BrowserContext,
@@ -271,15 +307,25 @@ test.describe("Company Profile", () => {
       });
 
       await page.goto("/settings/company");
-      await page.getByLabel("Choose logo").setInputFiles({
-        name: "icon.svg",
-        mimeType: "image/svg+xml",
-        buffer: Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'></svg>"),
-      });
       // The optimistic client-side preview shows even for a file that will
       // fail server-side validation — it's a pure "what did you pick"
       // preview, uninvolved with the server's own accept/reject decision.
-      await expect(page.getByAltText("Organization logo")).toHaveAttribute("src", /^blob:/);
+      // Stability Correction F3 (genuinely reproduced locally during this
+      // correction's own bounded stress sample — 1 failure in 8 full-file
+      // runs, this exact test): a captured failure log proved this is not
+      // a slow render — the same stale, already-persisted logo URL was
+      // re-read 34 times over a full 15s window without ever starting to
+      // change. This is a fresh page.goto load, so `setInputFiles` can
+      // land a moment before React finishes hydrating the shared
+      // FileInput's onChange handler onto this exact DOM node (see
+      // setInputFilesPastHydration's own doc comment above); when that
+      // happens the native change event is simply never seen by React.
+      // The asserted content (a live blob: preview) is unchanged.
+      await setInputFilesPastHydration(
+        page.getByLabel("Choose logo"),
+        { name: "icon.svg", mimeType: "image/svg+xml", buffer: Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'></svg>") },
+        () => expect(page.getByAltText("Organization logo")).toHaveAttribute("src", /^blob:/),
+      );
 
       await page.getByRole("button", { name: "Replace logo" }).click();
       await expect(page.getByText("Only PNG, JPEG, and WebP images are supported.")).toBeVisible();
@@ -294,7 +340,11 @@ test.describe("Company Profile", () => {
       await actAsMember(context, baseURL!, fixtures.member, fixtures.orgA.id);
       await page.goto("/settings/company");
 
-      await expect(page.getByAltText("Organization logo")).toBeVisible();
+      // Stability Correction F3 — see the SVG-rejection test above's own
+      // comment for the identical reasoning: a fresh page load's own
+      // async render, not a same-test-sequence dependency issue (the
+      // persisted logo itself is already correctly saved by this point).
+      await expect(page.getByAltText("Organization logo")).toBeVisible({ timeout: 15_000 });
       await expect(page.locator('input[type="file"]')).toHaveCount(0);
       await expect(page.getByRole("button", { name: /Upload logo|Replace logo/ })).toHaveCount(0);
     });

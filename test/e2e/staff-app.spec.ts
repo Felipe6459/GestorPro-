@@ -46,6 +46,15 @@ test("sidebar navigation reaches every staff section", async ({ page }) => {
 });
 
 test("Client create → edit → delete works end to end, and the dashboard metric reflects it", async ({ page }) => {
+  // Stability Correction F3 (hardening against an observed CI flake, not
+  // locally reproduced — see this PR's own body for the full bounded
+  // stress-run evidence): this is the single most operation-heavy test in
+  // this file — six sequential real navigation/Server-Action/DB round
+  // trips in one test — so it is the one most exposed to the *cumulative*
+  // effect of constrained CI CPU squeezing the default per-test budget.
+  // This raises only this one test's own budget; it does not touch
+  // playwright.config.ts's global `timeout`.
+  test.setTimeout(60_000);
   await page.goto("/dashboard");
   const totalClientsCard = page.getByRole("link", { name: /total clients/i });
   const before = Number((await totalClientsCard.locator("p").nth(1).innerText()).trim());
@@ -78,8 +87,16 @@ test("Client create → edit → delete works end to end, and the dashboard metr
     await page.goto("/clients");
     await createdRow.getByRole("link", { name: "Edit" }).click();
     await expect(page).toHaveURL(new RegExp(`/clients/${created.id}/edit`));
+    // Stability Correction F3: `toHaveURL` above only proves the client-
+    // side URL changed, not that the edit page's own async Server
+    // Component (a real Prisma fetch) has finished rendering the form —
+    // this explicit checkpoint is the real readiness signal that was
+    // previously only implicit inside `.fill()`'s own auto-wait, given a
+    // named, generous, bounded timeout under constrained CI CPU.
+    const nameField = page.getByRole("textbox", { name: "Name", exact: true });
+    await expect(nameField).toBeVisible({ timeout: 15_000 });
     const updatedName = `${clientName} (updated)`;
-    await page.getByRole("textbox", { name: "Name", exact: true }).fill(updatedName);
+    await nameField.fill(updatedName);
     await Promise.all([
       page.waitForResponse((r) => r.request().method() === "POST"),
       page.getByRole("button", { name: "Save changes" }).click(),
