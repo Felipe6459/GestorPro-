@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 
 /**
  * Portal Analytics persistence foundation (docs/analytics-architecture.md
@@ -30,7 +30,48 @@ type PortalAnalyticsClientOrTx = typeof prisma | Prisma.TransactionClient;
  * storage path. This is not a generic logging framework; it's the
  * smallest signal that a persistent failure here is at least visible
  * somewhere, until a real observability provider exists to replace it.
+ *
+ * Stability Correction F5 — the fixed string alone couldn't distinguish
+ * "an ordinary, already-expected persistence failure" from "something
+ * structurally unexpected," which is exactly the triage signal an
+ * on-call reader needs and the only thing genuinely missing here.
+ * `classifyAnalyticsFailure` adds exactly one bounded, two-value field —
+ * derived with a single `instanceof` type check that never reads any
+ * property of the thrown value (so it is equally safe for an Error, a
+ * string, a plain object, or null/undefined) — never the error object
+ * itself, never `.message`/`.stack`/`.cause`/`.digest`/Prisma `meta`, and
+ * never any dynamic serialization of what was thrown.
  */
+
+/** The one bounded, two-value failure classification this module ever logs. */
+type AnalyticsFailureClassification = "known_error" | "unexpected";
+
+/**
+ * A recognized Prisma error class (any code) is classified as
+ * "known_error" — an ordinary, already-anticipated persistence failure
+ * shape (e.g. the target row no longer exists, a constraint was
+ * violated). Anything else — a plain Error, a thrown string/object,
+ * null, undefined, or any other shape — is "unexpected": the generic,
+ * safe default this module falls back to for every case it does not
+ * specifically recognize. The check never accesses any property of
+ * `err` (no `.code`, `.message`, `.meta`, ...), so it cannot itself leak
+ * anything about the failure's content.
+ */
+function classifyAnalyticsFailure(err: unknown): AnalyticsFailureClassification {
+  return err instanceof Prisma.PrismaClientKnownRequestError ? "known_error" : "unexpected";
+}
+
+/**
+ * The one shared logging point for both functions below — `message` is
+ * always one of the two fixed, hard-coded strings already established
+ * for this module, never built from `err` in any way. `err` is used only
+ * to compute `classification`; it is never itself passed to
+ * console.error, so nothing beyond this one allowlisted field can ever
+ * reach the log line, regardless of what was thrown.
+ */
+function logAnalyticsFailure(message: string, err: unknown): void {
+  console.error(message, { classification: classifyAnalyticsFailure(err) });
+}
 
 /**
  * Updates PortalUser.lastLoginAt to `occurredAt` — called only from an
@@ -51,8 +92,8 @@ export async function recordPortalLogin(
       data: { lastLoginAt: occurredAt },
     });
     return true;
-  } catch {
-    console.error("[portal-analytics] Failed to record portal login.");
+  } catch (err) {
+    logAnalyticsFailure("[portal-analytics] Failed to record portal login.", err);
     return false;
   }
 }
@@ -75,8 +116,8 @@ export async function recordPortalDownloadRequest(
       data: { organizationId, requestedAt },
     });
     return true;
-  } catch {
-    console.error("[portal-analytics] Failed to record portal download-link request.");
+  } catch (err) {
+    logAnalyticsFailure("[portal-analytics] Failed to record portal download-link request.", err);
     return false;
   }
 }

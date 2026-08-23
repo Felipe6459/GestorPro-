@@ -51,19 +51,26 @@ describe("recordPortalLogin", () => {
     expect(updated.lastLoginAt?.toISOString()).toBe(new Date("2026-08-10T09:00:00.000Z").toISOString());
   });
 
-  it("returns false, never throws, for a nonexistent PortalUser id — and logs only the fixed sanitized message", async () => {
+  it("returns false, never throws, for a nonexistent PortalUser id — and logs only the fixed sanitized message plus a bounded classification", async () => {
     const bogusId = randomUUID();
 
     const result = await recordPortalLogin(prisma, bogusId, new Date());
 
     expect(result).toBe(false);
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
-    expect(consoleErrorSpy).toHaveBeenCalledWith("[portal-analytics] Failed to record portal login.");
+    // Stability Correction F5 — a genuine nonexistent-id failure against
+    // the real test Postgres is a real Prisma error (P2025, record not
+    // found), so it classifies as "known_error", not the generic
+    // "unexpected" fallback (see the unit-level classifier tests for that
+    // side of the contract).
+    expect(consoleErrorSpy).toHaveBeenCalledWith("[portal-analytics] Failed to record portal login.", {
+      classification: "known_error",
+    });
     // No identifier of any kind — not the bogus id, not a Prisma error
     // object, not a stack trace — ever reaches the logged output.
-    const loggedArgs = consoleErrorSpy.mock.calls.flat();
-    expect(loggedArgs).toHaveLength(1);
-    expect(String(loggedArgs[0])).not.toContain(bogusId);
+    const loggedArgs = consoleErrorSpy.mock.calls.flat().map((arg: unknown) => JSON.stringify(arg));
+    expect(loggedArgs).toHaveLength(2);
+    expect(loggedArgs.join(" ")).not.toContain(bogusId);
   });
 });
 
@@ -122,17 +129,22 @@ describe("recordPortalDownloadRequest", () => {
     expect(countB).toBe(2);
   });
 
-  it("returns false, never throws, for a nonexistent organization id — and logs only the fixed sanitized message", async () => {
+  it("returns false, never throws, for a nonexistent organization id — and logs only the fixed sanitized message plus a bounded classification", async () => {
     const bogusOrgId = randomUUID();
 
     const result = await recordPortalDownloadRequest(prisma, bogusOrgId, new Date());
 
     expect(result).toBe(false);
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
-    expect(consoleErrorSpy).toHaveBeenCalledWith("[portal-analytics] Failed to record portal download-link request.");
-    const loggedArgs = consoleErrorSpy.mock.calls.flat();
-    expect(loggedArgs).toHaveLength(1);
-    expect(String(loggedArgs[0])).not.toContain(bogusOrgId);
+    // Stability Correction F5 — a genuine nonexistent-organization id is a
+    // real Prisma FK-violation error (P2003), so it classifies as
+    // "known_error" here too.
+    expect(consoleErrorSpy).toHaveBeenCalledWith("[portal-analytics] Failed to record portal download-link request.", {
+      classification: "known_error",
+    });
+    const loggedArgs = consoleErrorSpy.mock.calls.flat().map((arg: unknown) => JSON.stringify(arg));
+    expect(loggedArgs).toHaveLength(2);
+    expect(loggedArgs.join(" ")).not.toContain(bogusOrgId);
 
     const rows = await prisma.portalDownloadRequest.findMany({ where: { organizationId: bogusOrgId } });
     expect(rows).toHaveLength(0);
