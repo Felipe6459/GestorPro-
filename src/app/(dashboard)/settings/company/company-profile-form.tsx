@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { updateCompanyProfileAction } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { FormField } from "@/components/ui/form-field";
 import type { CompanyProfileFormState } from "@/types";
 import type { CompanyProfileData } from "@/lib/organization-setup/company-profile";
@@ -72,13 +73,12 @@ export function CompanyProfileForm({
         </FormField>
 
         <FormField label="Currency" htmlFor="currency" required error={state.fieldErrors?.currency}>
-          <select
+          <Select
             id="currency"
             name="currency"
             defaultValue={profile.currency ?? ""}
             aria-invalid={!!state.fieldErrors?.currency}
             required
-            className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-black focus:ring-1 focus:ring-black focus:outline-none"
           >
             <option value="" disabled>
               Select a currency
@@ -88,17 +88,16 @@ export function CompanyProfileForm({
                 {code}
               </option>
             ))}
-          </select>
+          </Select>
         </FormField>
 
         <FormField label="Time zone" htmlFor="timezone" required error={state.fieldErrors?.timezone}>
-          <select
+          <Select
             id="timezone"
             name="timezone"
             defaultValue={profile.timezone ?? ""}
             aria-invalid={!!state.fieldErrors?.timezone}
             required
-            className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-black focus:ring-1 focus:ring-black focus:outline-none"
           >
             <option value="" disabled>
               Select a time zone
@@ -108,7 +107,7 @@ export function CompanyProfileForm({
                 {tz}
               </option>
             ))}
-          </select>
+          </Select>
         </FormField>
       </fieldset>
 

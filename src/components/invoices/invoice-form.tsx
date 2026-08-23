@@ -183,6 +183,7 @@ export function InvoiceForm({
                 setMode("flat");
                 dismissCurrentErrors();
               }}
+              className="focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
             />
             Flat amount
           </label>
@@ -195,6 +196,7 @@ export function InvoiceForm({
                 setMode("itemized");
                 dismissCurrentErrors();
               }}
+              className="focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
             />
             Itemized
           </label>
