@@ -21,7 +21,16 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /*
+   * var(--font-sans) resolves to the Geist Sans font already loaded by
+   * next/font/google in layout.tsx (see the html element's own
+   * className) — it was being loaded (bundle cost) but never actually
+   * rendered anywhere, since this rule previously named only the
+   * fallback stack. The fallback stack itself is unchanged, for the
+   * same fonts that would otherwise apply if the variable were ever
+   * unset.
+   */
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
 /* Keep our own text/background under Chrome/Safari autofill styling. */
