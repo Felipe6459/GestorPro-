@@ -299,7 +299,7 @@ minutes) needs a **Pro** plan or higher; if you're on Pro, tighten
 - **HTTP security headers on every response.** `next.config.ts` sets a Content-Security-Policy, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, and a restrictive `Permissions-Policy`, applied to every route including API routes.
 - **Application-level rate limiting.** Sensitive actions (invitations, attachment downloads, billing actions, the webhook route, etc.) are rate-limited in-process (`src/lib/rate-limit`), independent of any platform-level limiting.
 - **Billing webhook trust boundary.** `POST /api/billing/webhook` verifies the provider signature before parsing anything, validates the claimed organization against the database before applying an event, and dedupes via a real database unique constraint — never a check-then-insert race.
-- **100+ automated security checks** (`npm run security:check`) run in CI on every PR, covering tenant isolation, the billing/webhook boundary, TEST_MODE isolation, cron auth, secret handling, and more (see `scripts/security-checks/`).
+- **15 dedicated, automated static security checks** (`npm run security:check`) run in CI on every PR, covering tenant isolation, the billing/webhook boundary, TEST_MODE isolation, cron auth, secret handling, and more (see `scripts/security-checks/`).
 
 ## Testing
 
