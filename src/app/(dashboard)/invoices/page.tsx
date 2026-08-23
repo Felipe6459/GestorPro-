@@ -20,6 +20,12 @@ import {
   TableRow,
   TableCell,
 } from "@/components/ui/table";
+import {
+  RecordCardList,
+  RecordCard,
+  RecordCardField,
+  RecordCardActions,
+} from "@/components/ui/record-list";
 import { INVOICE_STATUSES } from "@/lib/validation/invoice";
 import {
   parseInvoiceListParams,
@@ -155,71 +161,125 @@ export default async function InvoicesPage({
         )
       ) : (
         <>
-          <Table>
-            <TableHead>
-              <tr>
-                <TableHeaderCell>Invoice #</TableHeaderCell>
-                <TableHeaderCell>Project</TableHeaderCell>
-                <TableHeaderCell>Client</TableHeaderCell>
-                <TableHeaderCell>Amount</TableHeaderCell>
-                <TableHeaderCell>Status</TableHeaderCell>
-                <TableHeaderCell>Due date</TableHeaderCell>
-                <TableHeaderCell>Created</TableHeaderCell>
-                <TableHeaderCell align="right">Actions</TableHeaderCell>
-              </tr>
-            </TableHead>
-            <TableBody>
-              {invoices.map((invoice) => (
-                <TableRow key={invoice.id}>
-                  <TableCell emphasis>{invoice.invoiceNumber}</TableCell>
-                  <TableCell>{invoice.project.name}</TableCell>
-                  <TableCell>{invoice.project.client.name}</TableCell>
-                  <TableCell>
-                    {formatCurrency(Number(invoice.amount), invoice.currency)}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={invoice.status} label={formatInvoiceStatusLabel(invoice.status)} />
-                  </TableCell>
-                  <TableCell>
-                    {invoice.dueDate
-                      ? formatDateOnlyForDisplay(invoice.dueDate)
-                      : "—"}
-                  </TableCell>
-                  <TableCell>{invoice.createdAt.toLocaleDateString()}</TableCell>
-                  <TableCell align="right">
-                    <div className="flex items-center justify-end gap-4">
-                      {invoice.status === "DRAFT" ? (
-                        <>
+          <div className="hidden md:block">
+            <Table>
+              <TableHead>
+                <tr>
+                  <TableHeaderCell>Invoice #</TableHeaderCell>
+                  <TableHeaderCell>Project</TableHeaderCell>
+                  <TableHeaderCell>Client</TableHeaderCell>
+                  <TableHeaderCell>Amount</TableHeaderCell>
+                  <TableHeaderCell>Status</TableHeaderCell>
+                  <TableHeaderCell>Due date</TableHeaderCell>
+                  <TableHeaderCell>Created</TableHeaderCell>
+                  <TableHeaderCell align="right">Actions</TableHeaderCell>
+                </tr>
+              </TableHead>
+              <TableBody>
+                {invoices.map((invoice) => (
+                  <TableRow key={invoice.id}>
+                    <TableCell emphasis>{invoice.invoiceNumber}</TableCell>
+                    <TableCell>{invoice.project.name}</TableCell>
+                    <TableCell>{invoice.project.client.name}</TableCell>
+                    <TableCell>
+                      {formatCurrency(Number(invoice.amount), invoice.currency)}
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={invoice.status} label={formatInvoiceStatusLabel(invoice.status)} />
+                    </TableCell>
+                    <TableCell>
+                      {invoice.dueDate
+                        ? formatDateOnlyForDisplay(invoice.dueDate)
+                        : "—"}
+                    </TableCell>
+                    <TableCell>{invoice.createdAt.toLocaleDateString()}</TableCell>
+                    <TableCell align="right">
+                      <div className="flex items-center justify-end gap-4">
+                        {invoice.status === "DRAFT" ? (
+                          <>
+                            <Link
+                              href={`/invoices/${invoice.id}/edit`}
+                              className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                            >
+                              <PencilIcon className="h-3.5 w-3.5" />
+                              Edit
+                            </Link>
+                            <DeleteButton
+                              action={deleteInvoiceAction.bind(null, invoice.id)}
+                              itemName={invoice.invoiceNumber}
+                              confirmTitle="Delete invoice"
+                              confirmDescription={`Delete invoice ${invoice.invoiceNumber}? This action cannot be undone.`}
+                              successMessage="Invoice deleted"
+                              conflictMessage="This invoice can no longer be deleted — it may have already been issued."
+                            />
+                          </>
+                        ) : (
                           <Link
                             href={`/invoices/${invoice.id}/edit`}
                             className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
                           >
-                            <PencilIcon className="h-3.5 w-3.5" />
-                            Edit
+                            View
                           </Link>
-                          <DeleteButton
-                            action={deleteInvoiceAction.bind(null, invoice.id)}
-                            itemName={invoice.invoiceNumber}
-                            confirmTitle="Delete invoice"
-                            confirmDescription={`Delete invoice ${invoice.invoiceNumber}? This action cannot be undone.`}
-                            successMessage="Invoice deleted"
-                            conflictMessage="This invoice can no longer be deleted — it may have already been issued."
-                          />
-                        </>
-                      ) : (
-                        <Link
-                          href={`/invoices/${invoice.id}/edit`}
-                          className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-                        >
-                          View
-                        </Link>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <RecordCardList>
+            {invoices.map((invoice) => (
+              <RecordCard key={invoice.id}>
+                <RecordCardField label="Invoice #" value={invoice.invoiceNumber} emphasis />
+                <RecordCardField label="Project" value={invoice.project.name} />
+                <RecordCardField label="Client" value={invoice.project.client.name} />
+                <RecordCardField
+                  label="Amount"
+                  value={formatCurrency(Number(invoice.amount), invoice.currency)}
+                />
+                <RecordCardField
+                  label="Status"
+                  value={<StatusBadge status={invoice.status} label={formatInvoiceStatusLabel(invoice.status)} />}
+                />
+                <RecordCardField
+                  label="Due date"
+                  value={invoice.dueDate ? formatDateOnlyForDisplay(invoice.dueDate) : "—"}
+                />
+                <RecordCardField label="Created" value={invoice.createdAt.toLocaleDateString()} />
+                <RecordCardActions>
+                  {invoice.status === "DRAFT" ? (
+                    <>
+                      <Link
+                        href={`/invoices/${invoice.id}/edit`}
+                        className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                      >
+                        <PencilIcon className="h-3.5 w-3.5" />
+                        Edit
+                      </Link>
+                      <DeleteButton
+                        action={deleteInvoiceAction.bind(null, invoice.id)}
+                        itemName={invoice.invoiceNumber}
+                        confirmTitle="Delete invoice"
+                        confirmDescription={`Delete invoice ${invoice.invoiceNumber}? This action cannot be undone.`}
+                        successMessage="Invoice deleted"
+                        conflictMessage="This invoice can no longer be deleted — it may have already been issued."
+                      />
+                    </>
+                  ) : (
+                    <Link
+                      href={`/invoices/${invoice.id}/edit`}
+                      className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                    >
+                      View
+                    </Link>
+                  )}
+                </RecordCardActions>
+              </RecordCard>
+            ))}
+          </RecordCardList>
+
           <Pagination
             basePath="/invoices"
             params={{

@@ -18,6 +18,12 @@ import {
   TableRow,
   TableCell,
 } from "@/components/ui/table";
+import {
+  RecordCardList,
+  RecordCard,
+  RecordCardField,
+  RecordCardActions,
+} from "@/components/ui/record-list";
 import { TASK_STATUSES, TASK_PRIORITIES } from "@/lib/validation/task";
 import { parseTaskListParams, buildTaskWhere, buildTaskOrderBy } from "./query";
 
@@ -161,63 +167,103 @@ export default async function TasksPage({
         )
       ) : (
         <>
-          <Table>
-            <TableHead>
-              <tr>
-                <TableHeaderCell>Title</TableHeaderCell>
-                <TableHeaderCell>Project</TableHeaderCell>
-                <TableHeaderCell>Client</TableHeaderCell>
-                <TableHeaderCell>Status</TableHeaderCell>
-                <TableHeaderCell>Priority</TableHeaderCell>
-                <TableHeaderCell>Due date</TableHeaderCell>
-                <TableHeaderCell>Completed</TableHeaderCell>
-                <TableHeaderCell>Created</TableHeaderCell>
-                <TableHeaderCell align="right">Actions</TableHeaderCell>
-              </tr>
-            </TableHead>
-            <TableBody>
-              {tasks.map((task) => (
-                <TableRow key={task.id}>
-                  <TableCell emphasis>{task.title}</TableCell>
-                  <TableCell>{task.project.name}</TableCell>
-                  <TableCell>{task.project.client.name}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={task.status} />
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={task.priority} />
-                  </TableCell>
-                  <TableCell>
-                    {task.dueDate ? task.dueDate.toLocaleDateString() : "—"}
-                  </TableCell>
-                  <TableCell>
-                    {task.completedAt
-                      ? task.completedAt.toLocaleDateString()
-                      : "—"}
-                  </TableCell>
-                  <TableCell>{task.createdAt.toLocaleDateString()}</TableCell>
-                  <TableCell align="right">
-                    <div className="flex items-center justify-end gap-4">
-                      <Link
-                        href={`/tasks/${task.id}/edit`}
-                        className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-                      >
-                        <PencilIcon className="h-3.5 w-3.5" />
-                        Edit
-                      </Link>
-                      <DeleteButton
-                        action={deleteTaskAction.bind(null, task.id)}
-                        itemName={task.title}
-                        confirmTitle="Delete task"
-                        confirmDescription={`Delete "${task.title}"? This action cannot be undone.`}
-                        successMessage="Task deleted"
-                      />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className="hidden md:block">
+            <Table>
+              <TableHead>
+                <tr>
+                  <TableHeaderCell>Title</TableHeaderCell>
+                  <TableHeaderCell>Project</TableHeaderCell>
+                  <TableHeaderCell>Client</TableHeaderCell>
+                  <TableHeaderCell>Status</TableHeaderCell>
+                  <TableHeaderCell>Priority</TableHeaderCell>
+                  <TableHeaderCell>Due date</TableHeaderCell>
+                  <TableHeaderCell>Completed</TableHeaderCell>
+                  <TableHeaderCell>Created</TableHeaderCell>
+                  <TableHeaderCell align="right">Actions</TableHeaderCell>
+                </tr>
+              </TableHead>
+              <TableBody>
+                {tasks.map((task) => (
+                  <TableRow key={task.id}>
+                    <TableCell emphasis>{task.title}</TableCell>
+                    <TableCell>{task.project.name}</TableCell>
+                    <TableCell>{task.project.client.name}</TableCell>
+                    <TableCell>
+                      <StatusBadge status={task.status} />
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={task.priority} />
+                    </TableCell>
+                    <TableCell>
+                      {task.dueDate ? task.dueDate.toLocaleDateString() : "—"}
+                    </TableCell>
+                    <TableCell>
+                      {task.completedAt
+                        ? task.completedAt.toLocaleDateString()
+                        : "—"}
+                    </TableCell>
+                    <TableCell>{task.createdAt.toLocaleDateString()}</TableCell>
+                    <TableCell align="right">
+                      <div className="flex items-center justify-end gap-4">
+                        <Link
+                          href={`/tasks/${task.id}/edit`}
+                          className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                        >
+                          <PencilIcon className="h-3.5 w-3.5" />
+                          Edit
+                        </Link>
+                        <DeleteButton
+                          action={deleteTaskAction.bind(null, task.id)}
+                          itemName={task.title}
+                          confirmTitle="Delete task"
+                          confirmDescription={`Delete "${task.title}"? This action cannot be undone.`}
+                          successMessage="Task deleted"
+                        />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <RecordCardList>
+            {tasks.map((task) => (
+              <RecordCard key={task.id}>
+                <RecordCardField label="Title" value={task.title} emphasis />
+                <RecordCardField label="Project" value={task.project.name} />
+                <RecordCardField label="Client" value={task.project.client.name} />
+                <RecordCardField label="Status" value={<StatusBadge status={task.status} />} />
+                <RecordCardField label="Priority" value={<StatusBadge status={task.priority} />} />
+                <RecordCardField
+                  label="Due date"
+                  value={task.dueDate ? task.dueDate.toLocaleDateString() : "—"}
+                />
+                <RecordCardField
+                  label="Completed"
+                  value={task.completedAt ? task.completedAt.toLocaleDateString() : "—"}
+                />
+                <RecordCardField label="Created" value={task.createdAt.toLocaleDateString()} />
+                <RecordCardActions>
+                  <Link
+                    href={`/tasks/${task.id}/edit`}
+                    className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                  >
+                    <PencilIcon className="h-3.5 w-3.5" />
+                    Edit
+                  </Link>
+                  <DeleteButton
+                    action={deleteTaskAction.bind(null, task.id)}
+                    itemName={task.title}
+                    confirmTitle="Delete task"
+                    confirmDescription={`Delete "${task.title}"? This action cannot be undone.`}
+                    successMessage="Task deleted"
+                  />
+                </RecordCardActions>
+              </RecordCard>
+            ))}
+          </RecordCardList>
+
           <Pagination
             basePath="/tasks"
             params={{

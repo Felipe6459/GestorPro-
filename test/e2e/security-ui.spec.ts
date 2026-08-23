@@ -76,7 +76,17 @@ test("injected script-like text renders as literal text and never executes", asy
 
     // Rendered as literal, visible text — proves React's default escaping
     // held for real, user-supplied content round-tripped through the DB.
-    await expect(page.getByText(payload, { exact: true })).toBeVisible();
+    // Product UI/UX PR 3 gave the Clients list page a second, hidden-below-md
+    // rendering of the same row (the mobile stacked-card list) alongside the
+    // existing desktop table — this payload therefore now legitimately
+    // appears twice in the DOM (one visible at this default desktop
+    // viewport, one display:none), which is itself further, incidental
+    // proof that escaping holds in both renderings. .first() targets
+    // whichever instance the current viewport actually shows; this
+    // assertion's own concern (escaped, inert, visible text; never an
+    // executable element) is unaffected by which of the two renderings it
+    // happens to resolve to.
+    await expect(page.getByText(payload, { exact: true }).first()).toBeVisible();
     // Never became an actual executable <script> element anywhere on the page.
     await expect(page.locator("script", { hasText: "alert(1)" })).toHaveCount(0);
     expect(dialogFired).toBe(false);
