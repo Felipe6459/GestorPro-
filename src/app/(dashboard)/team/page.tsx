@@ -82,7 +82,7 @@ export default async function TeamPage() {
         <h2 className="text-lg font-semibold tracking-tight text-gray-900">
           Members
         </h2>
-        <div className="hidden md:block">
+        <div className="hidden xl:block">
           <Table>
             <TableHead>
               <tr>
@@ -204,7 +204,7 @@ export default async function TeamPage() {
           />
         ) : (
           <>
-            <div className="hidden md:block">
+            <div className="hidden xl:block">
               <Table>
                 <TableHead>
                   <tr>
