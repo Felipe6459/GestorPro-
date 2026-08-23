@@ -18,6 +18,12 @@ import {
   TableRow,
   TableCell,
 } from "@/components/ui/table";
+import {
+  RecordCardList,
+  RecordCard,
+  RecordCardField,
+  RecordCardActions,
+} from "@/components/ui/record-list";
 import { CLIENT_STATUSES } from "@/lib/validation/client";
 import {
   parseClientListParams,
@@ -128,51 +134,83 @@ export default async function ClientsPage({
         )
       ) : (
         <>
-          <Table>
-            <TableHead>
-              <tr>
-                <TableHeaderCell>Name</TableHeaderCell>
-                <TableHeaderCell>Company</TableHeaderCell>
-                <TableHeaderCell>Email</TableHeaderCell>
-                <TableHeaderCell>Phone</TableHeaderCell>
-                <TableHeaderCell>Status</TableHeaderCell>
-                <TableHeaderCell>Created</TableHeaderCell>
-                <TableHeaderCell align="right">Actions</TableHeaderCell>
-              </tr>
-            </TableHead>
-            <TableBody>
-              {clients.map((client) => (
-                <TableRow key={client.id}>
-                  <TableCell emphasis>{client.name}</TableCell>
-                  <TableCell>{client.company ?? "—"}</TableCell>
-                  <TableCell>{client.email ?? "—"}</TableCell>
-                  <TableCell>{client.phone ?? "—"}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={client.status} />
-                  </TableCell>
-                  <TableCell>{client.createdAt.toLocaleDateString()}</TableCell>
-                  <TableCell align="right">
-                    <div className="flex items-center justify-end gap-4">
-                      <Link
-                        href={`/clients/${client.id}/edit`}
-                        className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-                      >
-                        <PencilIcon className="h-3.5 w-3.5" />
-                        Edit
-                      </Link>
-                      <DeleteButton
-                        action={deleteClientAction.bind(null, client.id)}
-                        itemName={client.name}
-                        confirmTitle="Delete client"
-                        confirmDescription={`Delete ${client.name}? This action cannot be undone.`}
-                        successMessage="Client deleted"
-                      />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className="hidden md:block">
+            <Table>
+              <TableHead>
+                <tr>
+                  <TableHeaderCell>Name</TableHeaderCell>
+                  <TableHeaderCell>Company</TableHeaderCell>
+                  <TableHeaderCell>Email</TableHeaderCell>
+                  <TableHeaderCell>Phone</TableHeaderCell>
+                  <TableHeaderCell>Status</TableHeaderCell>
+                  <TableHeaderCell>Created</TableHeaderCell>
+                  <TableHeaderCell align="right">Actions</TableHeaderCell>
+                </tr>
+              </TableHead>
+              <TableBody>
+                {clients.map((client) => (
+                  <TableRow key={client.id}>
+                    <TableCell emphasis>{client.name}</TableCell>
+                    <TableCell>{client.company ?? "—"}</TableCell>
+                    <TableCell>{client.email ?? "—"}</TableCell>
+                    <TableCell>{client.phone ?? "—"}</TableCell>
+                    <TableCell>
+                      <StatusBadge status={client.status} />
+                    </TableCell>
+                    <TableCell>{client.createdAt.toLocaleDateString()}</TableCell>
+                    <TableCell align="right">
+                      <div className="flex items-center justify-end gap-4">
+                        <Link
+                          href={`/clients/${client.id}/edit`}
+                          className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                        >
+                          <PencilIcon className="h-3.5 w-3.5" />
+                          Edit
+                        </Link>
+                        <DeleteButton
+                          action={deleteClientAction.bind(null, client.id)}
+                          itemName={client.name}
+                          confirmTitle="Delete client"
+                          confirmDescription={`Delete ${client.name}? This action cannot be undone.`}
+                          successMessage="Client deleted"
+                        />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <RecordCardList>
+            {clients.map((client) => (
+              <RecordCard key={client.id}>
+                <RecordCardField label="Name" value={client.name} emphasis />
+                <RecordCardField label="Company" value={client.company ?? "—"} />
+                <RecordCardField label="Email" value={client.email ?? "—"} />
+                <RecordCardField label="Phone" value={client.phone ?? "—"} />
+                <RecordCardField label="Status" value={<StatusBadge status={client.status} />} />
+                <RecordCardField label="Created" value={client.createdAt.toLocaleDateString()} />
+                <RecordCardActions>
+                  <Link
+                    href={`/clients/${client.id}/edit`}
+                    className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                  >
+                    <PencilIcon className="h-3.5 w-3.5" />
+                    Edit
+                  </Link>
+                  <DeleteButton
+                    action={deleteClientAction.bind(null, client.id)}
+                    itemName={client.name}
+                    confirmTitle="Delete client"
+                    confirmDescription={`Delete ${client.name}? This action cannot be undone.`}
+                    successMessage="Client deleted"
+                  />
+                </RecordCardActions>
+              </RecordCard>
+            ))}
+          </RecordCardList>
+
           <Pagination
             basePath="/clients"
             params={{

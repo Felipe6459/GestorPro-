@@ -18,6 +18,12 @@ import {
   TableRow,
   TableCell,
 } from "@/components/ui/table";
+import {
+  RecordCardList,
+  RecordCard,
+  RecordCardField,
+  RecordCardActions,
+} from "@/components/ui/record-list";
 import { PROJECT_STATUSES } from "@/lib/validation/project";
 import {
   parseProjectListParams,
@@ -149,59 +155,97 @@ export default async function ProjectsPage({
         )
       ) : (
         <>
-          <Table>
-            <TableHead>
-              <tr>
-                <TableHeaderCell>Name</TableHeaderCell>
-                <TableHeaderCell>Client</TableHeaderCell>
-                <TableHeaderCell>Status</TableHeaderCell>
-                <TableHeaderCell>Start date</TableHeaderCell>
-                <TableHeaderCell>End date</TableHeaderCell>
-                <TableHeaderCell>Created</TableHeaderCell>
-                <TableHeaderCell align="right">Actions</TableHeaderCell>
-              </tr>
-            </TableHead>
-            <TableBody>
-              {projects.map((project) => (
-                <TableRow key={project.id}>
-                  <TableCell emphasis>{project.name}</TableCell>
-                  <TableCell>{project.client.name}</TableCell>
-                  <TableCell>
-                    <StatusBadge status={project.status} />
-                  </TableCell>
-                  <TableCell>
-                    {project.startDate
-                      ? project.startDate.toLocaleDateString()
-                      : "—"}
-                  </TableCell>
-                  <TableCell>
-                    {project.endDate
-                      ? project.endDate.toLocaleDateString()
-                      : "—"}
-                  </TableCell>
-                  <TableCell>{project.createdAt.toLocaleDateString()}</TableCell>
-                  <TableCell align="right">
-                    <div className="flex items-center justify-end gap-4">
-                      <Link
-                        href={`/projects/${project.id}/edit`}
-                        className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-                      >
-                        <PencilIcon className="h-3.5 w-3.5" />
-                        Edit
-                      </Link>
-                      <DeleteButton
-                        action={deleteProjectAction.bind(null, project.id)}
-                        itemName={project.name}
-                        confirmTitle="Delete project"
-                        confirmDescription={`Delete ${project.name}? This action cannot be undone.`}
-                        successMessage="Project deleted"
-                      />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          <div className="hidden md:block">
+            <Table>
+              <TableHead>
+                <tr>
+                  <TableHeaderCell>Name</TableHeaderCell>
+                  <TableHeaderCell>Client</TableHeaderCell>
+                  <TableHeaderCell>Status</TableHeaderCell>
+                  <TableHeaderCell>Start date</TableHeaderCell>
+                  <TableHeaderCell>End date</TableHeaderCell>
+                  <TableHeaderCell>Created</TableHeaderCell>
+                  <TableHeaderCell align="right">Actions</TableHeaderCell>
+                </tr>
+              </TableHead>
+              <TableBody>
+                {projects.map((project) => (
+                  <TableRow key={project.id}>
+                    <TableCell emphasis>{project.name}</TableCell>
+                    <TableCell>{project.client.name}</TableCell>
+                    <TableCell>
+                      <StatusBadge status={project.status} />
+                    </TableCell>
+                    <TableCell>
+                      {project.startDate
+                        ? project.startDate.toLocaleDateString()
+                        : "—"}
+                    </TableCell>
+                    <TableCell>
+                      {project.endDate
+                        ? project.endDate.toLocaleDateString()
+                        : "—"}
+                    </TableCell>
+                    <TableCell>{project.createdAt.toLocaleDateString()}</TableCell>
+                    <TableCell align="right">
+                      <div className="flex items-center justify-end gap-4">
+                        <Link
+                          href={`/projects/${project.id}/edit`}
+                          className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                        >
+                          <PencilIcon className="h-3.5 w-3.5" />
+                          Edit
+                        </Link>
+                        <DeleteButton
+                          action={deleteProjectAction.bind(null, project.id)}
+                          itemName={project.name}
+                          confirmTitle="Delete project"
+                          confirmDescription={`Delete ${project.name}? This action cannot be undone.`}
+                          successMessage="Project deleted"
+                        />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <RecordCardList>
+            {projects.map((project) => (
+              <RecordCard key={project.id}>
+                <RecordCardField label="Name" value={project.name} emphasis />
+                <RecordCardField label="Client" value={project.client.name} />
+                <RecordCardField label="Status" value={<StatusBadge status={project.status} />} />
+                <RecordCardField
+                  label="Start date"
+                  value={project.startDate ? project.startDate.toLocaleDateString() : "—"}
+                />
+                <RecordCardField
+                  label="End date"
+                  value={project.endDate ? project.endDate.toLocaleDateString() : "—"}
+                />
+                <RecordCardField label="Created" value={project.createdAt.toLocaleDateString()} />
+                <RecordCardActions>
+                  <Link
+                    href={`/projects/${project.id}/edit`}
+                    className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                  >
+                    <PencilIcon className="h-3.5 w-3.5" />
+                    Edit
+                  </Link>
+                  <DeleteButton
+                    action={deleteProjectAction.bind(null, project.id)}
+                    itemName={project.name}
+                    confirmTitle="Delete project"
+                    confirmDescription={`Delete ${project.name}? This action cannot be undone.`}
+                    successMessage="Project deleted"
+                  />
+                </RecordCardActions>
+              </RecordCard>
+            ))}
+          </RecordCardList>
+
           <Pagination
             basePath="/projects"
             params={{
