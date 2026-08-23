@@ -50,12 +50,17 @@ function importsSharedPrimitives(source: string): boolean {
 }
 
 function tableIsWrappedHiddenOnMobile(source: string): boolean {
-  // The existing <Table> block must sit inside a wrapper that is hidden
-  // below md and a block (or table) at md and up — never removed outright.
+  // Correction PR (production breakpoint-gap defect) — the safe cutover
+  // is `xl` (1280px), not `md` (768px); see
+  // test/e2e/responsive-list-tables-breakpoint.spec.ts's own header
+  // comment for the real measured widths behind this change. The
+  // existing <Table> block must sit inside a wrapper that is hidden
+  // below xl and a block (or table) at xl and up — never removed
+  // outright, and never left at the old, too-early md cutover.
   const tableIndex = source.indexOf("<Table>");
   if (tableIndex === -1) return false;
   const preceding = source.slice(Math.max(0, tableIndex - 200), tableIndex);
-  return /className="[^"]*\bhidden\b[^"]*\bmd:(block|table)\b[^"]*"/.test(preceding);
+  return /className="[^"]*\bhidden\b[^"]*\bxl:(block|table)\b[^"]*"/.test(preceding);
 }
 
 describe("Clients list page — responsive stacked-card adoption", () => {
@@ -208,12 +213,12 @@ describe("Team list page — responsive stacked-card adoption (both tables)", ()
     expect(occurrences).toBe(2);
   });
 
-  it("both existing <Table> blocks (Members, Pending invitations) are hidden below md and visible at md and up", () => {
+  it("both existing <Table> blocks (Members, Pending invitations) are hidden below xl and visible at xl and up", () => {
     const tableOpens = [...source.matchAll(/<Table>/g)].map((m) => m.index!);
     expect(tableOpens).toHaveLength(2);
     for (const idx of tableOpens) {
       const preceding = source.slice(Math.max(0, idx - 200), idx);
-      expect(preceding).toMatch(/className="[^"]*\bhidden\b[^"]*\bmd:(block|table)\b[^"]*"/);
+      expect(preceding).toMatch(/className="[^"]*\bhidden\b[^"]*\bxl:(block|table)\b[^"]*"/);
     }
   });
 

@@ -155,7 +155,7 @@ export default async function ProjectsPage({
         )
       ) : (
         <>
-          <div className="hidden md:block">
+          <div className="hidden xl:block">
             <Table>
               <TableHead>
                 <tr>

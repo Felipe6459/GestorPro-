@@ -19,13 +19,26 @@ import { RecordCard, RecordCardActions, RecordCardField, RecordCardList } from "
  */
 
 describe("RecordCardList/RecordCard/RecordCardField/RecordCardActions — real render", () => {
-  it("RecordCardList renders a real <ul>, hidden at md and up (md:hidden), never display:none unconditionally", () => {
+  it("RecordCardList renders a real <ul>, hidden at xl and up (xl:hidden), never display:none unconditionally", () => {
+    // Correction PR (production breakpoint-gap defect) — empirical
+    // measurement (test/e2e/responsive-list-tables-breakpoint.spec.ts's
+    // own header comment) proved every one of the six target tables'
+    // natural content width exceeds the available container width
+    // anywhere below ~1051px (Tasks, the widest table) once the sidebar
+    // becomes a fixed 224px column at `md` (768px) — the original
+    // `md:hidden`/`hidden md:block` pair activated the desktop table
+    // long before it could actually fit, clipping its Actions column.
+    // `xl` (1280px, Tailwind's own next built-in step above `lg`) is the
+    // smallest standard breakpoint that clears every measured
+    // requirement with real margin (built on real measurement, not
+    // assumed).
     const html = renderToStaticMarkup(
       <RecordCardList>
         <RecordCard>content</RecordCard>
       </RecordCardList>,
     );
-    expect(html).toMatch(/<ul[^>]*class="[^"]*\bmd:hidden\b[^"]*"[^>]*>/);
+    expect(html).toMatch(/<ul[^>]*class="[^"]*\bxl:hidden\b[^"]*"[^>]*>/);
+    expect(html).not.toMatch(/\bmd:hidden\b/);
   });
 
   it("RecordCard renders a real <li>", () => {

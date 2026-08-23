@@ -161,7 +161,7 @@ export default async function InvoicesPage({
         )
       ) : (
         <>
-          <div className="hidden md:block">
+          <div className="hidden xl:block">
             <Table>
               <TableHead>
                 <tr>
