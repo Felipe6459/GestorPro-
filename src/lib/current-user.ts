@@ -105,6 +105,94 @@ async function uniqueOrganizationSlug(
   return candidate;
 }
 
+type ProvisioningUser = { id: string; name: string; email: string };
+
+/**
+ * The one transaction body every getOrCreateOrganizationId() attempt runs
+ * — extracted only so Stability Correction F1's bounded single retry
+ * (below) can invoke the exact same logic a second time without
+ * duplicating it, never changing what it does.
+ */
+async function createPersonalOrganizationAndMembership(
+  user: ProvisioningUser,
+  trimmedPreferredName: string | undefined,
+): Promise<string> {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.membership.findFirst({
+      where: { userId: user.id, role: Role.OWNER },
+      select: { organizationId: true },
+    });
+    if (existing) {
+      return existing.organizationId;
+    }
+
+    const base = slugify(trimmedPreferredName || user.name) || slugify(user.email.split("@")[0]);
+    const slug = await uniqueOrganizationSlug(tx, `${base}-${user.id.slice(0, 8)}`);
+    const organization = await tx.organization.create({
+      data: { name: trimmedPreferredName || `${user.name}'s Workspace`, slug },
+    });
+    await tx.membership.create({
+      data: { userId: user.id, organizationId: organization.id, role: Role.OWNER },
+    });
+    // Billing & Subscriptions Stage 2 (docs/billing-architecture.md §9):
+    // every brand-new Organization gets a local TRIALING Subscription
+    // row atomically alongside it — same transaction, so either both
+    // exist or neither does.
+    await createTrialSubscription(tx, organization.id, new Date());
+    return organization.id;
+  });
+}
+
+/**
+ * Stability Correction F1 — recognizes, narrowly, the one specific FK
+ * violation this module's own bounded retry (below) knows how to safely
+ * recover from: `Membership.userId` referencing a User row that doesn't
+ * exist at the exact moment `tx.membership.create()` runs (e.g. a
+ * concurrently-deleted, or not-yet-created, User row for this identity —
+ * every current caller derives `user` from getOrCreateUser()'s own
+ * upsert, but time passes between that call and this transaction).
+ *
+ * Empirically confirmed shape (Prisma 7.9.1, `@prisma/adapter-pg`), via a
+ * genuine reproduction against a real Postgres FK violation on this exact
+ * constraint (a disposable, never-committed integration probe run during
+ * this correction's own investigation, not carried into any test file):
+ *   err.code === "P2003"
+ *   err.meta.modelName === "Membership"
+ *   err.meta.driverAdapterError.cause.constraint.index === "Membership_userId_fkey"
+ *
+ * A P2003 on any OTHER constraint (e.g. Membership_organizationId_fkey, or
+ * a P2003 on a completely different model) is a different, NOT safely
+ * retryable problem — it could mean the Organization itself is gone, a
+ * genuine tenant/data inconsistency this function must never paper over
+ * by retrying — so it is deliberately left unrecognized and falls through
+ * to the same unconditional `throw err` every other unrecognized error
+ * already does.
+ */
+export function isMembershipUserForeignKeyViolation(
+  err: unknown,
+): err is Prisma.PrismaClientKnownRequestError {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== "P2003") {
+    return false;
+  }
+  const meta = err.meta;
+  if (!meta || typeof meta !== "object" || meta.modelName !== "Membership") {
+    return false;
+  }
+  const driverAdapterError = meta.driverAdapterError;
+  if (!driverAdapterError || typeof driverAdapterError !== "object") {
+    return false;
+  }
+  const cause = (driverAdapterError as { cause?: unknown }).cause;
+  if (!cause || typeof cause !== "object") {
+    return false;
+  }
+  const constraint = (cause as { constraint?: unknown }).constraint;
+  if (!constraint || typeof constraint !== "object") {
+    return false;
+  }
+  return (constraint as { index?: unknown }).index === "Membership_userId_fkey";
+}
+
 /**
  * Resolves the organization the given user belongs to, using their OWNER
  * Membership as the source of truth (mirrors prisma/backfill-organizations.ts).
@@ -113,11 +201,7 @@ async function uniqueOrganizationSlug(
  * so this stays idempotent and safe to call on every request.
  */
 export async function getOrCreateOrganizationId(
-  user: {
-    id: string;
-    name: string;
-    email: string;
-  },
+  user: ProvisioningUser,
   /**
    * SaaS Signup Foundation (Stage 6.1): the company name a user typed on
    * `/signup`, when this is their very first organization — takes priority
@@ -141,30 +225,7 @@ export async function getOrCreateOrganizationId(
   const trimmedPreferredName = preferredName?.trim();
 
   try {
-    return await prisma.$transaction(async (tx) => {
-      const existing = await tx.membership.findFirst({
-        where: { userId: user.id, role: Role.OWNER },
-        select: { organizationId: true },
-      });
-      if (existing) {
-        return existing.organizationId;
-      }
-
-      const base = slugify(trimmedPreferredName || user.name) || slugify(user.email.split("@")[0]);
-      const slug = await uniqueOrganizationSlug(tx, `${base}-${user.id.slice(0, 8)}`);
-      const organization = await tx.organization.create({
-        data: { name: trimmedPreferredName || `${user.name}'s Workspace`, slug },
-      });
-      await tx.membership.create({
-        data: { userId: user.id, organizationId: organization.id, role: Role.OWNER },
-      });
-      // Billing & Subscriptions Stage 2 (docs/billing-architecture.md §9):
-      // every brand-new Organization gets a local TRIALING Subscription
-      // row atomically alongside it — same transaction, so either both
-      // exist or neither does.
-      await createTrialSubscription(tx, organization.id, new Date());
-      return organization.id;
-    });
+    return await createPersonalOrganizationAndMembership(user, trimmedPreferredName);
   } catch (err) {
     // Concurrent requests (e.g. prefetched pages) can race to create the
     // same user's personal org; the loser just reads back the winner's row.
@@ -175,6 +236,40 @@ export async function getOrCreateOrganizationId(
       });
       if (existing) {
         return existing.organizationId;
+      }
+    } else if (isMembershipUserForeignKeyViolation(err)) {
+      // Stability Correction F1 — bounded, single recovery attempt: the
+      // User row this transaction's own Membership insert depends on is
+      // genuinely missing right now. Re-establish it using the exact same
+      // idempotent upsert shape getOrCreateUser() already treats as this
+      // app's trusted "ensure this identity's row exists" contract, then
+      // retry the transaction exactly once. Any further failure — a
+      // repeat P2003, or anything else — terminates here, deterministically,
+      // through one bounded application error; it is never retried a
+      // second time and the raw Prisma error is never surfaced.
+      //
+      // The one-tick yield below is not an artificial delay for observation
+      // purposes — it is a deliberate, empirically-justified defensive
+      // measure: this correction's own investigation found that reusing
+      // this same connection for a new query in the same synchronous
+      // continuation immediately after a transaction the driver aborted
+      // (a real `@prisma/adapter-pg` behavior, reproduced directly against
+      // this repo's own real PGlite-backed test Postgres) can race the
+      // driver's own async connection-cleanup, occasionally handing the
+      // next query a stale, wrongly-shaped buffered result instead of its
+      // own. A single `setTimeout(0)` yield — proven sufficient, not an
+      // arbitrary guess — lets that cleanup finish before this recovery
+      // attempt reuses the connection.
+      try {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        await prisma.user.upsert({
+          where: { id: user.id },
+          update: { email: user.email },
+          create: { id: user.id, email: user.email, name: user.name },
+        });
+        return await createPersonalOrganizationAndMembership(user, trimmedPreferredName);
+      } catch {
+        throw new Error("Unable to set up your organization. Please try again.");
       }
     }
     throw err;

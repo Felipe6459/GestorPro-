@@ -139,9 +139,21 @@ describe("Shared SegmentErrorState component — reset wiring and scope", () => 
   });
 });
 
-describe("Scope — no broader boundary introduced, no pre-existing boundary touched", () => {
-  it("no new root-level catch-all error.tsx was introduced", () => {
-    expect(existsSync(ROOT_ERROR_PATH)).toBe(false);
+describe("Scope — no broader boundary introduced by PR 2 itself, no pre-existing boundary touched", () => {
+  // Corrected by the later Stability Correction (F2): PR 2 itself
+  // introduced no root-level boundary — true at the time this file was
+  // written — but a root src/app/error.tsx was since added, deliberately
+  // and separately, to close a disclosed gap (an exception thrown inside
+  // a nested layout, e.g. (dashboard)/layout.tsx, had no boundary of its
+  // own beyond the chrome-less global-error.tsx). This test now proves
+  // that root boundary exists and is the same SegmentErrorState-based
+  // class of boundary as this PR's own two — not a correctness regression
+  // of PR 2's own claim, which was accurate for its own unchanged scope.
+  it("a root-level error.tsx exists (added later, by the Stability Correction) and delegates to the same shared SegmentErrorState presentation", () => {
+    expect(existsSync(ROOT_ERROR_PATH)).toBe(true);
+    const source = readBoundarySource(ROOT_ERROR_PATH);
+    expect(source.trimStart().startsWith('"use client"')).toBe(true);
+    expect(source).toMatch(/import\s*\{\s*SegmentErrorState\s*\}\s*from\s*["']@\/components\/ui\/segment-error-state["']/);
   });
 
   it("global-error.tsx remains exactly the pre-existing implementation (its own <html>/<body> full-page fallback, untouched by this PR)", () => {
