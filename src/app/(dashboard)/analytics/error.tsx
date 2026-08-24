@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useErrorBoundaryLogging } from "@/components/ui/segment-error-state";
 
 /**
  * Analytics Stage 2. Only ever reached for a genuine, unexpected failure
@@ -16,9 +16,7 @@ export default function AnalyticsError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    console.error(error);
-  }, [error]);
+  useErrorBoundaryLogging(error);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">

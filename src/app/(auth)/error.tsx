@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useErrorBoundaryLogging } from "@/components/ui/segment-error-state";
 
 export default function AuthError({
   error,
@@ -9,9 +9,7 @@ export default function AuthError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    console.error(error);
-  }, [error]);
+  useErrorBoundaryLogging(error);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
