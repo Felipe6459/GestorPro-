@@ -4,18 +4,24 @@
 
 This app already writes durable failure records for two subsystems —
 `WebhookEvent` (billing webhook processing) and `InvoiceEmailAttempt`
-(invoice email delivery) — but nothing currently reads them back out for
-an operator. This runbook is the smallest safe, useful, low-cost way to
-check for those failures: a small set of bounded, read-only, aggregate-
-only SQL queries an operator runs by hand against the production
-database. It replaces no automated system, because none currently exists;
-see §2 for exactly why, and §9 for the automated surface this defers to
-once its blocker clears.
+(invoice email delivery). §9's Platform Admin Observability page
+(`/platform-admin/observability`) is now the preferred way to check
+them — a read-only, on-demand, always-current view, with no retention
+window to beat. This runbook's own manual SQL (§6) remains documented
+and valid as a fallback: it needs no code, works from a bare database
+connection, and is the only option left if the Platform Admin page
+itself is ever unreachable for any reason.
 
-## 2. Current manual-only status and blockers
+A small set of bounded, read-only, aggregate-only SQL queries an
+operator runs by hand against the production database — see §2 for why
+this started as the only option, and §9 for the page that now covers
+the same ground automatically.
 
-Monitoring is manual today because every automated alternative is
-currently blocked or not yet justified:
+## 2. Status and remaining blockers
+
+This runbook's manual SQL was, for a time, the whole mechanism — every
+automated alternative was blocked or not yet justified. That is now
+only true of two of the three:
 
 - **Short Vercel retention, no Log Drain.** Runtime Log retention on the
   current plan is far too short (about an hour) for a daily cron's log
@@ -23,20 +29,23 @@ currently blocked or not yet justified:
   retrieval workflow exists to check within that window. Vercel Pro /
   Log Drain configuration was explicitly evaluated and deferred by the
   owner — see the Vercel Log Drain preflight/decision-closure reports.
-  No external alerting exists.
+  No external alerting exists. **Still blocked** — no push alerting of
+  any kind exists; both this runbook and §9's page are pull-based.
 - **Email automation is blocked.** A scheduled summary email would need
   an explicit operator-recipient decision (never assume the app's OWNER
   role is the same person as the platform operator) and confirmed Resend
   sender/domain readiness. `RESEND_API_KEY`/`INVITATION_FROM_EMAIL` being
   set in Production is necessary but not sufficient — custom-domain
-  verification remains an unresolved operational limitation.
-- **The natural automated home — a Platform Admin aggregate page — is
-  blocked by a known, separately tracked issue.** Platform Admin access
-  currently redirects the owner to the ordinary Dashboard. This runbook
-  does not fix that; §9 describes the page this should become once it's
-  fixed.
+  verification remains an unresolved operational limitation. **Still
+  blocked**, unchanged.
+- ~~The natural automated home — a Platform Admin aggregate page — is
+  blocked by a known, separately tracked issue.~~ **Resolved on both
+  fronts**: Platform Admin production access itself was restored
+  (`PLATFORM_ADMIN_ACCESS_CONFIGURATION_GATE: PASS`), and the aggregate
+  page this section originally deferred to is now built — see §9.
 
-Until one of those blockers clears, this runbook is the whole mechanism.
+This runbook's manual SQL remains valid and unchanged; it is simply no
+longer the *only* way to check.
 
 ## 3. Suggested cadence
 
@@ -229,38 +238,57 @@ log message keys within Vercel's own short retention window:
 - `[portal-analytics] Failed to record portal login.`
 - `[portal-analytics] Failed to record portal download-link request.`
 
-## 9. Future preferred surface: a Platform Admin aggregate page
+## 9. Implemented: the Platform Admin Observability page
 
-The architecturally correct home for this check is a new, read-only page
-under `(platform-admin)` — Platform Admin already exists specifically as
-a cross-organization, read-only operator console
-(`docs/operator-setup.md`'s own description), gated by
-`requirePlatformAdmin()`/`PLATFORM_ADMIN_EMAILS`, with an established
-query-module convention (`src/lib/platform-admin/queries/*.ts`) this
-would extend with the same four queries above. It would remove the
-"someone has to remember to run this" limitation entirely (pull, on
-demand, always current) with no retention problem and no new external
-service.
+**Built.** `/platform-admin/observability` (`src/app/(platform-admin)/
+platform-admin/observability/page.tsx`, backed by
+`src/lib/platform-admin/queries/failure-monitoring.ts`) reproduces the
+exact same four aggregate checks as §6's manual SQL, rendered as a
+read-only page instead of a query an operator types by hand — same
+7-day window, same `failureCode`/`status`/`failureReason` grouping, same
+1-hour and (source-derived) 120-second stale thresholds, same
+latest-attempt-per-invoice supersession semantics, same forbidden-output
+list (no `recipientEmail`/`invoiceId`/`providerEventId`/
+`organizationId`/row id ever rendered). Authorization is the same single
+choke point every other Platform Admin page already uses —
+`requirePlatformAdmin()` in `(platform-admin)/layout.tsx` — not a second,
+independent check.
 
-**Current blocker:** Platform Admin access currently redirects the owner
-to the ordinary Dashboard — a known, separately tracked issue, not fixed
-by this document. This section describes the intended eventual surface;
-it is not implemented and this runbook does not depend on it.
+One implementation difference from §6's raw SQL, disclosed here because
+it affects performance at higher volume: `check-platform-admin-security.mjs`
+forbids `$queryRaw`/`$executeRaw` anywhere under `src/lib/platform-admin`,
+so the page cannot use a real `DISTINCT ON` query the way §6's manual SQL
+does. It reproduces the identical latest-attempt-per-invoice result in
+pure Prisma instead — fetching every `InvoiceEmailAttempt` row in the
+7-day window (four narrow columns only, never `recipientEmail`/id/
+`providerMessageId`/`idempotencyKey`/`requestedByUserId`) and reducing to
+the latest row per invoice in application memory. Correct and safe at
+this product's current invoice-email volume; if that volume grows enough
+to make this scan slow, revisit as a deliberate, separately reviewed
+schema/index change — not silently absorbed here.
+
+This runbook's own manual SQL (§6) remains the fallback if the Platform
+Admin page is ever unreachable for any reason — nothing about building
+the page changed or removed the manual queries.
 
 ## 10. Limitations and reconsideration conditions
 
-- Purely reactive and manual — there is no push signal; a failure is only
-  discovered the next time someone runs this runbook.
+- **No push alerting still exists.** Both this runbook and §9's page are
+  pull-based — a failure is only discovered the next time someone runs
+  the manual check or opens the page. Short Vercel log retention and no
+  Log Drain remain accepted limitations (§2).
 - `InvoiceEmailAttempt`'s existing indexes (`[invoiceId, attemptedAt]`,
   `[invoiceId, status, attemptedAt]`) are both `invoiceId`-first; a
-  cross-invoice query with no `invoiceId` predicate (Queries C/D) has no
-  supporting index and requires a scan. Acceptable at this product's
-  current early-stage volume; revisit if invoice-email volume grows
-  enough to make that scan slow.
-- Reconsider this runbook (in favor of §9, or of the previously-deferred
-  Log Drain/email options) if any of the following changes: the Platform
-  Admin access issue is fixed; Resend sender/domain readiness and an
-  explicit operator-recipient decision are both established; the Vercel
-  plan changes in a way that makes log retention or an external drain
-  practical; or failure volume grows enough that a weekly manual check is
-  no longer a proportionate cadence.
+  cross-invoice query with no `invoiceId` predicate (Queries C/D, and
+  §9's page's own in-memory equivalent) has no supporting index and
+  requires a scan. Acceptable at this product's current early-stage
+  volume; revisit as a deliberate, separately reviewed schema/index
+  change if invoice-email volume ever grows enough to make that scan
+  slow — never silently added as a side effect of an unrelated change.
+- This runbook's manual SQL remains the fallback if §9's page is ever
+  unreachable — kept intentionally, not dead documentation.
+- Reconsider the remaining pull-only posture (in favor of the
+  previously-deferred Log Drain/email options) if either changes: Resend
+  sender/domain readiness and an explicit operator-recipient decision are
+  both established; or the Vercel plan changes in a way that makes log
+  retention or an external drain practical.
