@@ -13,7 +13,14 @@ const ACTIVE_PROJECT_STATUS: ProjectStatus = "IN_PROGRESS";
 // "open"), not the detail page, not the overview's recent-invoices or
 // open-aggregate. A DRAFT invoice belongs to the still-in-progress
 // pre-Issue workflow, which is never shown to a client.
-const VISIBLE_PORTAL_STATUSES: readonly InvoiceStatus[] = ["SENT", "OVERDUE", "PAID", "CANCELLED"];
+// Exported — this is now the one authoritative Portal-visible status set,
+// also reused by verifyPortalAttachmentAccess() in ./attachments (Client
+// Portal Audit Finding 1) so an INVOICE-scoped attachment can never be
+// reachable for an Invoice status this module itself would never show.
+// There is no import in the other direction (this file has no dependency
+// on ./attachments, directly or transitively), so this reuse creates no
+// circular dependency.
+export const VISIBLE_PORTAL_STATUSES: readonly InvoiceStatus[] = ["SENT", "OVERDUE", "PAID", "CANCELLED"];
 
 // PAID and CANCELLED are deliberately excluded from "open" — an invoice
 // the client no longer owes money on, or one that was called off, isn't
