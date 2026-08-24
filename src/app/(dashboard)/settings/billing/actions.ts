@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentMembership } from "@/lib/current-user";
 import { isPurchasablePlanKey } from "@/lib/billing/plan-selection";
 import { getBillingProviderAdapter } from "@/lib/billing/provider/provider";
+import { logBillingProviderFailure } from "@/lib/billing/billing-diagnostics";
 import { sanitizeRedirectPath } from "@/lib/safe-redirect";
 import { checkRateLimit, BILLING_CHECKOUT_LIMIT, BILLING_PORTAL_LIMIT, RATE_LIMIT_MESSAGE } from "@/lib/rate-limit";
 
@@ -88,6 +89,7 @@ export async function requestPlanChangeAction(planKey: string): Promise<BillingA
       existingProviderCustomerId: existing?.providerCustomerId ?? null,
     });
   } catch {
+    logBillingProviderFailure("checkout");
     return { ok: false, message: CHECKOUT_ERROR_MESSAGE };
   }
 
@@ -129,6 +131,7 @@ export async function manageSubscriptionAction(): Promise<BillingActionResult> {
       returnUrl: billingReturnUrl("success"),
     });
   } catch {
+    logBillingProviderFailure("customer_portal");
     return { ok: false, message: PORTAL_ERROR_MESSAGE };
   }
 
