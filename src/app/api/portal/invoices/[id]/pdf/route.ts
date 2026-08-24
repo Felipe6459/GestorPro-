@@ -4,6 +4,7 @@ import { getCurrentPortalUser } from "@/lib/current-portal-user";
 import { checkRateLimit, PORTAL_INVOICE_PDF_DOWNLOAD_LIMIT } from "@/lib/rate-limit";
 import { classifyInvoiceArchival } from "@/lib/invoices/pdf/classify-archival";
 import { buildInvoicePdfStoragePath, createInvoicePdfSignedUrl, type InvoicePdfObjectIdentity } from "@/lib/invoices/pdf/storage";
+import { logInvoicePdfLedgerMismatch } from "@/lib/invoices/pdf/issue-diagnostics";
 
 const NOT_FOUND_MESSAGE = "Not found";
 const SIGNING_FAILURE_MESSAGE = "Unable to generate a download link.";
@@ -143,9 +144,11 @@ export async function GET(
   try {
     rebuiltPath = buildInvoicePdfStoragePath(identity);
   } catch {
+    logInvoicePdfLedgerMismatch("rebuild_failed", "portal");
     return new NextResponse(SIGNING_FAILURE_MESSAGE, { status: 502 });
   }
   if (rebuiltPath !== invoice.pdfStoragePath) {
+    logInvoicePdfLedgerMismatch("path_mismatch", "portal");
     return new NextResponse(SIGNING_FAILURE_MESSAGE, { status: 502 });
   }
 
