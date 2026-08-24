@@ -34,6 +34,7 @@ import {
 } from "./storage";
 import { resolveInvoiceLogo, type ResolvedInvoiceLogo } from "./logo";
 import { compensateArchiveUpload } from "./archive-compensation";
+import { logInvoiceIssueFailure, type InvoiceIssueFailureStage } from "./issue-diagnostics";
 
 /**
  * Invoice System Official Slice 3, sub-PR 3b — the authoritative, OWNER-only
@@ -116,7 +117,17 @@ const defaultDeps: IssueInvoiceDeps = {
   afterUploadBeforeFinalize: () => {},
 };
 
-function fail(error: IssueInvoiceErrorCode): IssueInvoiceResult {
+/**
+ * `stage`, when supplied, is logged via logInvoiceIssueFailure() before
+ * returning — see that function's own doc comment for the full
+ * non-disclosure contract. Deliberately omitted at every call site whose
+ * IssueInvoiceErrorCode is an ordinary, expected outcome (FORBIDDEN,
+ * NOT_FOUND, NOT_DRAFT, STALE_VERSION, CONFLICT) rather than a genuine
+ * system failure — see this correction's own PR description for the
+ * full call-site matrix and rationale.
+ */
+function fail(error: IssueInvoiceErrorCode, stage?: InvoiceIssueFailureStage): IssueInvoiceResult {
+  if (stage) logInvoiceIssueFailure(stage);
   return { ok: false, error };
 }
 
@@ -228,7 +239,7 @@ export async function issueInvoice(
   };
 
   const calculation = calculateInvoiceTotals(calculationInput);
-  if (!calculation.ok) return fail("SNAPSHOT_INVALID");
+  if (!calculation.ok) return fail("SNAPSHOT_INVALID", "snapshot_invalid");
   // Same reasoning as `draftInvoice` above — a fresh binding whose own
   // static type is already the narrowed "ok: true" variant, safe to read
   // from inside a nested closure without repeating the narrowing there.
@@ -236,7 +247,7 @@ export async function issueInvoice(
 
   const recipientSnapshot = buildRecipientSnapshotV1(invoice.client);
   const parsedRecipient = parseRecipientSnapshot(recipientSnapshot);
-  if (!parsedRecipient.ok) return fail("SNAPSHOT_INVALID");
+  if (!parsedRecipient.ok) return fail("SNAPSHOT_INVALID", "snapshot_invalid");
   const rendererRecipient = toRendererRecipientPresentation(parsedRecipient.snapshot);
 
   // Payment/company-profile data is read only after the OWNER check above —
@@ -281,10 +292,10 @@ export async function issueInvoice(
 
   const primaryIssuerSnapshot = buildIssuerSnapshot(resolvedLogo.provenance);
   const parsedPrimaryIssuer = parseIssuerSnapshot(primaryIssuerSnapshot);
-  if (!parsedPrimaryIssuer.ok) return fail("SNAPSHOT_INVALID");
+  if (!parsedPrimaryIssuer.ok) return fail("SNAPSHOT_INVALID", "snapshot_invalid");
 
   const primaryRendererIssuer = toRendererIssuerPresentation(parsedPrimaryIssuer.snapshot, resolvedLogo.bytes);
-  if (!primaryRendererIssuer.ok) return fail("SNAPSHOT_INVALID");
+  if (!primaryRendererIssuer.ok) return fail("SNAPSHOT_INVALID", "snapshot_invalid");
 
   function buildViewModel(issuer: InvoicePdfIssuerPresentation) {
     return buildInvoicePdfViewModel({
@@ -317,7 +328,7 @@ export async function issueInvoice(
     if (resolvedLogo.bytes === null) {
       // No logo was involved — a render failure here has nothing to do
       // with logo bytes, so there is nothing safe to retry.
-      return fail("RENDER_FAILED");
+      return fail("RENDER_FAILED", "render_failed");
     }
 
     // Defense in depth: even after logo.ts's own MIME/byte-signature
@@ -328,15 +339,15 @@ export async function issueInvoice(
     // successful PDF, and never upload the failed first render.
     const fallbackIssuerSnapshot = buildIssuerSnapshot({ included: false, reason: "invalid_content" });
     const parsedFallbackIssuer = parseIssuerSnapshot(fallbackIssuerSnapshot);
-    if (!parsedFallbackIssuer.ok) return fail("SNAPSHOT_INVALID");
+    if (!parsedFallbackIssuer.ok) return fail("SNAPSHOT_INVALID", "snapshot_invalid");
 
     const fallbackRendererIssuer = toRendererIssuerPresentation(parsedFallbackIssuer.snapshot, null);
-    if (!fallbackRendererIssuer.ok) return fail("SNAPSHOT_INVALID");
+    if (!fallbackRendererIssuer.ok) return fail("SNAPSHOT_INVALID", "snapshot_invalid");
 
     try {
       pdfBuffer = await deps.render(buildViewModel(fallbackRendererIssuer.presentation));
     } catch {
-      return fail("RENDER_FAILED");
+      return fail("RENDER_FAILED", "render_failed");
     }
 
     issuerSnapshotForPersistence = fallbackIssuerSnapshot;
@@ -344,7 +355,8 @@ export async function issueInvoice(
 
   const validation = validatePdfBuffer(pdfBuffer);
   if (!validation.ok) {
-    return fail(validation.reason === "TOO_LARGE" ? "PDF_TOO_LARGE" : "RENDER_FAILED");
+    const tooLarge = validation.reason === "TOO_LARGE";
+    return fail(tooLarge ? "PDF_TOO_LARGE" : "RENDER_FAILED", tooLarge ? "pdf_too_large" : "render_failed");
   }
 
   // The exact validated snapshot values actually used to render — the
@@ -352,7 +364,7 @@ export async function issueInvoice(
   // so persistence can never silently drift from what rendering actually
   // used.
   const parsedIssuerForPersistence = parseIssuerSnapshot(issuerSnapshotForPersistence);
-  if (!parsedIssuerForPersistence.ok) return fail("SNAPSHOT_INVALID");
+  if (!parsedIssuerForPersistence.ok) return fail("SNAPSHOT_INVALID", "snapshot_invalid");
 
   // No ledger row and no Storage object exist for this attempt at this
   // point — both are created only from here on.
@@ -368,7 +380,7 @@ export async function issueInvoice(
     // A malformed generated archive identity (or a path-construction
     // failure derived from it) is caught before any DB write or upload is
     // ever attempted — no partial ledger row, no partial Storage object.
-    return fail("FINALIZATION_FAILED");
+    return fail("FINALIZATION_FAILED", "identity_build_failed");
   }
 
   try {
@@ -384,7 +396,7 @@ export async function issueInvoice(
     });
   } catch {
     // Ledger creation itself failed — no upload is ever attempted.
-    return fail("FINALIZATION_FAILED");
+    return fail("FINALIZATION_FAILED", "ledger_create_failed");
   }
 
   // --- D. Upload ----------------------------------------------------------
@@ -409,9 +421,9 @@ export async function issueInvoice(
     // No compensation is needed (upload was never attempted); the
     // PENDING_UPLOAD ledger row this same call already created remains
     // exactly as-is, durable evidence for a later reconciliation run.
-    return fail("FINALIZATION_FAILED");
+    return fail("FINALIZATION_FAILED", "ledger_ownership_check_failed");
   }
-  if (!stillOwned) return fail("FINALIZATION_FAILED");
+  if (!stillOwned) return fail("FINALIZATION_FAILED", "ledger_ownership_lost");
 
   let uploadResult: InvoicePdfUploadResult;
   try {
@@ -428,7 +440,8 @@ export async function issueInvoice(
     // completed server-side) — always attempt compensation rather than
     // assuming nothing was written.
     await compensateArchiveUpload(deps, identity.archiveId, identity, deps.now());
-    return fail(uploadResult.reason === "storage_not_configured" ? "STORAGE_NOT_CONFIGURED" : "UPLOAD_FAILED");
+    const notConfigured = uploadResult.reason === "storage_not_configured";
+    return fail(notConfigured ? "STORAGE_NOT_CONFIGURED" : "UPLOAD_FAILED", notConfigured ? "storage_not_configured" : "upload_failed");
   }
 
   // Internal-only crash-simulation boundary (see IssueInvoiceDeps's own
@@ -501,7 +514,15 @@ export async function issueInvoice(
       return { ok: true, finalizedAt: now, notificationIds: activity.notificationIds };
     });
   } catch (err) {
-    commitOutcome = err instanceof InvoiceUpdateConflictError ? { ok: false, error: "CONFLICT" } : { ok: false, error: "FINALIZATION_FAILED" };
+    if (err instanceof InvoiceUpdateConflictError) {
+      // An ordinary optimistic-concurrency race — expected under
+      // concurrent edits, never logged (matches this codebase's own
+      // established precedent of not diagnosing benign contention).
+      commitOutcome = { ok: false, error: "CONFLICT" };
+    } else {
+      logInvoiceIssueFailure("transaction_failed");
+      commitOutcome = { ok: false, error: "FINALIZATION_FAILED" };
+    }
   }
 
   if (!commitOutcome.ok) {
