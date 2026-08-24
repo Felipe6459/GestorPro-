@@ -267,7 +267,19 @@ export async function getOrCreateOrganizationId(
           update: { email: user.email },
           create: { id: user.id, email: user.email, name: user.name },
         });
-        return await createPersonalOrganizationAndMembership(user, trimmedPreferredName);
+        const organizationId = await createPersonalOrganizationAndMembership(user, trimmedPreferredName);
+        // Production Observability Correction 2 — a bounded, fixed,
+        // zero-argument signal that this exact recovery genuinely
+        // succeeded. Logged only here, once, after both the User-row
+        // re-establishment and the retried transaction have already
+        // succeeded — never before, never for an unrelated/unrecognized
+        // P2003, and never on the failed-retry path below (which throws
+        // before reaching this line). No user/organization/membership id,
+        // error object, constraint metadata, retry count, or timing is
+        // ever included — there is nothing here to log beyond the fact
+        // that this happened at all.
+        console.warn("[organization-provisioning] Membership FK race recovered.");
+        return organizationId;
       } catch {
         throw new Error("Unable to set up your organization. Please try again.");
       }
