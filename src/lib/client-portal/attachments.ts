@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import type { AttachmentEntityType } from "@/generated/prisma/enums";
+import { VISIBLE_PORTAL_STATUSES } from "./queries";
 
 export type PortalAttachmentParentType = AttachmentEntityType;
 
@@ -103,6 +104,18 @@ export async function getPortalInvoiceAttachments(invoice: {
  * branch fails closed: an unrecognized entityType, an organizationId
  * mismatch, or an empty parent lookup (orphaned/mismatched Attachment) all
  * return false, never true.
+ *
+ * Client Portal Audit Finding 1: the INVOICE branch additionally requires
+ * the Invoice's own status to be one of VISIBLE_PORTAL_STATUSES — the
+ * exact same set getPortalInvoice()/getPortalInvoices() already use to
+ * keep a DRAFT (or any other Portal-invisible) Invoice invisible on every
+ * other Portal surface. Without this, an attachment attached to a DRAFT
+ * Invoice belonging to this exact Client would otherwise still pass this
+ * check and receive a signed download URL, even though the Invoice itself
+ * is never visible anywhere in the Portal UI. The added predicate fails
+ * closed identically to every other case here: a DRAFT (or other
+ * ineligible) Invoice's attachment simply doesn't match, indistinguishable
+ * from a nonexistent Invoice.
  */
 export async function verifyPortalAttachmentAccess(
   attachment: { entityType: AttachmentEntityType; entityId: string; organizationId: string },
@@ -128,6 +141,7 @@ export async function verifyPortalAttachmentAccess(
           id: attachment.entityId,
           clientId: identity.clientId,
           project: { clientId: identity.clientId },
+          status: { in: [...VISIBLE_PORTAL_STATUSES] },
         },
         select: { id: true },
       });

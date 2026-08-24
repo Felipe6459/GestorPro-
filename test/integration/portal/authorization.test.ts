@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import {
@@ -127,5 +128,177 @@ describe("Client Portal authorization — PortalUser A cannot see Client B's dat
       organizationId: fixtures.orgB.id, // wrong org, right client — must still fail
     });
     expect(result).toBe(false);
+  });
+});
+
+/**
+ * Client Portal Audit Finding 1 — verifyPortalAttachmentAccess()'s INVOICE
+ * branch previously checked only clientId + project.clientId, never the
+ * Invoice's own status, so an attachment attached to a DRAFT (or any other
+ * Portal-invisible) Invoice belonging to the correct Client still passed.
+ * This is the exact matrix the corrected status predicate must satisfy:
+ * every VISIBLE_PORTAL_STATUSES value allowed, DRAFT (and nothing else)
+ * denied, with every existing cross-client/cross-organization/missing-
+ * entity boundary from the describe block above still enforced, and
+ * PROJECT/CLIENT attachment behavior completely unaffected.
+ */
+describe("Client Portal Audit Finding 1 — verifyPortalAttachmentAccess() Invoice-status boundary", () => {
+  let fixtures: TestFixtures;
+  let draftInvoice: { id: string };
+  let sentInvoice: { id: string };
+  let overdueInvoice: { id: string };
+  let paidInvoice: { id: string };
+  let cancelledInvoice: { id: string };
+  let crossClientInvoice: { id: string; clientId: string };
+  let allInvoiceIds: string[];
+  const attachmentIds: string[] = [];
+
+  async function createInvoiceAttachment(entityId: string, organizationId: string) {
+    // storagePath is @unique — a fresh randomUUID() per call, since test 7
+    // deliberately reuses the same sentInvoice.id as test 2's entityId.
+    const attachment = await prisma.attachment.create({
+      data: {
+        entityType: "INVOICE",
+        entityId,
+        organizationId,
+        originalName: "finding-1.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 10,
+        storageBucket: "attachments",
+        storagePath: `finding-1/${randomUUID()}.pdf`,
+        uploadedById: fixtures.owner.id,
+      },
+    });
+    attachmentIds.push(attachment.id);
+    return attachment;
+  }
+
+  beforeAll(async () => {
+    fixtures = await seedTestData();
+    const common = {
+      projectId: fixtures.project.id,
+      clientId: fixtures.clientA.id,
+      organizationId: fixtures.orgA.id,
+      issueDate: new Date(),
+    };
+
+    draftInvoice = await prisma.invoice.create({
+      data: { ...common, invoiceNumber: "FINDING1-DRAFT-1", amount: "10.00", status: "DRAFT" },
+    });
+    sentInvoice = await prisma.invoice.create({
+      data: { ...common, invoiceNumber: "FINDING1-SENT-1", amount: "20.00", status: "SENT" },
+    });
+    overdueInvoice = await prisma.invoice.create({
+      data: { ...common, invoiceNumber: "FINDING1-OVERDUE-1", amount: "30.00", status: "OVERDUE" },
+    });
+    paidInvoice = await prisma.invoice.create({
+      data: { ...common, invoiceNumber: "FINDING1-PAID-1", amount: "40.00", status: "PAID", paidAt: new Date() },
+    });
+    cancelledInvoice = await prisma.invoice.create({
+      data: { ...common, invoiceNumber: "FINDING1-CANCELLED-1", amount: "50.00", status: "CANCELLED" },
+    });
+
+    // A same-organization, different-Client SENT invoice — proves the
+    // status predicate never substitutes for the existing clientId
+    // boundary (a visible status alone must never be enough).
+    const otherClient = await prisma.client.create({
+      data: { name: "Finding 1 Other Client", organizationId: fixtures.orgA.id, userId: fixtures.owner.id },
+    });
+    crossClientInvoice = await prisma.invoice
+      .create({
+        data: {
+          invoiceNumber: "FINDING1-CROSS-CLIENT-1",
+          amount: "60.00",
+          status: "SENT",
+          issueDate: new Date(),
+          projectId: fixtures.project.id,
+          clientId: otherClient.id,
+          organizationId: fixtures.orgA.id,
+        },
+      })
+      .then((invoice) => ({ id: invoice.id, clientId: otherClient.id }));
+
+    allInvoiceIds = [
+      draftInvoice.id,
+      sentInvoice.id,
+      overdueInvoice.id,
+      paidInvoice.id,
+      cancelledInvoice.id,
+      crossClientInvoice.id,
+    ];
+  });
+
+  afterAll(async () => {
+    await prisma.attachment.deleteMany({ where: { id: { in: attachmentIds } } });
+    await prisma.invoice.deleteMany({ where: { id: { in: allInvoiceIds } } });
+    await prisma.client.deleteMany({ where: { id: crossClientInvoice.clientId } });
+    await cleanupTestData(fixtures);
+  });
+
+  const identity = () => ({ clientId: fixtures.clientA.id, organizationId: fixtures.orgA.id });
+
+  it("1. DRAFT Invoice attachment, same client/organization — denied", async () => {
+    const attachment = await createInvoiceAttachment(draftInvoice.id, fixtures.orgA.id);
+    expect(await verifyPortalAttachmentAccess(attachment, identity())).toBe(false);
+  });
+
+  it("2. SENT Invoice attachment — allowed", async () => {
+    const attachment = await createInvoiceAttachment(sentInvoice.id, fixtures.orgA.id);
+    expect(await verifyPortalAttachmentAccess(attachment, identity())).toBe(true);
+  });
+
+  it("3. OVERDUE Invoice attachment — allowed", async () => {
+    const attachment = await createInvoiceAttachment(overdueInvoice.id, fixtures.orgA.id);
+    expect(await verifyPortalAttachmentAccess(attachment, identity())).toBe(true);
+  });
+
+  it("4. PAID Invoice attachment — allowed", async () => {
+    const attachment = await createInvoiceAttachment(paidInvoice.id, fixtures.orgA.id);
+    expect(await verifyPortalAttachmentAccess(attachment, identity())).toBe(true);
+  });
+
+  it("5. CANCELLED Invoice attachment — allowed", async () => {
+    const attachment = await createInvoiceAttachment(cancelledInvoice.id, fixtures.orgA.id);
+    expect(await verifyPortalAttachmentAccess(attachment, identity())).toBe(true);
+  });
+
+  it("6. Cross-client Invoice attachment (visible status, wrong Client) — denied", async () => {
+    const attachment = await createInvoiceAttachment(crossClientInvoice.id, fixtures.orgA.id);
+    expect(await verifyPortalAttachmentAccess(attachment, identity())).toBe(false);
+  });
+
+  it("7. Cross-organization Invoice attachment (visible status, right Client, wrong organizationId claimed) — denied", async () => {
+    const attachment = await createInvoiceAttachment(sentInvoice.id, fixtures.orgA.id);
+    const result = await verifyPortalAttachmentAccess(attachment, {
+      clientId: fixtures.clientA.id,
+      organizationId: fixtures.orgB.id,
+    });
+    expect(result).toBe(false);
+  });
+
+  it("8. Missing/mismatched entity — an Attachment whose entityId matches no Invoice at all — denied", async () => {
+    const attachment = await createInvoiceAttachment(randomUUID(), fixtures.orgA.id);
+    expect(await verifyPortalAttachmentAccess(attachment, identity())).toBe(false);
+  });
+
+  it("9. PROJECT and CLIENT attachment behavior is completely unaffected by the new INVOICE-only predicate", async () => {
+    const clientAttachment = await prisma.attachment.findUniqueOrThrow({ where: { id: fixtures.attachment.id } });
+    expect(await verifyPortalAttachmentAccess(clientAttachment, identity())).toBe(true);
+
+    const projectAttachment = await prisma.attachment.create({
+      data: {
+        entityType: "PROJECT",
+        entityId: fixtures.project.id,
+        organizationId: fixtures.orgA.id,
+        originalName: "finding-1-project.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 10,
+        storageBucket: "attachments",
+        storagePath: `finding-1/project-${randomUUID()}.pdf`,
+        uploadedById: fixtures.owner.id,
+      },
+    });
+    attachmentIds.push(projectAttachment.id);
+    expect(await verifyPortalAttachmentAccess(projectAttachment, identity())).toBe(true);
   });
 });
