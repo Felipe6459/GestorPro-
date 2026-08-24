@@ -88,11 +88,14 @@ export async function GET(
   const classification = classifyInvoiceArchival(invoice);
 
   // 5. draft / legacy_eligible / invariant_violation (any reason) — same
-  // generic 404 as nonexistent/cross-scope above. This route never fixes
-  // general Portal DRAFT visibility (a DRAFT invoice may still appear in
-  // the Portal list/detail today, per docs/invoicing-architecture.md §10,
-  // deferred to Slice 5) — it only ever ensures DRAFT never receives a
-  // PDF link or signed URL.
+  // generic 404 as nonexistent/cross-scope above. General Portal DRAFT
+  // visibility is a solved problem elsewhere (Invoice System Official
+  // Slice 5a/PR #89 excluded DRAFT from every Portal list/detail/overview
+  // surface via VISIBLE_PORTAL_STATUSES, and Client Portal Audit Finding 1/
+  // PR #107 closed the matching attachment-download gap) — this check
+  // remains as this route's own independent, defense-in-depth guarantee
+  // that DRAFT never receives a PDF link or signed URL, not as the sole
+  // place that fact is enforced.
   if (classification.kind !== "archived") {
     return new NextResponse(NOT_FOUND_MESSAGE, { status: 404 });
   }

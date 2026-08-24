@@ -16,17 +16,21 @@ import { SegmentErrorState } from "@/components/ui/segment-error-state";
  * this point) — this boundary correctly never wraps them.
  *
  * HONEST COVERAGE LIMIT (verified against this repo's installed Next.js
- * 16.2.12 docs, node_modules/next/dist/docs/01-app/03-api-reference/
+ * docs, node_modules/next/dist/docs/01-app/03-api-reference/
  * 03-file-conventions/error.md): "error.js... does not wrap the layout.js
  * ... above it in the same segment." This boundary therefore does NOT
  * catch an exception thrown inside `portal/(app)/layout.tsx` itself
  * (where the portal-identity/session resolution runs) — only in the
- * pages it renders as `children`. A genuine, unexpected failure during
- * that identity resolution (as opposed to its own ordinary redirect
- * behavior) still falls through to `global-error.tsx` exactly as before
- * this PR. Moving that check to close this gap is a materially different,
- * riskier change to existing authentication code and is deliberately out
- * of this PR's scope.
+ * pages it renders as `children`. That gap was closed separately, not by
+ * this file: Stability Correction F2 (PR #102) added `src/app/error.tsx`,
+ * a root-level sibling of `src/app/layout.tsx` that wraps every nested
+ * layout beneath it — including `portal/(app)/layout.tsx` — in its own
+ * boundary. A genuine, unexpected failure during this layout's identity
+ * resolution now recovers via that root boundary (a full `<html>`
+ * replacement, `global-error.tsx`'s own chrome-less presentation) rather
+ * than this segment's own in-place recovery UI — see `src/app/error.tsx`'s
+ * own doc comment for the full account. Only a failure thrown by
+ * `src/app/layout.tsx` itself remains `global-error.tsx`'s responsibility.
  */
 export default function PortalError({
   error,
