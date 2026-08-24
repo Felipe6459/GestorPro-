@@ -2,8 +2,9 @@
 
 Notes for whoever eventually operates a real deployment of this project —
 what's already built, what still needs connecting, and what's deliberately
-left undone. Covers **Billing**, **Storage**, and **Platform Admin**
-today; other sections will be added here as they become relevant.
+left undone. Covers **Billing**, **Storage**, **Platform Admin**, and
+**Production Observability** today; other sections will be added here as
+they become relevant.
 
 No real credentials, keys, or account-specific values are included
 anywhere in this document. Every value below is a placeholder to fill in
@@ -245,3 +246,13 @@ repository that can currently charge a real customer or reach a real
 payment provider. It stays that way until a real adapter is implemented
 and connected per `docs/billing-provider-adapter.md`'s own checklist, and
 is deliberately turned on.
+
+## Production observability
+
+`WebhookEvent` and `InvoiceEmailAttempt` already record durable failure
+state, but nothing surfaces it automatically today — see
+[`docs/production-observability-runbook.md`](production-observability-runbook.md)
+for the bounded, read-only, aggregate-only SQL an operator runs by hand to
+check for them, and the reasons (short Vercel retention, blocked Platform
+Admin access, unconfirmed Resend readiness) automated monitoring isn't in
+place yet.
