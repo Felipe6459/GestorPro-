@@ -249,10 +249,11 @@ is deliberately turned on.
 
 ## Production observability
 
-`WebhookEvent` and `InvoiceEmailAttempt` already record durable failure
-state, but nothing surfaces it automatically today — see
+`WebhookEvent` and `InvoiceEmailAttempt` durable failure state is visible
+at **Platform Admin → Observability** (`/platform-admin/observability`),
+a read-only, on-demand, 7-day aggregate view — no retention window to
+beat, unlike Vercel's own Runtime Logs. See
 [`docs/production-observability-runbook.md`](production-observability-runbook.md)
-for the bounded, read-only, aggregate-only SQL an operator runs by hand to
-check for them, and the reasons (short Vercel retention, blocked Platform
-Admin access, unconfirmed Resend readiness) automated monitoring isn't in
-place yet.
+for the exact aggregate contract that page implements, its bounded,
+read-only manual SQL fallback, and the reasons (short Vercel retention,
+unconfirmed Resend readiness) push alerting still isn't in place.
