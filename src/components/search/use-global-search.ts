@@ -67,7 +67,7 @@ export function useGlobalSearch() {
         // Deliberately no headers/credentials override — this is a plain
         // same-origin GET relying on the browser's own cookie jar, the
         // same way every other same-origin fetch in this app already
-        // would (see docs/search-architecture.md §14: organizationId is
+        // would (see docs/search-architecture.md §6: organizationId is
         // never sent by the client, only resolved server-side from the
         // session cookie).
       });

@@ -1,15 +1,15 @@
 import type { SearchResult, SearchResultGroup, SearchResultType } from "@/lib/search/types";
 
 /**
- * Global Search Stage 3 (docs/search-architecture.md §14, and this stage's
- * own explicit state contract). Pure — takes an already-parsed HTTP status
- * and JSON body, never a real `Response`/`fetch` call itself (that lives in
- * use-global-search.ts, where it's exercised end-to-end by the E2E suite
- * rather than a unit test — this project has no component/DOM-rendering
- * test infrastructure, see the Stage 3 report). Never re-derives ranking —
- * a 200 body's groups/items are only ever filtered (never reordered or
- * re-sorted) by `sanitizeSearchGroups` below, so the backend's own group
- * and item order (§7's ranking contract) is always preserved.
+ * Global Search Stage 3 (this stage's own explicit state contract). Pure —
+ * takes an already-parsed HTTP status and JSON body, never a real
+ * `Response`/`fetch` call itself (that lives in use-global-search.ts, where
+ * it's exercised end-to-end by the E2E suite rather than a unit test — this
+ * project has no component/DOM-rendering test infrastructure, see the
+ * Stage 3 report). Never re-derives ranking — a 200 body's groups/items are
+ * only ever filtered (never reordered or re-sorted) by `sanitizeSearchGroups`
+ * below, so the backend's own group and item order (§7's ranking contract)
+ * is always preserved.
  */
 export type SearchOutcome =
   | { kind: "success"; groups: SearchResultGroup[] }
@@ -20,7 +20,7 @@ export type SearchOutcome =
 /** Never the real 401/403 body text ("Not authenticated."/"Not authorized.") — a signed-in staff user seeing an auth-flavored error inside a search box mid-keystroke would read as alarming/confusing for what's almost always a rare, transient session hiccup. */
 export const SEARCH_UNAUTHORIZED_MESSAGE = "Something went wrong. Please refresh the page.";
 
-/** Never the real 500 body text — a generic, never-Prisma, never-stack message, per docs/search-architecture.md §14. Also what a 200 response degrades to when its body is malformed badly enough that showing whatever survived would be misleading — see sanitizeSearchGroups. */
+/** Never the real 500 body text — a generic, never-Prisma, never-stack message. Also what a 200 response degrades to when its body is malformed badly enough that showing whatever survived would be misleading — see sanitizeSearchGroups. */
 export const SEARCH_GENERIC_ERROR_MESSAGE = "Something went wrong. Please try again.";
 
 /** Matches the backend's own RATE_LIMIT_MESSAGE (src/lib/rate-limit/index.ts) verbatim — kept as an independent client-side copy rather than importing a server module into the client bundle just for one string constant; used only as a fallback if the response body is ever unparseable. */
