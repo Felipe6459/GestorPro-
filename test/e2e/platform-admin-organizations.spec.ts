@@ -329,7 +329,7 @@ test.describe("Accessibility", () => {
 });
 
 test.describe("Organization Details (PR3.3)", () => {
-  const SECTION_TITLES = ["Business Identity", "Subscription", "Organization", "Usage", "Recent Activity"];
+  const SECTION_TITLES = ["Business Identity", "Subscription", "Organization", "Team", "Usage", "Clients", "Projects", "Recent Activity"];
 
   test("renders every section, with correct heading hierarchy, for a real seeded organization", async ({ context, baseURL }) => {
     const page = await asAdmin(context, baseURL!);
@@ -357,6 +357,34 @@ test.describe("Organization Details (PR3.3)", () => {
     // as a real entry, not the empty state.
     const activitySection = page.getByRole("region", { name: "Recent Activity" });
     await expect(activitySection.getByText("No activity yet")).toHaveCount(0);
+
+    // Team section: all three real seeded memberships (owner/admin/member),
+    // each with its own name, email, and role — already-fetched data the
+    // page previously computed (staff.length only) but never rendered.
+    const teamSection = page.getByRole("region", { name: "Team" });
+    for (const user of [fixtures.owner, fixtures.admin, fixtures.member]) {
+      await expect(teamSection.getByText(user.name)).toBeVisible();
+      await expect(teamSection.getByText(user.email)).toBeVisible();
+    }
+    await expect(teamSection.getByText("Owner", { exact: true })).toBeVisible();
+    await expect(teamSection.getByText("Admin", { exact: true })).toBeVisible();
+    await expect(teamSection.getByText("Member", { exact: true })).toBeVisible();
+
+    // Clients/Projects previews: the real seeded clientA/project, already
+    // fetched (as a capped preview) but never rendered before this PR.
+    const clientsSection = page.getByRole("region", { name: "Clients" });
+    await expect(clientsSection.getByText(fixtures.clientA.name)).toBeVisible();
+    const projectsSection = page.getByRole("region", { name: "Projects" });
+    await expect(projectsSection.getByText(fixtures.project.name)).toBeVisible();
+
+    // No internal identifier (User id, Client id, Project id) ever appears
+    // as visible text anywhere on the page — React `key` props are never
+    // serialized into the DOM, but this is an explicit, direct proof, not
+    // an assumption.
+    const bodyText = await page.locator("body").innerText();
+    for (const id of [fixtures.owner.id, fixtures.admin.id, fixtures.member.id, fixtures.clientA.id, fixtures.project.id]) {
+      expect(bodyText).not.toContain(id);
+    }
   });
 
   test("Business Identity shows real data once a profile exists, including logo and brand color", async ({ context, baseURL }) => {
@@ -408,6 +436,98 @@ test.describe("Organization Details (PR3.3)", () => {
     } finally {
       await cleanupTestOrganization(org);
     }
+  });
+
+  test.describe("Support context — Team, Clients, and Projects previews", () => {
+    test("Team shows the sole auto-provisioned owner, and Clients/Projects show an honest empty state for a brand-new organization", async ({
+      context,
+      baseURL,
+    }) => {
+      const org = await createTestOrganization(context, baseURL!, { name: `E2E No Support Context Org ${randomUUID()}` });
+      try {
+        const page = await asAdmin(context, baseURL!);
+        await page.goto(`${BASE_PATH}/${org.organizationId}`);
+
+        const teamSection = page.getByRole("region", { name: "Team" });
+        await expect(teamSection.getByText("Owner", { exact: true })).toBeVisible();
+        await expect(teamSection.getByText("No staff members")).toHaveCount(0);
+
+        const clientsSection = page.getByRole("region", { name: "Clients" });
+        await expect(clientsSection.getByText("No clients yet")).toBeVisible();
+
+        const projectsSection = page.getByRole("region", { name: "Projects" });
+        await expect(projectsSection.getByText("No projects yet")).toBeVisible();
+      } finally {
+        await cleanupTestOrganization(org);
+      }
+    });
+
+    test("Clients preview is capped at 10, ordered newest-first, and the total honestly reflects all 11 real rows", async ({
+      context,
+      baseURL,
+    }) => {
+      const org = await createTestOrganization(context, baseURL!, { name: `E2E Client Cap Org ${randomUUID()}` });
+      const clientIds: string[] = [];
+      try {
+        // 11 real Client rows, each createdAt one day apart — one more
+        // than PREVIEW_TAKE (10), so the cap and "newest first" ordering
+        // are both genuinely exercised, not just asserted against a
+        // trivially-small fixture.
+        for (let i = 0; i < 11; i++) {
+          const client = await dbQuery<{ id: string }>("client", "create", {
+            data: {
+              name: `E2E Cap Client ${String(i).padStart(2, "0")}`,
+              organizationId: org.organizationId,
+              userId: org.userId,
+              createdAt: new Date(2022, 0, i + 1).toISOString(),
+            },
+          });
+          clientIds.push(client.id);
+        }
+
+        const page = await asAdmin(context, baseURL!);
+        await page.goto(`${BASE_PATH}/${org.organizationId}`);
+        const clientsSection = page.getByRole("region", { name: "Clients" });
+
+        // Exactly 10 rows rendered (the cap), and the honest "10 of 11"
+        // count is shown — never silently implying only 10 clients exist.
+        await expect(clientsSection.getByText(/10 of 11/)).toBeVisible();
+        await expect(clientsSection.getByText("E2E Cap Client 10")).toBeVisible(); // newest (i=10)
+        await expect(clientsSection.getByText("E2E Cap Client 00")).toHaveCount(0); // oldest (i=0), excluded by the cap
+      } finally {
+        await dbQuery("client", "deleteMany", { where: { id: { in: clientIds } } });
+        await cleanupTestOrganization(org);
+      }
+    });
+
+    test("Team, Clients, and Projects previews contain no mutation, edit, delete, impersonate, or export control", async ({
+      context,
+      baseURL,
+    }) => {
+      const page = await asAdmin(context, baseURL!);
+      await page.goto(`${BASE_PATH}/${fixtures.orgA.id}`);
+
+      for (const sectionName of ["Team", "Clients", "Projects"]) {
+        const section = page.getByRole("region", { name: sectionName });
+        await expect(section.getByRole("button")).toHaveCount(0);
+        for (const forbidden of ["Edit", "Delete", "Remove", "Suspend", "Impersonate", "Export", "Sign in as"]) {
+          await expect(section.getByRole("link", { name: forbidden })).toHaveCount(0);
+        }
+      }
+    });
+
+    test("no horizontal page overflow at narrow, intermediate, and wide viewports", async ({ context, baseURL }) => {
+      const page = await asAdmin(context, baseURL!);
+      for (const width of [375, 768, 1280]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(`${BASE_PATH}/${fixtures.orgA.id}`);
+        const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        }));
+        expect(scrollWidth, `width=${width}`).toBeLessThanOrEqual(clientWidth);
+      }
+    });
   });
 
   test("Subscription section reflects a real TRIALING subscription — Lifecycle badge matches the list page's own classification", async ({
