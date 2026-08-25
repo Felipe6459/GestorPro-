@@ -1,5 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { requirePlatformAdmin } from "@/lib/platform-admin/authorization";
 import {
   computeAccessMode,
   LEGACY_ACCESS_MODE,
@@ -212,6 +213,12 @@ export type OrganizationListRow = {
  * per-row) covers the whole page: fetch every Client for the page's
  * organizations with its own portalUsers _count, then sum in memory per
  * organizationId.
+ *
+ * Module-private — never independently reachable. Protected transitively
+ * by listOrganizations()'s own requirePlatformAdmin() call, its only
+ * caller; no separate guard needed here (PLATFORM_ADMIN_EXECUTION_
+ * AUTHORIZATION_AUDIT's own "protect the public entry point, not every
+ * internal-only supporting reader" principle).
  */
 async function getPortalUserCountsByOrganization(organizationIds: string[]): Promise<Map<string, number>> {
   if (organizationIds.length === 0) return new Map();
@@ -239,11 +246,18 @@ async function getPortalUserCountsByOrganization(organizationIds: string[]): Pro
  * and classified in memory via the same computeAccessMode() the detail
  * page and billing enforcement already use, so list and detail can never
  * disagree about what a given org's access mode is.
+ *
+ * PLATFORM_ADMIN_EXECUTION_AUTHORIZATION_AUDIT correction: requirePlatformAdmin()
+ * as the first awaited operation — see organization-detail.ts's own
+ * getOrganizationDetail() doc comment for why the layout's own call alone
+ * doesn't stop this function's Prisma calls from executing.
  */
 export async function listOrganizations(
   params: OrganizationListParams,
   now: Date,
 ): Promise<{ organizations: OrganizationListRow[]; total: number }> {
+  await requirePlatformAdmin();
+
   const where = buildOrganizationWhere(params, now);
   const orderBy = buildOrganizationOrderBy(params);
 

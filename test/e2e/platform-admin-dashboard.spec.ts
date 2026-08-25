@@ -132,3 +132,28 @@ test("the KPI grid and Newest organizations both render real, non-negative numbe
     expect(value).toBeGreaterThanOrEqual(0);
   }
 });
+
+test.describe("PLATFORM_ADMIN_EXECUTION_AUTHORIZATION_AUDIT correction — route-level regression", () => {
+  // getPlatformDashboardData() (the platform-wide aggregate reader named
+  // explicitly in the investigation's own reproduction) now guards its
+  // own execution — see that module's own doc comment. This proves the
+  // externally-observable HTTP contract is unchanged: still a clean,
+  // generic redirect for both unauthorized identities. The stronger
+  // claim — that the underlying Prisma calls are now skipped — is proven
+  // by test/integration/platform-admin/execution-authorization.test.ts's
+  // own direct query-spy tests.
+
+  test("unauthenticated: still a clean, generic redirect to /login", async ({ page, baseURL }) => {
+    const res = await page.request.get(`${baseURL}/platform-admin`, { maxRedirects: 0 });
+    expect(res.status()).toBe(307);
+    expect(res.headers()["location"]).toBe("/login");
+  });
+
+  test("authenticated non-admin: still a clean, generic redirect to /dashboard", async ({ context, baseURL }) => {
+    await injectTestSession(context, { id: randomUUID(), email: "not-a-platform-admin-e2e@example.com" }, baseURL!);
+    const page = await context.newPage();
+    const res = await page.request.get(`${baseURL}/platform-admin`, { maxRedirects: 0 });
+    expect(res.status()).toBe(307);
+    expect(res.headers()["location"]).toBe("/dashboard");
+  });
+});

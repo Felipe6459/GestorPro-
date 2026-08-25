@@ -7,6 +7,7 @@ import {
   getPlatformLegalConfig,
 } from "@/lib/legal/platform-config";
 import { getPlatformBillingConfig } from "@/lib/billing/platform-billing-config";
+import { requirePlatformAdmin } from "@/lib/platform-admin/authorization";
 import { DetailSection, Field } from "@/components/platform-admin/detail-section";
 
 export const metadata: Metadata = {
@@ -49,8 +50,20 @@ function isValidUrl(value: string): boolean {
  * computed for the sections above, never a second, independent
  * process.env read that could drift from what each section already
  * shows.
+ *
+ * PLATFORM_ADMIN_EXECUTION_AUTHORIZATION_AUDIT correction: requirePlatformAdmin()
+ * called here, as the first awaited operation, is the one exception to
+ * this codebase's "guard lives inside the data-reader entry point"
+ * convention — getPlatformBranding()/getPlatformLegalConfig() are shared
+ * with fully public pages (/privacy, /terms, the site-wide footer), so
+ * guarding them directly would incorrectly redirect ordinary visitors.
+ * This page component is therefore the correct, honest entry point to
+ * protect instead (cache()-memoized, so this is not a second real check
+ * per request — see authorization.ts's own doc comment).
  */
 export default async function PlatformAdminConfigurationPage() {
+  await requirePlatformAdmin();
+
   const branding = getPlatformBranding();
   const email = getPlatformEmailConfig();
   const billing = await getPlatformBillingConfig();

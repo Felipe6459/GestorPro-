@@ -3,6 +3,16 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { seedTestData, cleanupTestData, type TestFixtures } from "../../fixtures/seed";
 import { getFailureMonitoringSummary } from "@/lib/platform-admin/queries/failure-monitoring";
+import { setMockAuthUser, resetAuthMock } from "../../support/auth-mock";
+
+// PLATFORM_ADMIN_EXECUTION_AUTHORIZATION_AUDIT correction:
+// getFailureMonitoringSummary() now calls requirePlatformAdmin() as its
+// own first awaited operation (previously relied solely on the layout —
+// see the query module's own doc comment), so every call in this file
+// needs a real allowlisted mock identity, or it now redirects instead of
+// returning a summary. Fixed, file-local email — never a real address.
+const PLATFORM_ADMIN_TEST_EMAIL = "platform-admin-failure-monitoring-test@example.com";
+const ORIGINAL_PLATFORM_ADMIN_EMAILS = process.env.PLATFORM_ADMIN_EMAILS;
 
 /**
  * §9 of docs/production-observability-runbook.md — proves
@@ -108,6 +118,8 @@ describe("getFailureMonitoringSummary — §9 Platform Admin Observability", () 
 
   beforeAll(async () => {
     fixtures = await seedTestData();
+    process.env.PLATFORM_ADMIN_EMAILS = PLATFORM_ADMIN_TEST_EMAIL;
+    setMockAuthUser({ id: randomUUID(), email: PLATFORM_ADMIN_TEST_EMAIL });
   });
 
   afterAll(async () => {
@@ -119,6 +131,12 @@ describe("getFailureMonitoringSummary — §9 Platform Admin Observability", () 
       await prisma.webhookEvent.deleteMany({ where: { id: { in: createdWebhookEventIds } } });
     }
     await cleanupTestData(fixtures);
+    resetAuthMock();
+    if (ORIGINAL_PLATFORM_ADMIN_EMAILS === undefined) {
+      delete process.env.PLATFORM_ADMIN_EMAILS;
+    } else {
+      process.env.PLATFORM_ADMIN_EMAILS = ORIGINAL_PLATFORM_ADMIN_EMAILS;
+    }
   });
 
   describe("WebhookEvent FAILED grouping (Query A)", () => {
