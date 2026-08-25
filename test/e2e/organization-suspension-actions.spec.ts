@@ -290,3 +290,146 @@ test.describe("Regression — every existing Organization Detail section is stil
     }
   });
 });
+
+/**
+ * Confirmation-input hardening hotfix — discovered during a paused,
+ * authorized Production Suspend cycle: the exact-name field had no
+ * protection against browser/OS text assistance and gave no visible
+ * feedback on a non-matching attempt. Uses a dedicated synthetic
+ * organization (never fixtures.orgA) whose name deliberately contains an
+ * ASCII apostrophe and other punctuation — the same shape as this app's
+ * own default auto-provisioned "<name>'s Workspace" organizations,
+ * the leading hypothesis for what the real Production attempt hit.
+ */
+test.describe("Confirmation input hardening (synthetic organization name with an apostrophe and punctuation)", () => {
+  const SYNTHETIC_ORG_NAME = "Alex's Bistro & Co., Ltd.";
+  let syntheticOrgId: string;
+
+  test.beforeAll(async () => {
+    const org = await dbQuery<{ id: string }>("organization", "create", {
+      data: { name: SYNTHETIC_ORG_NAME, slug: `e2e-hardening-${randomUUID()}` },
+    });
+    syntheticOrgId = org.id;
+  });
+
+  test.afterAll(async () => {
+    await dbQuery("platformAdminAuditEvent", "deleteMany", { where: { organizationId: syntheticOrgId } });
+    await dbQuery("organization", "delete", { where: { id: syntheticOrgId } });
+  });
+
+  test.afterEach(async () => {
+    await dbQuery("organization", "update", { where: { id: syntheticOrgId }, data: { suspendedAt: null } });
+    await dbQuery("platformAdminAuditEvent", "deleteMany", { where: { organizationId: syntheticOrgId } });
+  });
+
+  async function gotoSyntheticDetail(page: Page) {
+    await page.goto(`/platform-admin/organizations/${syntheticOrgId}`);
+  }
+
+  test("the confirmation input carries all four text-assistance-disabling attributes", async ({ context, baseURL }) => {
+    const page = await asAdmin(context, baseURL!);
+    await gotoSyntheticDetail(page);
+    await page.getByRole("button", { name: "Suspend" }).click();
+    const dialog = page.getByRole("dialog", { name: "Suspend organization" });
+    const input = dialog.locator('input[type="text"]');
+    await expect(input).toHaveAttribute("autocomplete", "off");
+    await expect(input).toHaveAttribute("autocorrect", "off");
+    await expect(input).toHaveAttribute("autocapitalize", "none");
+    await expect(input).toHaveAttribute("spellcheck", "false");
+  });
+
+  test("a non-empty mismatch shows the accessible bounded message with aria-invalid/aria-describedby, and an exact match clears both", async ({
+    context,
+    baseURL,
+  }) => {
+    const page = await asAdmin(context, baseURL!);
+    await gotoSyntheticDetail(page);
+    await page.getByRole("button", { name: "Suspend" }).click();
+    const dialog = page.getByRole("dialog", { name: "Suspend organization" });
+    const input = dialog.locator('input[type="text"]');
+
+    // The curly-apostrophe variant — visually near-identical, a different code point.
+    await input.fill("Alex’s Bistro & Co., Ltd.");
+    await expect(dialog.getByText("Name does not match.")).toBeVisible();
+    await expect(input).toHaveAttribute("aria-invalid", "true");
+    const describedBy = await input.getAttribute("aria-describedby");
+    expect(describedBy).not.toBeNull();
+    await expect(dialog.locator(`#${describedBy}`)).toHaveText("Name does not match.");
+
+    await input.fill(SYNTHETIC_ORG_NAME);
+    await expect(dialog.getByText("Name does not match.")).toHaveCount(0);
+    await expect(input).not.toHaveAttribute("aria-invalid");
+    await expect(input).not.toHaveAttribute("aria-describedby");
+  });
+
+  test("is empty (no message, not disabled-looking-like-an-error) before anything is typed", async ({ context, baseURL }) => {
+    const page = await asAdmin(context, baseURL!);
+    await gotoSyntheticDetail(page);
+    await page.getByRole("button", { name: "Suspend" }).click();
+    const dialog = page.getByRole("dialog", { name: "Suspend organization" });
+    await expect(dialog.getByText("Name does not match.")).toHaveCount(0);
+    await expect(dialog.locator('input[type="text"]')).not.toHaveAttribute("aria-invalid");
+  });
+
+  test("Suspend confirm stays disabled for every near-miss variant (case, whitespace, curly apostrophe, en dash) and enables only for the exact match", async ({
+    context,
+    baseURL,
+  }) => {
+    const page = await asAdmin(context, baseURL!);
+    await gotoSyntheticDetail(page);
+    await page.getByRole("button", { name: "Suspend" }).click();
+    const dialog = page.getByRole("dialog", { name: "Suspend organization" });
+    await dialog.getByLabel("Reason").selectOption("OTHER");
+    const input = dialog.locator('input[type="text"]');
+    const confirmButton = dialog.getByRole("button", { name: "Suspend" });
+
+    for (const variant of [
+      SYNTHETIC_ORG_NAME.toLowerCase(),
+      SYNTHETIC_ORG_NAME.toUpperCase(),
+      `${SYNTHETIC_ORG_NAME} `,
+      SYNTHETIC_ORG_NAME.replace("'", "’"), // curly apostrophe
+      SYNTHETIC_ORG_NAME.replace("&", "–"), // en dash swapped in for a punctuation character
+    ]) {
+      await input.fill(variant);
+      await expect(confirmButton).toBeDisabled();
+    }
+
+    await input.fill(SYNTHETIC_ORG_NAME);
+    await expect(confirmButton).toBeEnabled();
+  });
+
+  test("Cancel performs zero mutation even after a mismatch was shown", async ({ context, baseURL }) => {
+    const page = await asAdmin(context, baseURL!);
+    await gotoSyntheticDetail(page);
+    await page.getByRole("button", { name: "Suspend" }).click();
+    const dialog = page.getByRole("dialog", { name: "Suspend organization" });
+    await dialog.getByLabel("Reason").selectOption("OTHER");
+    await dialog.locator('input[type="text"]').fill("definitely wrong");
+    await expect(dialog.getByText("Name does not match.")).toBeVisible();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toBeHidden();
+
+    const org = await dbQuery<{ suspendedAt: string | null }>("organization", "findUniqueOrThrow", {
+      where: { id: syntheticOrgId },
+      select: { suspendedAt: true },
+    });
+    expect(org.suspendedAt).toBeNull();
+    const events = await dbQuery<unknown[]>("platformAdminAuditEvent", "findMany", { where: { organizationId: syntheticOrgId } });
+    expect(events).toHaveLength(0);
+  });
+
+  test("one exact confirmation submits exactly once and suspends the organization with a single audit row", async ({ context, baseURL }) => {
+    const page = await asAdmin(context, baseURL!);
+    await gotoSyntheticDetail(page);
+    await page.getByRole("button", { name: "Suspend" }).click();
+    const dialog = page.getByRole("dialog", { name: "Suspend organization" });
+    await dialog.getByLabel("Reason").selectOption("OTHER");
+    await dialog.locator('input[type="text"]').fill(SYNTHETIC_ORG_NAME);
+    await dialog.getByRole("button", { name: "Suspend" }).click();
+
+    await expect(page.getByText("Organization suspended")).toBeVisible();
+
+    const events = await dbQuery<unknown[]>("platformAdminAuditEvent", "findMany", { where: { organizationId: syntheticOrgId } });
+    expect(events).toHaveLength(1);
+  });
+});
