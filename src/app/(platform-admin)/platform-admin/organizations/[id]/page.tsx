@@ -158,12 +158,80 @@ export default async function PlatformAdminOrganizationDetailPage({
         </dl>
       </DetailSection>
 
+      <DetailSection id="team" title="Team">
+        {detail.staff.length === 0 ? (
+          <EmptyState title="No staff members" description="Staff members for this organization will appear here once invited." />
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {detail.staff.map((member) => (
+              <li key={member.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{member.name}</p>
+                  <p className="text-xs text-gray-500">{member.email}</p>
+                </div>
+                <StatusBadge status={member.role} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </DetailSection>
+
       <DetailSection id="usage" title="Usage">
         <dl className="grid grid-cols-3 gap-4">
           <Field label="Clients" value={detail.clients.total} />
           <Field label="Projects" value={detail.projects.total} />
           <Field label="Tasks" value={detail.tasksTotal} />
         </dl>
+      </DetailSection>
+
+      <DetailSection id="clients" title="Clients">
+        {detail.clients.preview.length === 0 ? (
+          <EmptyState title="No clients yet" description="Clients added to this organization will appear here." />
+        ) : (
+          <>
+            <ul className="divide-y divide-gray-100">
+              {detail.clients.preview.map((client) => (
+                <li key={client.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                  <p className="text-sm text-gray-900">{client.name}</p>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <StatusBadge status={client.status} />
+                    <time dateTime={client.createdAt.toISOString()} className="text-xs text-gray-500">
+                      {formatDate(client.createdAt)}
+                    </time>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-gray-500">
+              Showing {detail.clients.preview.length} of {detail.clients.total}
+            </p>
+          </>
+        )}
+      </DetailSection>
+
+      <DetailSection id="projects" title="Projects">
+        {detail.projects.preview.length === 0 ? (
+          <EmptyState title="No projects yet" description="Projects added to this organization will appear here." />
+        ) : (
+          <>
+            <ul className="divide-y divide-gray-100">
+              {detail.projects.preview.map((project) => (
+                <li key={project.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                  <p className="text-sm text-gray-900">{project.name}</p>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <StatusBadge status={project.status} />
+                    <time dateTime={project.createdAt.toISOString()} className="text-xs text-gray-500">
+                      {formatDate(project.createdAt)}
+                    </time>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-gray-500">
+              Showing {detail.projects.preview.length} of {detail.projects.total}
+            </p>
+          </>
+        )}
       </DetailSection>
 
       <DetailSection id="recent-activity" title="Recent Activity">
