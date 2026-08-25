@@ -7,6 +7,7 @@ import { ConfirmDialog, type ConfirmDialogHandle } from "@/components/ui/confirm
 import { useToast } from "@/components/toast/toast-provider";
 import { suspendOrganizationAction, reactivateOrganizationAction } from "@/app/(platform-admin)/platform-admin/organizations/[id]/actions";
 import { SUSPENSION_REASON_CODES, type SuspensionReasonCode } from "@/lib/platform-admin/organization-suspension-reasons";
+import { canConfirmSuspend, showsNameMismatch } from "@/lib/platform-admin/organization-suspension-confirmation";
 
 /**
  * Platform Admin Organization Suspension, PR 2. The one status
@@ -68,9 +69,11 @@ function SuspendControl({ organizationId, organizationName }: { organizationId: 
   const titleId = useId();
   const descriptionId = useId();
   const nameInputId = useId();
+  const nameMismatchId = useId();
   const reasonSelectId = useId();
 
-  const canConfirm = confirmText === organizationName && reasonCode !== "";
+  const canConfirm = canConfirmSuspend(confirmText, organizationName, reasonCode);
+  const nameMismatches = showsNameMismatch(confirmText, organizationName);
 
   function closeAndReset() {
     dialogRef.current?.close();
@@ -151,8 +154,18 @@ function SuspendControl({ organizationId, organizationName }: { organizationId: 
           value={confirmText}
           onChange={(event) => setConfirmText(event.target.value)}
           autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="none"
+          spellCheck={false}
+          aria-describedby={nameMismatches ? nameMismatchId : undefined}
+          aria-invalid={nameMismatches ? true : undefined}
           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
         />
+        {nameMismatches ? (
+          <p id={nameMismatchId} className="mt-1 text-sm text-red-600">
+            Name does not match.
+          </p>
+        ) : null}
 
         <div className="mt-6 flex justify-end gap-3">
           <Button type="button" variant="secondary" onClick={closeAndReset} disabled={pending}>
