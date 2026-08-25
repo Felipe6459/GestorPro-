@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { getVerifiedAuthUser } from "@/lib/supabase/server";
 
@@ -37,10 +38,36 @@ export function isPlatformAdmin(email: string | null | undefined): boolean {
 }
 
 /**
- * The sole entry point every page under `(platform-admin)` calls, in its
- * layout, before anything else runs — same "guard lives in the layout,
- * not repeated per-page" pattern `(dashboard)/layout.tsx` already
- * establishes for its own portal-identity guard.
+ * The canonical entry point for every Platform Admin request — called
+ * from `(platform-admin)/layout.tsx` (same "guard lives in the layout"
+ * pattern `(dashboard)/layout.tsx` already establishes for its own
+ * portal-identity guard) AND, as of the execution-order correction below,
+ * as the literal first awaited statement inside every Platform Admin
+ * data-reader entry point (see each reader's own doc comment).
+ *
+ * PLATFORM_ADMIN_EXECUTION_AUTHORIZATION_AUDIT (PASS_WITH_FINDING) found
+ * that a layout redirect protects response delivery only — this repo's
+ * installed Next.js 16.3.2 docs confirm layouts and pages render in
+ * parallel by default (node_modules/next/dist/docs/01-app/01-getting-
+ * started/06-fetching-data.md, "Parallel data fetching"), and that "a
+ * layout also does not control whether the rest of the route renders"
+ * (.../02-guides/authentication.md, "Layouts and auth checks") — so a
+ * child Server Component's own data fetching can start, and complete,
+ * before the layout's redirect() ever resolves. Deterministically
+ * reproduced: an unauthenticated or non-admin request to a real
+ * organization id still executed the full Prisma read, even though the
+ * final HTTP response was always a clean redirect with no leaked data.
+ *
+ * Wrapping this function in React's cache() — the exact DAL pattern
+ * .../06-fetching-data.md's "Reusing data with React.cache" section
+ * documents ("React.cache is scoped to the current request only. Each
+ * request gets its own memoization scope with no sharing between
+ * requests") and the exact pattern src/lib/supabase/server.ts's own
+ * getVerifiedAuthUser() already established for the same reason — means
+ * every one of these repeated calls within one request shares a single
+ * real verification, so requiring the guard again inside each reader is
+ * free, not redundant work. This changes nothing about *how* the check
+ * is performed, only how many times it is repeated per request.
  *
  * Deliberately never calls getCurrentUserOrganization()/getCurrentMembership()
  * — this has no concept of "active organization" at all, and must not
@@ -55,7 +82,7 @@ export function isPlatformAdmin(email: string | null | undefined): boolean {
  * back on their own /dashboard, not on a page that tells them what they
  * were denied.
  */
-export async function requirePlatformAdmin(): Promise<{ email: string }> {
+export const requirePlatformAdmin = cache(async (): Promise<{ email: string }> => {
   const user = await getVerifiedAuthUser();
 
   if (!user) {
@@ -67,4 +94,4 @@ export async function requirePlatformAdmin(): Promise<{ email: string }> {
   }
 
   return { email: user.email! };
-}
+});

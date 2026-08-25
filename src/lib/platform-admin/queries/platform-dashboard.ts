@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requirePlatformAdmin } from "@/lib/platform-admin/authorization";
 import { computeAccessMode, type SubscriptionStateInput } from "@/lib/billing/access-mode";
 
 export type PlatformDashboardKpis = {
@@ -72,8 +73,16 @@ export function countActiveAndExpiredTrials(
  * check-platform-admin-security.mjs for the check that keeps it that way.
  * One Promise.all, same shape as (dashboard)/dashboard/query.ts's own
  * getDashboardAnalytics.
+ *
+ * PLATFORM_ADMIN_EXECUTION_AUTHORIZATION_AUDIT correction: requirePlatformAdmin()
+ * as the first awaited operation — see organization-detail.ts's own
+ * getOrganizationDetail() doc comment for why the layout's own call alone
+ * doesn't stop this function's platform-wide aggregate queries from
+ * executing.
  */
 export async function getPlatformDashboardData(now: Date): Promise<PlatformDashboardData> {
+  await requirePlatformAdmin();
+
   const todayStart = startOfUtcDay(now);
   const sevenDaysAgo = new Date(now.getTime() - SEVEN_DAYS_MS);
 

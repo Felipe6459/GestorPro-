@@ -580,4 +580,63 @@ test.describe("Organization Details (PR3.3)", () => {
     await page.goto(`${BASE_PATH}/${fixtures.orgA.id}`);
     await page.waitForURL(/\/dashboard$/);
   });
+
+  test.describe("PLATFORM_ADMIN_EXECUTION_AUTHORIZATION_AUDIT correction — route-level regression", () => {
+    // getOrganizationDetail() now guards its own execution (see that
+    // module's own doc comment) — these prove the externally-observable
+    // HTTP contract this fix must NOT change: still a clean, generic
+    // redirect for every unauthorized identity, for both an invalid and a
+    // real valid organization id, never a 500, never any id/error detail
+    // in the response. What this file cannot prove — that the underlying
+    // Prisma calls are now skipped — is proven instead by
+    // test/integration/platform-admin/execution-authorization.test.ts's
+    // own direct query-spy tests (see that file's own evidence-boundary
+    // comment on why cross-process query counting isn't attempted here).
+
+    test("unauthenticated + invalid id: still a clean, generic redirect to /login", async ({ page, baseURL }) => {
+      const res = await page.request.get(`${baseURL}${BASE_PATH}/definitely-invalid-test-id`, { maxRedirects: 0 });
+      expect(res.status()).toBe(307);
+      expect(res.headers()["location"]).toBe("/login");
+    });
+
+    test("unauthenticated + a real, valid organization id: still a clean, generic redirect to /login", async ({ page, baseURL }) => {
+      const res = await page.request.get(`${baseURL}${BASE_PATH}/${fixtures.orgA.id}`, { maxRedirects: 0 });
+      expect(res.status()).toBe(307);
+      expect(res.headers()["location"]).toBe("/login");
+    });
+
+    test("authenticated non-admin + invalid id: still a clean, generic redirect to /dashboard", async ({ context, baseURL }) => {
+      await injectTestSession(context, { id: fixtures.owner.id, email: fixtures.owner.email }, baseURL!);
+      const page = await context.newPage();
+      const res = await page.request.get(`${baseURL}${BASE_PATH}/definitely-invalid-test-id`, { maxRedirects: 0 });
+      expect(res.status()).toBe(307);
+      expect(res.headers()["location"]).toBe("/dashboard");
+    });
+
+    test("authenticated non-admin + a real, valid organization id: still a clean, generic redirect to /dashboard", async ({
+      context,
+      baseURL,
+    }) => {
+      await injectTestSession(context, { id: fixtures.owner.id, email: fixtures.owner.email }, baseURL!);
+      const page = await context.newPage();
+      const res = await page.request.get(`${baseURL}${BASE_PATH}/${fixtures.orgA.id}`, { maxRedirects: 0 });
+      expect(res.status()).toBe(307);
+      expect(res.headers()["location"]).toBe("/dashboard");
+    });
+
+    test("allowlisted admin: a real organization still renders normally after the fix", async ({ context, baseURL }) => {
+      const page = await asAdmin(context, baseURL!);
+      await page.goto(`${BASE_PATH}/${fixtures.orgA.id}`);
+      await expect(page.getByRole("heading", { level: 1, name: orgAName })).toBeVisible();
+    });
+
+    test("allowlisted admin: an unknown (but validly-shaped) id still renders the existing honest 404, not a crash", async ({
+      context,
+      baseURL,
+    }) => {
+      const page = await asAdmin(context, baseURL!);
+      await page.goto(`${BASE_PATH}/00000000-0000-0000-0000-000000000000`);
+      await expect(page.getByRole("heading", { name: "Organization not found" })).toBeVisible();
+    });
+  });
 });

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requirePlatformAdmin } from "@/lib/platform-admin/authorization";
 import { STALE_PENDING_THRESHOLD_MS } from "@/lib/invoices/email/send-invoice-email";
 
 /**
@@ -12,13 +13,15 @@ import { STALE_PENDING_THRESHOLD_MS } from "@/lib/invoices/email/send-invoice-em
  *
  * Same enforcement convention as every other Platform Admin query
  * (organizations.ts, organization-detail.ts, platform-dashboard.ts):
- * requirePlatformAdmin() runs exactly once, in
- * (platform-admin)/layout.tsx, before any child page — this module is
- * never independently re-checked, on purpose (see the layout's own doc
- * comment on why the guard lives in exactly one place). That single
- * server-side redirect, not the absence of a nav link, is what actually
- * keeps a non-admin out; there is no client-reachable code path to this
- * module's functions that bypasses the layout.
+ * requirePlatformAdmin() is called both in (platform-admin)/layout.tsx
+ * AND as the first awaited operation inside getFailureMonitoringSummary()
+ * itself below — PLATFORM_ADMIN_EXECUTION_AUTHORIZATION_AUDIT found that
+ * the layout call alone does not stop this module's own Prisma calls
+ * from executing (Next.js renders layouts and pages in parallel by
+ * default; see authorization.ts's own doc comment for the installed-docs
+ * citations and the deterministic reproduction). requirePlatformAdmin()
+ * is cache()-memoized, so calling it again here is not a second real
+ * check per request.
  *
  * Why this file never uses `$queryRaw` for the InvoiceEmailAttempt
  * queries, even though a real PostgreSQL `DISTINCT ON` (exactly what
@@ -149,6 +152,8 @@ function summarizeLatestAttempts(
  * request parameter anywhere in this file that could widen the window.
  */
 export async function getFailureMonitoringSummary(now: Date = new Date()): Promise<FailureMonitoringSummary> {
+  await requirePlatformAdmin();
+
   const windowStart = new Date(now.getTime() - WINDOW_MS);
   const webhookStaleCutoff = new Date(now.getTime() - WEBHOOK_STALE_PENDING_CUTOFF_MS);
   const invoiceEmailStaleCutoff = new Date(now.getTime() - STALE_PENDING_THRESHOLD_MS);

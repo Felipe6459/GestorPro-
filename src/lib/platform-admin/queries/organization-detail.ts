@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { requirePlatformAdmin } from "@/lib/platform-admin/authorization";
 import type { Role } from "@/generated/prisma/enums";
 import { getCompanyProfile, type CompanyProfileData } from "@/lib/organization-setup/company-profile";
 import { getOrganizationEntitlements, type OrganizationEntitlements } from "@/lib/billing/entitlements";
@@ -84,13 +85,23 @@ export type OrganizationDetail = {
 
 /**
  * Sale-Ready Phase C, PR3.1/PR3.3 (Organization Explorer — approved
- * plan, §5). One organization, every read unscoped by any session — the
- * caller (the /platform-admin/organizations/[id] page) is the only place
- * requirePlatformAdmin() needs to run; this function just takes whichever
- * organizationId the URL names. Returns null for an organizationId that
- * doesn't exist, so the page can render a real 404 rather than crash.
+ * plan, §5). One organization, every read unscoped by any session.
+ *
+ * PLATFORM_ADMIN_EXECUTION_AUTHORIZATION_AUDIT correction: the layout's
+ * own requirePlatformAdmin() call does NOT stop this function's own
+ * Prisma calls from executing — Next.js renders layouts and pages in
+ * parallel by default (see authorization.ts's own doc comment on
+ * requirePlatformAdmin for the exact installed-docs citations and the
+ * deterministic local reproduction). requirePlatformAdmin() must
+ * therefore also be called here, as the first awaited operation, before
+ * organizationId is ever used in a query — cache()-memoized, so this is
+ * not a second real auth check per request. Returns null for an
+ * organizationId that doesn't exist, so the page can render a real 404
+ * rather than crash.
  */
 export async function getOrganizationDetail(organizationId: string, now: Date): Promise<OrganizationDetail | null> {
+  await requirePlatformAdmin();
+
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
     select: { id: true, name: true, slug: true, createdAt: true },
