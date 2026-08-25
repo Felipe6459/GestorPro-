@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import type { PortalUser, Client } from "@/generated/prisma/client";
 import type { User as SupabaseAuthUser } from "@supabase/supabase-js";
+import { isOrganizationSuspended, ORGANIZATION_UNAVAILABLE_PATH } from "@/lib/organization-access";
 
 export type CurrentPortalUser = {
   authUser: SupabaseAuthUser;
@@ -50,6 +51,15 @@ async function resolvePortalIdentity(
  * anything. organizationId/clientId are always derived from this lookup,
  * never accepted from a cookie or query string — there is no "active
  * organization" concept for a portal identity at all.
+ *
+ * Platform Admin Organization Suspension, PR 1: a Client Portal identity
+ * has exactly one organization (via its Client), never a switcher — so
+ * unlike the staff side, there is no "try another membership" fallback
+ * here. A suspended organization is a hard, terminal denial for every one
+ * of this function's callers, checked as the execution-level entry point
+ * itself (not only in the (app) layout above it — see
+ * PLATFORM_ADMIN_EXECUTION_AUTHORIZATION_AUDIT for why a layout-only
+ * check would not be a complete fix).
  */
 export async function getCurrentPortalUser(): Promise<CurrentPortalUser> {
   const supabase = await createClient();
@@ -66,7 +76,35 @@ export async function getCurrentPortalUser(): Promise<CurrentPortalUser> {
     redirect("/portal/login");
   }
 
+  if (isOrganizationSuspended(await getOrganizationSuspensionState(identity.organizationId))) {
+    redirect(ORGANIZATION_UNAVAILABLE_PATH);
+  }
+
   return identity;
+}
+
+/**
+ * A Client Portal identity's own resolvePortalIdentity() above only
+ * selects Client fields, never Organization ones (it has no reason to —
+ * every existing caller only ever needed organizationId as a scalar). One
+ * small, separate, targeted read here rather than widening that shared
+ * query's own select for every caller, most of which do not need this
+ * check applied at all (see getOptionalPortalUser's own doc comment: its
+ * callers make their own routing decisions and must never be redirected
+ * out from under them).
+ */
+async function getOrganizationSuspensionState(organizationId: string): Promise<{ suspendedAt: Date | null }> {
+  const organization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { suspendedAt: true },
+  });
+  // An organizationId this function is ever called with always came from
+  // a real, just-resolved Client -> Organization relation (a foreign-key
+  // guarantee, not a client-supplied value) — a missing row here would
+  // mean the Organization was hard-deleted a moment after resolution, an
+  // extreme race this function treats the same as "suspended": deny,
+  // never treat a vanished organization as usable.
+  return organization ?? { suspendedAt: new Date(0) };
 }
 
 /**

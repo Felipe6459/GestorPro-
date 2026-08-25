@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { getOptionalPortalUser } from "@/lib/current-portal-user";
+import { isOrganizationSuspended, ORGANIZATION_UNAVAILABLE_PATH } from "@/lib/organization-access";
 import { PortalNav } from "@/components/client-portal/portal-nav";
 import { portalSignOut } from "./actions";
 
@@ -17,6 +18,24 @@ export default async function PortalAppLayout({
   children: React.ReactNode;
 }) {
   const identity = await getOptionalPortalUser();
+
+  // Platform Admin Organization Suspension, PR 1: checked again here,
+  // before this layout's own header ever renders identity.client.name/
+  // identity.portalUser.name/email — defense in depth alongside the
+  // execution-level check inside getCurrentPortalUser() every real page
+  // under this layout also calls (see that function's own doc comment
+  // for why a layout-only check is never treated as sufficient on its
+  // own in this codebase). A small, separate, targeted read — the same
+  // reasoning getCurrentPortalUser()'s own local helper documents.
+  if (identity) {
+    const organization = await prisma.organization.findUnique({
+      where: { id: identity.organizationId },
+      select: { suspendedAt: true },
+    });
+    if (isOrganizationSuspended(organization ?? { suspendedAt: new Date(0) })) {
+      redirect(ORGANIZATION_UNAVAILABLE_PATH);
+    }
+  }
 
   if (!identity) {
     const supabase = await createClient();

@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import type { Role } from "@/generated/prisma/enums";
+import { isOrganizationSuspended } from "@/lib/organization-access";
 
 /**
  * Global Search Stage 2 (docs/search-architecture.md §6, and this stage's
@@ -42,6 +43,18 @@ export type SearchRequestContext =
  * search keystroke; a user who has genuinely never visited any real page
  * yet (and so has no Membership at all) gets refused here, not silently
  * enrolled into a brand-new personal workspace.
+ *
+ * Platform Admin Organization Suspension, PR 1: every candidate below is
+ * now also required to be non-suspended, mirroring
+ * resolveActiveOrganizationId()'s own "cookie org suspended -> look for
+ * another real membership -> only deny if every one is suspended" order —
+ * this is the alternate route that resolver's own design investigation
+ * found and named explicitly (getSearchRequestContext independently
+ * reimplements this resolution rather than calling the staff helper, so
+ * it needed its own, matching fix, not an assumption that fixing the
+ * staff helper alone would cover it). A suspended-only user still gets
+ * exactly the existing { ok: false, status: 403 } outcome below — the
+ * API's response contract is unchanged, never turned into a redirect.
  */
 async function resolveOrganizationMembership(
   userId: string,
@@ -52,23 +65,21 @@ async function resolveOrganizationMembership(
   if (requestedOrganizationId) {
     const membership = await prisma.membership.findUnique({
       where: { userId_organizationId: { userId, organizationId: requestedOrganizationId } },
-      select: { organizationId: true, role: true },
+      select: { organizationId: true, role: true, organization: { select: { suspendedAt: true } } },
     });
-    if (membership) return membership;
+    if (membership && !isOrganizationSuspended(membership.organization)) {
+      return { organizationId: membership.organizationId, role: membership.role };
+    }
   }
 
-  const ownerMembership = await prisma.membership.findFirst({
-    where: { userId, role: "OWNER" },
-    select: { organizationId: true, role: true },
-  });
-  if (ownerMembership) return ownerMembership;
-
-  const anyMembership = await prisma.membership.findFirst({
+  const memberships = await prisma.membership.findMany({
     where: { userId },
-    select: { organizationId: true, role: true },
-    orderBy: { createdAt: "asc" },
+    select: { organizationId: true, role: true, createdAt: true, organization: { select: { suspendedAt: true } } },
+    orderBy: [{ role: "asc" }, { createdAt: "asc" }],
   });
-  return anyMembership;
+
+  const usable = memberships.find((m) => !isOrganizationSuspended(m.organization));
+  return usable ? { organizationId: usable.organizationId, role: usable.role } : null;
 }
 
 export async function getSearchRequestContext(): Promise<SearchRequestContext> {
