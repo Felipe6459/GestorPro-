@@ -75,7 +75,7 @@ export default async function PlatformAdminOrganizationDetailPage({
       <div className="rounded-lg border border-gray-200 bg-white p-6">
         <OrganizationSuspensionControls
           organizationId={organization.id}
-          organizationName={organization.name}
+          organizationSlug={organization.slug}
           suspendedAt={organization.suspendedAt ? organization.suspendedAt.toISOString() : null}
         />
       </div>
@@ -164,6 +164,21 @@ export default async function PlatformAdminOrganizationDetailPage({
 
       <DetailSection id="organization" title="Organization">
         <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {/*
+            ORGANIZATION_IDENTITY_CONFIRMATION_DESIGN correction: the
+            full Organization.name's one permanent, always-labeled home
+            — no longer duplicated inside the Suspend dialog (see
+            organization-suspension-controls.tsx's own header comment).
+            select-all makes the value easily copyable in one click;
+            Field's own <dd> already carries wrap-anywhere (PR #123), so
+            a long or unusual name still wraps safely here with no
+            further change needed. Deliberately not labeled "Display
+            name" — Business Identity's own field above already uses
+            that exact label for this same underlying value; this
+            section's own convention (matching "Slug" right below) is a
+            short, direct field name instead.
+          */}
+          <Field label="Name" value={<span className="select-all">{organization.name}</span>} />
           <Field label="Created" value={formatDate(organization.createdAt)} />
           <Field label="Slug" value={organization.slug} />
           <Field
