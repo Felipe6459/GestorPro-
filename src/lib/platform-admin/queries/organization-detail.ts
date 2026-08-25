@@ -18,6 +18,15 @@ export type OrganizationDetailHeader = {
   name: string;
   slug: string;
   createdAt: Date;
+  /**
+   * Platform Admin Organization Suspension, PR 2. The operator-override
+   * field itself (PR 1's schema) — null means active. Deliberately never
+   * folded into `lifecycleStatus` below: that field is a distinct,
+   * billing-derived classification (see classifyOrganizationLifecycle's
+   * own doc comment) with its own unrelated "SUSPENDED" bucket, and this
+   * one must never be confused with or feed into it.
+   */
+  suspendedAt: Date | null;
 };
 
 export type OrganizationStaffMember = {
@@ -104,7 +113,7 @@ export async function getOrganizationDetail(organizationId: string, now: Date): 
 
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
-    select: { id: true, name: true, slug: true, createdAt: true },
+    select: { id: true, name: true, slug: true, createdAt: true, suspendedAt: true },
   });
   if (!organization) return null;
 

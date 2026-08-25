@@ -6,6 +6,7 @@ import { formatFileSize } from "@/lib/format";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DetailSection, Field } from "@/components/platform-admin/detail-section";
+import { OrganizationSuspensionControls } from "@/components/platform-admin/organization-suspension-controls";
 
 export const metadata: Metadata = {
   title: "Organization — Platform Admin",
@@ -52,6 +53,14 @@ export default async function PlatformAdminOrganizationDetailPage({
           <StatusBadge status={detail.lifecycleStatus} />
         </div>
         <p className="mt-1 text-sm text-gray-500">{organization.slug}</p>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <OrganizationSuspensionControls
+          organizationId={organization.id}
+          organizationName={organization.name}
+          suspendedAt={organization.suspendedAt ? organization.suspendedAt.toISOString() : null}
+        />
       </div>
 
       <DetailSection id="business-identity" title="Business Identity">

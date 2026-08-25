@@ -37,6 +37,13 @@ const LIB_DIR = "src/lib/platform-admin";
 const APP_DIR = "src/app/(platform-admin)";
 const LAYOUT_FILE = "src/app/(platform-admin)/layout.tsx";
 
+// Platform Admin Organization Suspension, PR 2. The one, deliberately
+// reviewed exception to "no actions.ts anywhere under (platform-admin)"
+// (check #6) and "no use server directive anywhere under (platform-admin)"
+// (check #5) below — every other future actions.ts/"use server" file
+// under this route group still fails both checks unconditionally.
+const APPROVED_ACTIONS_FILE = "src/app/(platform-admin)/platform-admin/organizations/[id]/actions.ts";
+
 // 1. Nothing under (dashboard) or portal ever imports the Platform Admin
 // module — the whole point of a cross-tenant tool is that no tenant-
 // scoped request path can ever reach it.
@@ -103,18 +110,41 @@ function firstNonEmptyLine(content) {
   return content.split("\n").find((line) => line.trim().length > 0)?.trim() ?? "";
 }
 const filesWithUseServer = [...libFiles, ...appFiles].filter((f) => useServerPattern.test(firstNonEmptyLine(readFileSync(f, "utf8"))));
+const unapprovedFilesWithUseServer = filesWithUseServer.filter((f) => f !== APPROVED_ACTIONS_FILE);
 ok = report(
-  'no "use server" directive anywhere in src/lib/platform-admin or src/app/(platform-admin)',
-  filesWithUseServer.length === 0,
-  filesWithUseServer.join(", "),
+  'no "use server" directive anywhere in src/lib/platform-admin or src/app/(platform-admin), except the one approved Organization Suspension actions.ts',
+  unapprovedFilesWithUseServer.length === 0,
+  unapprovedFilesWithUseServer.join(", "),
+) && ok;
+ok = report(
+  'the approved Organization Suspension actions.ts genuinely begins with "use server"',
+  filesWithUseServer.includes(APPROVED_ACTIONS_FILE),
+  "",
 ) && ok;
 
 // 6. No actions.ts file anywhere under src/app/(platform-admin) — the
 // same "the absence of a mutation surface is itself auditable" property
 // PR1 established (no actions.ts existed at all in the Foundation),
 // extended to cover every route this and future Phase C PRs add.
+//
+// Platform Admin Organization Suspension, PR 2 — the first deliberate,
+// reviewed exception: exactly one actions.ts, at exactly the reviewed
+// path (APPROVED_ACTIONS_FILE above), is now permitted. Any other
+// actions.ts anywhere else under this route group still fails this
+// check unconditionally — this is not a general loosening, only a
+// single named file is ever exempted.
 const actionsFiles = appFiles.filter((f) => f.endsWith("/actions.ts") || f.endsWith("\\actions.ts"));
-ok = report("no actions.ts file anywhere under src/app/(platform-admin)", actionsFiles.length === 0, actionsFiles.join(", ")) && ok;
+const unapprovedActionsFiles = actionsFiles.filter((f) => f !== APPROVED_ACTIONS_FILE);
+ok = report(
+  "no actions.ts file anywhere under src/app/(platform-admin) except the one approved Organization Suspension module",
+  unapprovedActionsFiles.length === 0,
+  unapprovedActionsFiles.join(", "),
+) && ok;
+ok = report(
+  "the approved Organization Suspension actions.ts exists at exactly the reviewed path",
+  actionsFiles.includes(APPROVED_ACTIONS_FILE),
+  "",
+) && ok;
 
 // PLATFORM_ADMIN_EXECUTION_AUTHORIZATION_AUDIT correction (checks 7-9
 // below). Root cause: Next.js renders layouts and pages in parallel by
@@ -189,16 +219,40 @@ function namesImportedFromGuardModule(sourceFile) {
 }
 
 /** True only when a function/arrow body is a real block whose first statement is `await requirePlatformAdmin();`, where that identifier was actually imported from the canonical module in this same file (not merely present as text anywhere). */
-function bodyOpensWithGuardCall(body, guardNames) {
-  if (!body || !ts.isBlock(body)) return false;
-  const first = body.statements[0];
-  if (!first || !ts.isExpressionStatement(first)) return false;
-  const expr = first.expression;
+function isGuardAwaitExpression(expr, guardNames) {
   if (!expr || expr.kind !== ts.SyntaxKind.AwaitExpression) return false;
   const call = expr.expression;
   if (!call || !ts.isCallExpression(call)) return false;
   if (!ts.isIdentifier(call.expression)) return false;
   return call.expression.text === GUARD_NAME && guardNames.has(GUARD_NAME);
+}
+
+/**
+ * True when the first real statement is the guard call, in either shape
+ * this codebase actually uses: a bare, discarded `await
+ * requirePlatformAdmin();` (every query/Configuration entry point), or a
+ * destructured/assigned `const { email } = await requirePlatformAdmin();`
+ * (every entry point that needs the returned identity — e.g. an audit-
+ * logging Server Action) — the exact same call, first, either way; only
+ * whether its return value is kept differs, which this check must not
+ * treat as "unguarded."
+ */
+function bodyOpensWithGuardCall(body, guardNames) {
+  if (!body || !ts.isBlock(body)) return false;
+  const first = body.statements[0];
+  if (!first) return false;
+
+  if (ts.isExpressionStatement(first)) {
+    return isGuardAwaitExpression(first.expression, guardNames);
+  }
+
+  if (ts.isVariableStatement(first)) {
+    const declarations = first.declarationList.declarations;
+    if (declarations.length !== 1) return false;
+    return isGuardAwaitExpression(declarations[0].initializer, guardNames);
+  }
+
+  return false;
 }
 
 /** A literal-shaped initializer this check can prove is not, and cannot expose, a callable (plain data — arrays, objects, strings, numbers, booleans, `as const`/`satisfies`-wrapped versions of any of those). */
@@ -376,6 +430,35 @@ ok = report(
   "no route.ts (API Route Handler) file anywhere under src/app/(platform-admin)",
   routeHandlerFiles.length === 0,
   routeHandlerFiles.join(", "),
+) && ok;
+
+// 10. Platform Admin Organization Suspension, PR 2. The approved
+// actions.ts (checks #5/#6's own named exception, above) is analyzed by
+// the exact same AST-based analyzer checks #7/#8 already apply to
+// src/lib/platform-admin/queries/*.ts and the Configuration page:
+// suspendOrganizationAction/reactivateOrganizationAction must each call
+// requirePlatformAdmin() as their first awaited statement, imported from
+// exactly the canonical module — never a same-named import from
+// anywhere else, never satisfied by an alias/re-export/exported class/
+// export-default-expression this analyzer cannot verify. This is the
+// entire enforcement mechanism check #6 above's exception depends on:
+// a Platform Admin actions.ts is permitted to exist at all only because
+// this check exists to keep proving its own execution-level guard.
+const { entryPoints: actionEntryPoints, unsupported: unsupportedActionExports } = analyzeExportedAsyncCallables(
+  parseTsFile(APPROVED_ACTIONS_FILE),
+);
+ok = report(
+  "every exported async action in the approved Organization Suspension actions.ts calls requirePlatformAdmin() as its first awaited statement",
+  actionEntryPoints.length > 0 && actionEntryPoints.every((e) => e.guarded),
+  actionEntryPoints
+    .filter((e) => !e.guarded)
+    .map((e) => e.name)
+    .join(", "),
+) && ok;
+ok = report(
+  "the approved Organization Suspension actions.ts has no exported construct this check cannot verify",
+  unsupportedActionExports.length === 0,
+  unsupportedActionExports.join(", "),
 ) && ok;
 
 process.exit(ok ? 0 : 1);
