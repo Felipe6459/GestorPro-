@@ -84,14 +84,16 @@ describe("OrganizationSuspensionControls' confirmation input — text-assistance
     expect(attributeValueText(input, "spellCheck", sourceFile)).toBe("false");
   });
 
-  it("is wired to a conditional aria-describedby (present only when a mismatch message is shown, per this component's own contract)", () => {
+  it("aria-describedby always references the exact-name reference block, and additionally the mismatch message when one is shown", () => {
+    // Discoverability hotfix: the input is now always described by the
+    // dedicated reference block holding the exact expected value (so a
+    // screen reader user tabbing to the input hears it), and, only while
+    // a mismatch exists, additionally by the mismatch message — a real
+    // conditional expression, never a hardcoded string.
     const value = attributeValueText(input, "aria-describedby", sourceFile);
     expect(value).not.toBeNull();
-    // Must be a real conditional expression referencing the mismatch state
-    // (e.g. `nameMismatches ? nameMismatchId : undefined`) — a hardcoded
-    // string or an always-present id would violate "only when a mismatch
-    // exists" and is deliberately rejected here.
-    expect(value).toMatch(/\?.*:.*undefined/);
+    expect(value).toContain("nameReferenceId");
+    expect(value).toMatch(/nameMismatches\s*\?.*nameMismatchId/);
   });
 
   it("is wired to a conditional aria-invalid (present only when a mismatch exists, never a hardcoded true/false)", () => {
@@ -122,5 +124,88 @@ describe("OrganizationSuspensionControls — visible, accessible mismatch feedba
     // organizationName (already visible elsewhere on the page) and fixed
     // copy.
     expect(content).not.toMatch(/Name does not match\.[^<]*\{(?!\/)/);
+  });
+});
+
+/**
+ * Discoverability hotfix — the fragile inline "Type <name> to confirm"
+ * rendering (no wrap protection, no way to select just the value) is
+ * replaced by a dedicated, always-fully-visible, verbatim reference
+ * block. Proven the same way as the input's own hardening above: a
+ * genuine AST contract test against the real, committed source, never a
+ * DOM render (no jsdom/Testing Library in this repo's unit config).
+ */
+describe("OrganizationSuspensionControls — exact-name reference block", () => {
+  const sourceFile = parseComponentFile();
+
+  function isOrganizationNameExpressionChild(child: ts.JsxChild): boolean {
+    return ts.isJsxExpression(child) && !!child.expression && ts.isIdentifier(child.expression) && child.expression.text === "organizationName";
+  }
+
+  function findReferenceBlock(): ts.JsxElement {
+    let found: ts.JsxElement | undefined;
+    function visit(node: ts.Node) {
+      if (found) return;
+      if (ts.isJsxElement(node) && node.openingElement.tagName.getText() === "p" && node.children.some(isOrganizationNameExpressionChild)) {
+        found = node;
+        return;
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+    if (!found) {
+      throw new Error("No <p> element rendering {organizationName} verbatim found — the dedicated reference block may have been removed.");
+    }
+    return found;
+  }
+
+  function classNameOf(element: ts.JsxElement): string {
+    for (const prop of element.openingElement.attributes.properties) {
+      if (!ts.isJsxAttribute(prop) || prop.name.getText() !== "className") continue;
+      const init = prop.initializer;
+      if (init && ts.isStringLiteral(init)) return init.text;
+    }
+    return "";
+  }
+
+  it("renders {organizationName} verbatim as its sole child expression — no formatting, trimming, or transformation function wraps it", () => {
+    const block = findReferenceBlock();
+    // Exactly one JsxExpression child, and it's the bare identifier —
+    // never `{organizationName.trim()}`, `{formatName(organizationName)}`,
+    // or similar, which this same identifier check would already reject
+    // (an isIdentifier() check fails the moment a call/member expression
+    // wraps it).
+    const expressionChildren = block.children.filter((c) => ts.isJsxExpression(c));
+    expect(expressionChildren).toHaveLength(1);
+  });
+
+  it("has an id the input's own aria-describedby references (checked together with the input's own test above)", () => {
+    const block = findReferenceBlock();
+    const idAttr = block.openingElement.attributes.properties.find((p) => ts.isJsxAttribute(p) && p.name.getText() === "id");
+    expect(idAttr).toBeDefined();
+  });
+
+  it("is manually selectable via select-all (user-select: all) — never a Clipboard API call, an automatic copy, or a Copy button in this minimal hotfix", () => {
+    const className = classNameOf(findReferenceBlock());
+    expect(className).toMatch(/\bselect-all\b/);
+    expect(readFileSync(COMPONENT_FILE, "utf8")).not.toMatch(/navigator\.clipboard|useClipboard|Copy(?:Button|ToClipboard)/);
+  });
+
+  it("wraps safely (wrap-anywhere / overflow-wrap: anywhere) instead of overflowing for a long unbroken string", () => {
+    expect(classNameOf(findReferenceBlock())).toMatch(/\bwrap-anywhere\b/);
+  });
+
+  it("is never truncated, ellipsized, or line-clamped", () => {
+    const className = classNameOf(findReferenceBlock());
+    expect(className).not.toMatch(/\btruncate\b|\bline-clamp-\d+\b|\btext-ellipsis\b|\bwhitespace-nowrap\b/);
+  });
+
+  it("is clearly labeled, and the confirm-typing instruction no longer duplicates the name inline (no confusing duplicate accessible text)", () => {
+    const content = readFileSync(COMPONENT_FILE, "utf8");
+    expect(content).toContain("Exact organization name");
+    // The old inline rendering — the label itself containing
+    // {organizationName} — must be gone; the reference block above is
+    // now the only place this component renders the raw value.
+    expect(content).not.toMatch(/Type\s*<span[^>]*>\{organizationName\}/);
   });
 });

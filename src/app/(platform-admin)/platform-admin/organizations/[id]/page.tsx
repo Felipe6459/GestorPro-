@@ -49,7 +49,24 @@ export default async function PlatformAdminOrganizationDetailPage({
           ← Organizations
         </Link>
         <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">{organization.name}</h1>
+          {/*
+            min-w-0 lets this flex item actually shrink below its content's
+            intrinsic width (flex items default to `min-width: auto`,
+            which otherwise blocks shrinking entirely — the same fix
+            (platform-admin)/layout.tsx's own header row already applies
+            for the same reason) and wrap-anywhere (overflow-wrap:
+            anywhere) lets a long or unbroken organization name wrap onto
+            further lines instead of overflowing/squeezing past this row
+            — the stronger of Tailwind's two wrap utilities: unlike
+            break-words (overflow-wrap: break-word), `anywhere` is also
+            respected by the browser's own min-content-size calculation
+            for a flex item, which break-word alone was not, in exactly
+            this flex-row context. Discovered as a real expected-name
+            discoverability defect: a long name here was unreadable, and
+            the Suspend confirmation dialog rendered the exact same
+            unprotected string with the same risk.
+          */}
+          <h1 className="min-w-0 wrap-anywhere text-2xl font-semibold tracking-tight text-gray-900">{organization.name}</h1>
           <StatusBadge status={detail.lifecycleStatus} />
         </div>
         <p className="mt-1 text-sm text-gray-500">{organization.slug}</p>
