@@ -39,12 +39,23 @@ export function DetailSection({ id, title, children }: { id: string; title: stri
  * renders plain text or a StatusBadge, but this never assumed "text
  * only," so a future editable Configuration service can swap the value
  * slot for a real form control later without this component changing.
+ *
+ * wrap-anywhere (overflow-wrap: anywhere) on the value: found as a real,
+ * user-visible instance of the exact same expected-name-discoverability
+ * defect this hotfix exists to fix — Business Identity's own "Display
+ * name" Field renders this same Organization.name value (see
+ * company-profile.ts's own upsertCompanyProfile, which keeps the two in
+ * sync) with no wrap protection at all, and a long/unbroken name
+ * overflowed this page horizontally exactly like the header and dialog
+ * did before their own fixes. Purely additive: every other Field value
+ * in this app (dates, counts, "Not set", badges, links) is short enough
+ * that this never visibly changes anything for them.
  */
 export function Field({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
       <dt className="text-xs font-medium text-gray-500">{label}</dt>
-      <dd className="mt-0.5 text-sm text-gray-900">{value}</dd>
+      <dd className="mt-0.5 wrap-anywhere text-sm text-gray-900">{value}</dd>
     </div>
   );
 }

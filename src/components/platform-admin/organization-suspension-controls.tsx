@@ -68,6 +68,7 @@ function SuspendControl({ organizationId, organizationName }: { organizationId: 
   const [reasonCode, setReasonCode] = useState<SuspensionReasonCode | "">("");
   const titleId = useId();
   const descriptionId = useId();
+  const nameReferenceId = useId();
   const nameInputId = useId();
   const nameMismatchId = useId();
   const reasonSelectId = useId();
@@ -145,8 +146,31 @@ function SuspendControl({ organizationId, organizationName }: { organizationId: 
           ))}
         </select>
 
+        {/*
+          Discoverability hotfix: the exact expected value now has its own
+          dedicated, never-truncated reference — not just the page header
+          (which this same fix also protects, see page.tsx) and not just
+          this dialog's own former inline rendering, both of which gave a
+          long/unusual organization name nowhere reliably readable to copy
+          from. select-all (user-select: all) makes a single click select
+          the whole value, without any Clipboard API/automatic-copy/Copy
+          button — deliberately out of scope for this minimal hotfix.
+          wrap-anywhere (overflow-wrap: anywhere) guarantees even a
+          single long unbroken token wraps instead of overflowing this
+          fixed-max-width dialog — the stronger of Tailwind's two wrap
+          utilities: break-words (overflow-wrap: break-word) alone was
+          proven, by this exact discoverability hotfix's own E2E
+          coverage, not to be respected by this dialog's min-content
+          sizing for an unbroken string, while wrap-anywhere is. Never
+          truncated, ellipsized, or line-clamped.
+        */}
+        <p className="mt-4 text-sm font-medium text-gray-700">Exact organization name</p>
+        <p id={nameReferenceId} className="mt-1 w-full select-all wrap-anywhere rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900">
+          {organizationName}
+        </p>
+
         <label htmlFor={nameInputId} className="mt-4 block text-sm font-medium text-gray-700">
-          Type <span className="font-semibold">{organizationName}</span> to confirm
+          Type the name above to confirm
         </label>
         <input
           id={nameInputId}
@@ -157,7 +181,7 @@ function SuspendControl({ organizationId, organizationName }: { organizationId: 
           autoCorrect="off"
           autoCapitalize="none"
           spellCheck={false}
-          aria-describedby={nameMismatches ? nameMismatchId : undefined}
+          aria-describedby={nameMismatches ? `${nameReferenceId} ${nameMismatchId}` : nameReferenceId}
           aria-invalid={nameMismatches ? true : undefined}
           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
         />
