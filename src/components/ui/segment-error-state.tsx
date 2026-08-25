@@ -5,21 +5,47 @@ import { Button } from "@/components/ui/button";
 
 /**
  * Product UI/UX PR 2 — the shared in-place error-recovery presentation
- * adopted by the two segment-scoped boundaries this PR adds
- * (`(platform-admin)/error.tsx`, `portal/(app)/error.tsx`). Mirrors
- * `(dashboard)/error.tsx`'s own established in-place-recovery pattern
- * (a dashed-border card replacing only the page content, keeping the
- * surrounding layout/nav chrome intact) — deliberately NOT adopted by
- * that file or by `(dashboard)/analytics/error.tsx`/`(auth)/error.tsx` in
- * this PR: they already work correctly today and refactoring them is out
- * of this PR's scope.
+ * adopted by `(platform-admin)/error.tsx`, `portal/(app)/error.tsx`, and
+ * `src/app/error.tsx` (the root boundary, added later by Stability
+ * Correction F2). `(dashboard)/error.tsx`, `(dashboard)/analytics/
+ * error.tsx`, and `(auth)/error.tsx` keep their own distinct visual
+ * markup/copy (mirroring this component's own established pattern
+ * without literally rendering it) — consolidating their *presentation*
+ * is out of scope; only the logging behavior below is now shared with
+ * them (Production Observability Priority 4).
  *
  * NEVER renders `error.message`, `error.stack`, `error.cause`,
  * `error.digest`, or any stringified/serialized form of `error` — the
- * `error` prop exists only so `console.error(error)` can report it to the
- * browser console (the same convention every existing error.tsx in this
- * repo already uses — not a new logging mechanism), never to be rendered.
+ * `error` prop exists only so `console.error(error)` (via
+ * `useErrorBoundaryLogging` below) can report it to the browser console
+ * (the same convention every existing error.tsx in this repo already
+ * uses — not a new logging mechanism), never to be rendered.
  */
+
+/**
+ * Production Observability Priority 4 — the one place `console.error(error)`
+ * is called for a rendered error boundary in this app. Every error.tsx
+ * (this component included) calls this hook exactly once instead of
+ * each maintaining its own copy of the same three-line effect —
+ * consolidating a duplicated pattern, not adding a new one: every
+ * boundary in this repo already called `console.error(error)` inside an
+ * identical `useEffect(() => { ... }, [error])` before this change.
+ *
+ * `error` is passed to `console.error` exactly as received — never
+ * stringified, serialized, transformed, forwarded, or enriched with any
+ * additional field — and only ever runs client-side, inside a mounted
+ * Client Component's effect (never during server/static rendering,
+ * which never runs effects at all). No network call, beacon, mutation,
+ * or external SDK exists here or anywhere this hook is used — it is the
+ * exact same browser-console-only behavior every caller already had,
+ * only written once.
+ */
+export function useErrorBoundaryLogging(error: Error): void {
+  useEffect(() => {
+    console.error(error);
+  }, [error]);
+}
+
 export function SegmentErrorState({
   error,
   reset,
@@ -31,9 +57,7 @@ export function SegmentErrorState({
 }) {
   const headingId = useId();
 
-  useEffect(() => {
-    console.error(error);
-  }, [error]);
+  useErrorBoundaryLogging(error);
 
   return (
     <div

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useErrorBoundaryLogging } from "@/components/ui/segment-error-state";
 
 export default function DashboardError({
   error,
@@ -9,9 +9,7 @@ export default function DashboardError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    console.error(error);
-  }, [error]);
+  useErrorBoundaryLogging(error);
 
   return (
     <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 py-16 text-center">

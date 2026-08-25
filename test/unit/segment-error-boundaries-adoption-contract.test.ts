@@ -139,7 +139,7 @@ describe("Shared SegmentErrorState component — reset wiring and scope", () => 
   });
 });
 
-describe("Scope — no broader boundary introduced by PR 2 itself, no pre-existing boundary touched", () => {
+describe("Scope — no broader boundary introduced by PR 2 itself; presentation stays untouched by later corrections", () => {
   // Corrected by the later Stability Correction (F2): PR 2 itself
   // introduced no root-level boundary — true at the time this file was
   // written — but a root src/app/error.tsx was since added, deliberately
@@ -156,17 +156,26 @@ describe("Scope — no broader boundary introduced by PR 2 itself, no pre-existi
     expect(source).toMatch(/import\s*\{\s*SegmentErrorState\s*\}\s*from\s*["']@\/components\/ui\/segment-error-state["']/);
   });
 
-  it("global-error.tsx remains exactly the pre-existing implementation (its own <html>/<body> full-page fallback, untouched by this PR)", () => {
+  // Corrected again by Production Observability Priority 4: these four
+  // boundaries' *presentation* (their own distinct JSX/copy) is still
+  // exactly what PR 2 left it as — never migrated to render
+  // <SegmentErrorState> itself, which is what these assertions actually
+  // check. Their *logging* did change (each now calls the shared
+  // useErrorBoundaryLogging hook instead of its own inline
+  // useEffect/console.error) — see error-boundary-logging-consolidation
+  // .test.tsx and error-boundary-logging-hook.test.ts for that coverage.
+  // "Untouched" below means presentation-untouched, not diff-untouched.
+  it("global-error.tsx keeps its own <html>/<body> full-page presentation — never migrated to render SegmentErrorState itself", () => {
     const source = readBoundarySource(GLOBAL_ERROR_PATH);
     expect(source).toMatch(/export default function GlobalError/);
     expect(source).toMatch(/<html lang="en">/);
-    expect(source).not.toMatch(/SegmentErrorState/);
+    expect(source).not.toMatch(/<SegmentErrorState/);
   });
 
-  it("the pre-existing (dashboard), (dashboard)/analytics, and (auth) error boundaries remain untouched by this PR", () => {
+  it("the pre-existing (dashboard), (dashboard)/analytics, and (auth) error boundaries keep their own distinct presentation — never migrated to render SegmentErrorState itself", () => {
     for (const path of [DASHBOARD_ERROR_PATH, ANALYTICS_ERROR_PATH, AUTH_ERROR_PATH]) {
       const source = readBoundarySource(path);
-      expect(source).not.toMatch(/SegmentErrorState/);
+      expect(source).not.toMatch(/<SegmentErrorState/);
     }
   });
 });

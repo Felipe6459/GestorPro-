@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useErrorBoundaryLogging } from "@/components/ui/segment-error-state";
 
 export default function GlobalError({
   error,
@@ -9,9 +9,7 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  useEffect(() => {
-    console.error(error);
-  }, [error]);
+  useErrorBoundaryLogging(error);
 
   return (
     <html lang="en">
