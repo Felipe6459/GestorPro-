@@ -44,11 +44,10 @@ export async function GET(request: Request) {
       },
     });
   } catch {
-    // Never the real error's message or stack — see docs/search-
-    // architecture.md §14. If a client aborts the underlying fetch, Next.js
-    // simply has nowhere to send this response; the query itself already
-    // completed (or fails here) independently of that, so an abort can
-    // never crash or hang this handler.
+    // Never the real error's message or stack. If a client aborts the
+    // underlying fetch, Next.js simply has nowhere to send this response;
+    // the query itself already completed (or fails here) independently of
+    // that, so an abort can never crash or hang this handler.
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
   }
 }
