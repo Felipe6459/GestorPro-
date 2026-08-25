@@ -9,9 +9,14 @@ import { createActivity } from "@/lib/activity/create-activity";
 import { deliverNotificationEmails } from "@/lib/notifications/email/deliver-notification-email";
 import { buildPortalInvitationAcceptedMetadata } from "@/lib/activity/portal-metadata";
 import { checkRateLimit, getRequestIp, ACCEPT_PORTAL_INVITE_LIMIT } from "@/lib/rate-limit";
+import { isOrganizationSuspended } from "@/lib/organization-access";
 import type { InviteAcceptState } from "@/types";
 
 const GENERIC_UNAVAILABLE_ERROR = "This invitation is no longer available.";
+// Platform Admin Organization Suspension, PR 2 — see the staff invite
+// action's own identical constant for the full reasoning. The
+// ClientInvitation row is never touched on this path.
+const WORKSPACE_UNAVAILABLE_ERROR = "This workspace is currently unavailable. Contact support.";
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -113,6 +118,18 @@ export async function acceptClientInvitationAction(token: string): Promise<Invit
     return { error: "This invitation was sent to a different email address." };
   }
 
+  // Platform Admin Organization Suspension, PR 2 — checked last, right
+  // before the mutation, and never mutates the ClientInvitation row
+  // itself: a suspended target organization leaves this exact same
+  // pending invitation usable again the instant it's reactivated.
+  const targetOrganization = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { suspendedAt: true },
+  });
+  if (!targetOrganization || isOrganizationSuspended(targetOrganization)) {
+    return { error: WORKSPACE_UNAVAILABLE_ERROR };
+  }
+
   const portalUserName = resolvePortalUserName(authUser, normalizedUserEmail);
 
   // Portal Analytics persistence foundation (docs/analytics-architecture.md
@@ -140,6 +157,19 @@ export async function acceptClientInvitationAction(token: string): Promise<Invit
       });
       if (result.count === 0) {
         throw new Error("STALE_INVITATION");
+      }
+
+      // Re-checked here too, closing the gap between the read above and
+      // this write (e.g. a Platform Admin suspends the organization in
+      // the moment between this action's first check and this commit).
+      // Throwing here rolls back the updateMany above too — the
+      // ClientInvitation is left exactly PENDING, never ACCEPTED.
+      const freshOrganization = await tx.organization.findUnique({
+        where: { id: organizationId },
+        select: { suspendedAt: true },
+      });
+      if (!freshOrganization || isOrganizationSuspended(freshOrganization)) {
+        throw new Error("WORKSPACE_UNAVAILABLE");
       }
 
       // Refuse to silently reassign an auth id that's already a PortalUser
@@ -216,6 +246,9 @@ export async function acceptClientInvitationAction(token: string): Promise<Invit
     }
     if (err instanceof Error && err.message === "CONFLICTING_PORTAL_USER") {
       return { error: GENERIC_UNAVAILABLE_ERROR };
+    }
+    if (err instanceof Error && err.message === "WORKSPACE_UNAVAILABLE") {
+      return { error: WORKSPACE_UNAVAILABLE_ERROR };
     }
     throw err;
   }

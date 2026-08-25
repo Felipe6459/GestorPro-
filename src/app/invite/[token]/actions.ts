@@ -11,9 +11,21 @@ import { createActivity } from "@/lib/activity/create-activity";
 import { deliverNotificationEmails } from "@/lib/notifications/email/deliver-notification-email";
 import { buildInvitationAcceptedMetadata } from "@/lib/activity/team-metadata";
 import { checkRateLimit, getRequestIp, ACCEPT_MEMBER_INVITE_LIMIT } from "@/lib/rate-limit";
+import { isOrganizationSuspended } from "@/lib/organization-access";
 import type { InviteAcceptState } from "@/types";
 
 const GENERIC_UNAVAILABLE_ERROR = "This invitation is no longer available.";
+// Platform Admin Organization Suspension, PR 2 — deliberately a distinct
+// message from GENERIC_UNAVAILABLE_ERROR above (which means "this
+// specific invitation is gone/expired/wrong-email"): this one means "the
+// invitation itself is still perfectly valid, but its target workspace
+// is not currently reachable" — the same honest, non-disclosing framing
+// /organization-unavailable's own page copy uses, never naming
+// suspension explicitly. The Invitation row itself is never touched on
+// this path — no expire, delete, accept, or status change — so the same
+// pending invitation is usable again the moment the organization is
+// reactivated.
+const WORKSPACE_UNAVAILABLE_ERROR = "This workspace is currently unavailable. Contact support.";
 
 /**
  * If the current user already holds a Membership in this organization,
@@ -90,6 +102,18 @@ export async function acceptInvitationAction(
     return { error: "This invitation was sent to a different email address." };
   }
 
+  // Platform Admin Organization Suspension, PR 2 — checked last, right
+  // before the mutation, and never mutates the Invitation row itself: a
+  // suspended target organization leaves this exact same pending
+  // invitation usable again the instant it's reactivated.
+  const targetOrganization = await prisma.organization.findUnique({
+    where: { id: invitation.organizationId },
+    select: { suspendedAt: true },
+  });
+  if (!targetOrganization || isOrganizationSuspended(targetOrganization)) {
+    return { error: WORKSPACE_UNAVAILABLE_ERROR };
+  }
+
   let notificationIds: string[];
   try {
     notificationIds = await prisma.$transaction(async (tx) => {
@@ -104,6 +128,17 @@ export async function acceptInvitationAction(
         fresh.role === Role.OWNER
       ) {
         throw new Error("STALE_INVITATION");
+      }
+
+      // Re-checked here too, closing the gap between the read above and
+      // this write (e.g. a Platform Admin suspends the organization in
+      // the moment between this action's first check and this commit).
+      const freshOrganization = await tx.organization.findUnique({
+        where: { id: fresh.organizationId },
+        select: { suspendedAt: true },
+      });
+      if (!freshOrganization || isOrganizationSuspended(freshOrganization)) {
+        throw new Error("WORKSPACE_UNAVAILABLE");
       }
 
       // upsert, not create: @@unique([userId, organizationId]) means a
@@ -143,6 +178,9 @@ export async function acceptInvitationAction(
       // under someone else's transaction — finish quietly if so.
       await redirectIfAlreadyMember(user.id, invitation.organizationId);
       return { error: GENERIC_UNAVAILABLE_ERROR };
+    }
+    if (err instanceof Error && err.message === "WORKSPACE_UNAVAILABLE") {
+      return { error: WORKSPACE_UNAVAILABLE_ERROR };
     }
     throw err;
   }
