@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { Role } from "@/generated/prisma/enums";
 import { createTrialSubscription } from "@/lib/billing/provisioning";
+import { isOrganizationSuspended, ORGANIZATION_UNAVAILABLE_PATH } from "@/lib/organization-access";
 
 const ACTIVE_ORG_COOKIE = "active_organization_id";
 const ACTIVE_ORG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
@@ -293,12 +294,25 @@ export async function getOrCreateOrganizationId(
  *
  * Prefers the user's explicitly chosen "active organization" — persisted in
  * an httpOnly cookie purely as a UX preference — but only after confirming a
- * Membership row proves they still belong to it; the cookie is never trusted
- * as an authorization decision by itself. Falls back to their OWNER
- * organization (auto-provisioning one via getOrCreateOrganizationId if this
- * is their first time) when no cookie is set, or when the cookie names an
- * organization they're no longer (or never were) a member of — so a user who
- * has never switched keeps working exactly as before this change.
+ * Membership row proves they still belong to it AND that organization is not
+ * suspended; the cookie is never trusted as an authorization decision by
+ * itself. Falls back to their OWNER organization (auto-provisioning one via
+ * getOrCreateOrganizationId if this is their first time) when no cookie is
+ * set, or when the cookie names an organization they're no longer (or never
+ * were) a member of — so a user who has never switched keeps working exactly
+ * as before this change.
+ *
+ * Platform Admin Organization Suspension, PR 1: when the cookie's own
+ * organization is suspended, or absent, this now also checks every other
+ * organization the user actually belongs to before ever reaching
+ * getOrCreateOrganizationId() — a user with an existing membership (even a
+ * suspended one) must never silently receive a brand-new auto-provisioned
+ * personal organization; getOrCreateOrganizationId() below is only ever
+ * reached once this function has independently confirmed the user has no
+ * membership at all (the genuine first-time-user case, unchanged). A user
+ * with another accessible, non-suspended organization is routed there
+ * instead of being denied; only a user whose *every* real membership is
+ * suspended is redirected to ORGANIZATION_UNAVAILABLE_PATH.
  */
 async function resolveActiveOrganizationId(user: {
   id: string;
@@ -313,11 +327,42 @@ async function resolveActiveOrganizationId(user: {
       where: {
         userId_organizationId: { userId: user.id, organizationId: requestedOrganizationId },
       },
-      select: { organizationId: true },
+      select: { organizationId: true, organization: { select: { suspendedAt: true } } },
     });
-    if (membership) {
+    if (membership && !isOrganizationSuspended(membership.organization)) {
       return membership.organizationId;
     }
+  }
+
+  // The cookie was absent, stale, or named a now-suspended organization.
+  // Before ever provisioning anything, look across every real membership
+  // this user has — ordered OWNER first (Role's own declared enum order,
+  // matching getOrCreateOrganizationId's own OWNER-priority default), then
+  // oldest first — for the first one that is not suspended.
+  const memberships = await prisma.membership.findMany({
+    where: { userId: user.id },
+    select: { organizationId: true, organization: { select: { suspendedAt: true } } },
+    orderBy: [{ role: "asc" }, { createdAt: "asc" }],
+  });
+
+  const usableMembership = memberships.find((m) => !isOrganizationSuspended(m.organization));
+  if (usableMembership) {
+    try {
+      cookieStore.set(ACTIVE_ORG_COOKIE, usableMembership.organizationId, activeOrgCookieOptions());
+    } catch {
+      // Server Component context; see the try/catch below for the same
+      // reasoning — the next request simply re-resolves the same default.
+    }
+    return usableMembership.organizationId;
+  }
+
+  if (memberships.length > 0) {
+    // A real membership exists, but every one of them is suspended — a
+    // hard, terminal denial. Deliberately never falls through to
+    // getOrCreateOrganizationId() below, which would otherwise silently
+    // auto-provision a brand-new personal organization for someone who
+    // already has a real membership.
+    redirect(ORGANIZATION_UNAVAILABLE_PATH);
   }
 
   const organizationId = await getOrCreateOrganizationId(user);

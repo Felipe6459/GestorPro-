@@ -386,6 +386,69 @@ model Organization {
   profile        OrganizationProfile?
   paymentDetails OrganizationPaymentDetails?
   domainSettings OrganizationDomainSettings?
+
+  // Platform Admin Organization Suspension, PR 1 (design investigation:
+  // PLATFORM_ADMIN_ORGANIZATION_SUSPENSION_DESIGN). An operator-level
+  // override, deliberately independent of billing: null means active
+  // (every existing organization today, since this column is additive
+  // with no backfill); a non-null timestamp means a Platform Admin has
+  // suspended this organization and every staff/Portal/search
+  // resolution path must deny access. Never renamed to "status" or any
+  // value resembling OrganizationLifecycleStatus's own "SUSPENDED"
+  // bucket (src/lib/platform-admin/queries/organizations.ts) — that is a
+  // completely different, billing-derived concept computed from
+  // Subscription.status, and this field must never be confused with or
+  // feed into it. This PR adds enforcement only; no Platform Admin
+  // mutation sets this field yet (PR 2).
+  suspendedAt DateTime?
+
+  platformAdminAuditEvents PlatformAdminAuditEvent[]
+}
+
+// Platform Admin Organization Suspension, PR 1. Deliberately separate
+// from Activity (src/app/(dashboard)/activity's own tenant-visible
+// timeline, whose actorId is a User FK assuming an in-tenant actor) — a
+// Platform Admin action is taken by an identity that is authorized purely
+// via an env-var allowlist (requirePlatformAdmin(), never a database
+// row/Role — see src/lib/platform-admin/authorization.ts) and is not
+// guaranteed to have a User row at all, let alone a Membership in the
+// target organization. Append-only by application-code convention (no
+// update/delete code path exists anywhere in this codebase for this
+// model) — matching Activity's own no-deletion precedent, not a new
+// pattern. No mutation writes to this model in PR 1; the model/enum are
+// added now so PR 2's mutation and this PR's own migration ship
+// independently of each other.
+model PlatformAdminAuditEvent {
+  id String @id @default(uuid()) @db.Uuid
+
+  organizationId String       @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  action PlatformAdminAuditAction
+
+  // The acting admin's own email, captured directly from
+  // requirePlatformAdmin()'s return value at action time — deliberately
+  // a plain string, never a User FK (an allowlisted Platform Admin who
+  // has never visited the tenant app has no User row to reference; see
+  // this feature's own design investigation for the full reasoning).
+  // Immutable once written, the same "durable point-in-time fact" this
+  // codebase already treats every other audit-shaped snapshot field as
+  // (e.g. Activity.metadata).
+  actorEmail String
+
+  // Bounded, from a fixed application-level catalog — never freeform
+  // operator-typed text. Nullable because PR 1 writes no rows at all;
+  // PR 2's suspend action always sets one, reactivate never does.
+  reasonCode String?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+enum PlatformAdminAuditAction {
+  ORGANIZATION_SUSPENDED
+  ORGANIZATION_REACTIVATED
 }
 
 // Customer Setup Wizard (Stage 6.2) — Company Profile step. One row per
