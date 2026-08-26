@@ -3,17 +3,22 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 /**
- * Platform Admin Organization Suspension — confirmation-input hardening
- * hotfix. A genuine component contract test: parses the real, committed
- * OrganizationSuspensionControls source with the TypeScript Compiler API
- * (the same technique this repo's own scripts/security-checks/check-
- * platform-admin-security.mjs already uses to verify real JSX/AST shape
- * rather than pattern-matching text) and asserts the exact-name
- * confirmation `<input>` carries all four text-assistance-disabling
- * attributes, plus the accessible mismatch-feedback wiring. This proves
- * the real, shipped markup — not a reimplementation of it — genuinely
- * has these attributes; a future edit that silently drops one of them
- * fails this test for that exact reason.
+ * Platform Admin Organization Suspension — confirmation-input contract
+ * tests. Parses the real, committed OrganizationSuspensionControls
+ * source with the TypeScript Compiler API (the same technique this
+ * repo's own scripts/security-checks/check-platform-admin-security.mjs
+ * already uses to verify real JSX/AST shape rather than pattern-matching
+ * text) — proving the real, shipped markup, not a reimplementation of
+ * it.
+ *
+ * ORGANIZATION_IDENTITY_CONFIRMATION_DESIGN correction: the dedicated
+ * "Exact organization name" reference block (added by the prior
+ * discoverability hotfix) is now gone entirely, along with any use of
+ * Organization.name in this component — replaced by a short, inline
+ * `SUSPEND <slug>` confirmation phrase. Text-assistance hardening
+ * (autoComplete/autoCorrect/autoCapitalize/spellCheck) and the
+ * accessible mismatch-feedback shape are both still required, unchanged
+ * in spirit from the prior two hotfixes.
  */
 
 const COMPONENT_FILE = "src/components/platform-admin/organization-suspension-controls.tsx";
@@ -23,7 +28,7 @@ function parseComponentFile(): ts.SourceFile {
   return ts.createSourceFile(COMPONENT_FILE, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 }
 
-/** True for the one JSX input element in this file whose `type` attribute is the string literal "text" — the exact-name confirmation field. */
+/** True for the one JSX input element in this file whose `type` attribute is the string literal "text" — the exact-phrase confirmation field. */
 function isConfirmationInput(node: ts.Node): node is ts.JsxSelfClosingElement {
   if (!ts.isJsxSelfClosingElement(node)) return false;
   if (node.tagName.getText() !== "input") return false;
@@ -84,16 +89,11 @@ describe("OrganizationSuspensionControls' confirmation input — text-assistance
     expect(attributeValueText(input, "spellCheck", sourceFile)).toBe("false");
   });
 
-  it("aria-describedby always references the exact-name reference block, and additionally the mismatch message when one is shown", () => {
-    // Discoverability hotfix: the input is now always described by the
-    // dedicated reference block holding the exact expected value (so a
-    // screen reader user tabbing to the input hears it), and, only while
-    // a mismatch exists, additionally by the mismatch message — a real
-    // conditional expression, never a hardcoded string.
+  it("is wired to a conditional aria-describedby (present only while a mismatch message is shown — no separate reference block exists to describe permanently anymore)", () => {
     const value = attributeValueText(input, "aria-describedby", sourceFile);
     expect(value).not.toBeNull();
-    expect(value).toContain("nameReferenceId");
-    expect(value).toMatch(/nameMismatches\s*\?.*nameMismatchId/);
+    expect(value).toMatch(/\?.*:.*undefined/);
+    expect(value).toContain("mismatchId");
   });
 
   it("is wired to a conditional aria-invalid (present only when a mismatch exists, never a hardcoded true/false)", () => {
@@ -102,7 +102,7 @@ describe("OrganizationSuspensionControls' confirmation input — text-assistance
     expect(value).toMatch(/\?.*:.*undefined/);
   });
 
-  it("still carries every original attribute this hotfix must not remove (id, controlled value/onChange)", () => {
+  it("still carries every original attribute this design correction must not remove (id, controlled value/onChange)", () => {
     expect(attributeValueText(input, "id", sourceFile)).not.toBeNull();
     expect(attributeValueText(input, "value", sourceFile)).not.toBeNull();
     expect(attributeValueText(input, "onChange", sourceFile)).not.toBeNull();
@@ -112,100 +112,96 @@ describe("OrganizationSuspensionControls' confirmation input — text-assistance
 describe("OrganizationSuspensionControls — visible, accessible mismatch feedback", () => {
   const content = readFileSync(COMPONENT_FILE, "utf8");
 
-  it('renders the exact bounded mismatch copy "Name does not match." somewhere in the confirmation dialog', () => {
-    expect(content).toContain("Name does not match.");
+  it('renders the bounded mismatch copy "Doesn\'t match." somewhere in the confirmation dialog', () => {
+    expect(content).toContain("Doesn&apos;t match.");
   });
 
   it("never renders the organization's id, an actor email, or any audit/raw-value placeholder text near the mismatch message (bounded, non-disclosing copy only)", () => {
     // A light-touch guard, not a full parse: the mismatch copy's own
     // literal string must not be adjacent to anything that looks like an
-    // interpolated raw value (e.g. `{organizationId}` or `{actorEmail}`)
-    // in the same file — this component must only ever render
-    // organizationName (already visible elsewhere on the page) and fixed
-    // copy.
-    expect(content).not.toMatch(/Name does not match\.[^<]*\{(?!\/)/);
+    // interpolated raw value in the same file.
+    expect(content).not.toMatch(/Doesn&apos;t match\.[^<]*\{(?!\/)/);
   });
 });
 
 /**
- * Discoverability hotfix — the fragile inline "Type <name> to confirm"
- * rendering (no wrap protection, no way to select just the value) is
- * replaced by a dedicated, always-fully-visible, verbatim reference
- * block. Proven the same way as the input's own hardening above: a
- * genuine AST contract test against the real, committed source, never a
- * DOM render (no jsdom/Testing Library in this repo's unit config).
+ * ORGANIZATION_IDENTITY_CONFIRMATION_DESIGN correction: the discoverability
+ * hotfix's own dedicated "Exact organization name" reference block —
+ * and Organization.name itself — must be completely gone from this
+ * component. The full name's one remaining home is the Organization
+ * Detail page's own "Organization" section (see organization-detail-
+ * header-wrap.test.ts's sibling coverage of page.tsx, and this file's
+ * own check of the new Field there).
  */
-describe("OrganizationSuspensionControls — exact-name reference block", () => {
-  const sourceFile = parseComponentFile();
+describe("OrganizationSuspensionControls — the former exact-name reference block is gone", () => {
+  const content = readFileSync(COMPONENT_FILE, "utf8");
 
-  function isOrganizationNameExpressionChild(child: ts.JsxChild): boolean {
-    return ts.isJsxExpression(child) && !!child.expression && ts.isIdentifier(child.expression) && child.expression.text === "organizationName";
-  }
+  it('no longer renders the "Exact organization name" label anywhere', () => {
+    expect(content).not.toContain("Exact organization name");
+  });
 
-  function findReferenceBlock(): ts.JsxElement {
-    let found: ts.JsxElement | undefined;
+  it("no longer accepts or reads Organization.name (an organizationName identifier) anywhere in this file", () => {
+    expect(content).not.toMatch(/organizationName/);
+  });
+
+  it("no longer renders {organizationName} (or any name-shaped prop) as a JSX expression child anywhere", () => {
+    const sourceFile = parseComponentFile();
+    let found = false;
     function visit(node: ts.Node) {
       if (found) return;
-      if (ts.isJsxElement(node) && node.openingElement.tagName.getText() === "p" && node.children.some(isOrganizationNameExpressionChild)) {
-        found = node;
+      if (ts.isJsxExpression(node) && node.expression && ts.isIdentifier(node.expression) && node.expression.text === "organizationName") {
+        found = true;
         return;
       }
       ts.forEachChild(node, visit);
     }
     visit(sourceFile);
-    if (!found) {
-      throw new Error("No <p> element rendering {organizationName} verbatim found — the dedicated reference block may have been removed.");
+    expect(found).toBe(false);
+  });
+});
+
+/**
+ * The replacement: a short, inline `SUSPEND <slug>` phrase, derived
+ * deterministically from organizationSlug via the shared pure module
+ * (organization-suspension-confirmation.ts) — never a large dedicated
+ * block, never a Clipboard API call or Copy button (explicitly out of
+ * scope for this design).
+ */
+describe("OrganizationSuspensionControls — inline SUSPEND <slug> confirmation phrase", () => {
+  const content = readFileSync(COMPONENT_FILE, "utf8");
+
+  it("accepts organizationSlug and derives the confirmation phrase via buildSuspendConfirmationPhrase", () => {
+    expect(content).toMatch(/organizationSlug/);
+    expect(content).toMatch(/buildSuspendConfirmationPhrase\(\s*organizationSlug\s*\)/);
+  });
+
+  it("renders the derived phrase inline inside the confirm-typing label — a short <code> element, not a separate large reference block", () => {
+    const sourceFile = parseComponentFile();
+    let found: ts.JsxElement | undefined;
+    function visit(node: ts.Node) {
+      if (found) return;
+      if (ts.isJsxElement(node) && node.openingElement.tagName.getText() === "code") {
+        const hasPhraseChild = node.children.some(
+          (c) => ts.isJsxExpression(c) && c.expression && ts.isIdentifier(c.expression) && c.expression.text === "confirmationPhrase",
+        );
+        if (hasPhraseChild) {
+          found = node;
+          return;
+        }
+      }
+      ts.forEachChild(node, visit);
     }
-    return found;
-  }
-
-  function classNameOf(element: ts.JsxElement): string {
-    for (const prop of element.openingElement.attributes.properties) {
-      if (!ts.isJsxAttribute(prop) || prop.name.getText() !== "className") continue;
-      const init = prop.initializer;
-      if (init && ts.isStringLiteral(init)) return init.text;
-    }
-    return "";
-  }
-
-  it("renders {organizationName} verbatim as its sole child expression — no formatting, trimming, or transformation function wraps it", () => {
-    const block = findReferenceBlock();
-    // Exactly one JsxExpression child, and it's the bare identifier —
-    // never `{organizationName.trim()}`, `{formatName(organizationName)}`,
-    // or similar, which this same identifier check would already reject
-    // (an isIdentifier() check fails the moment a call/member expression
-    // wraps it).
-    const expressionChildren = block.children.filter((c) => ts.isJsxExpression(c));
-    expect(expressionChildren).toHaveLength(1);
+    visit(sourceFile);
+    expect(found).toBeDefined();
   });
 
-  it("has an id the input's own aria-describedby references (checked together with the input's own test above)", () => {
-    const block = findReferenceBlock();
-    const idAttr = block.openingElement.attributes.properties.find((p) => ts.isJsxAttribute(p) && p.name.getText() === "id");
-    expect(idAttr).toBeDefined();
+  it("the label wraps safely at narrow widths (wrap-anywhere), and so does the inline phrase element itself", () => {
+    const matches = content.match(/className="[^"]*wrap-anywhere[^"]*"/g) ?? [];
+    // At least two occurrences: the label's own className and the <code> element's className.
+    expect(matches.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("is manually selectable via select-all (user-select: all) — never a Clipboard API call, an automatic copy, or a Copy button in this minimal hotfix", () => {
-    const className = classNameOf(findReferenceBlock());
-    expect(className).toMatch(/\bselect-all\b/);
-    expect(readFileSync(COMPONENT_FILE, "utf8")).not.toMatch(/navigator\.clipboard|useClipboard|Copy(?:Button|ToClipboard)/);
-  });
-
-  it("wraps safely (wrap-anywhere / overflow-wrap: anywhere) instead of overflowing for a long unbroken string", () => {
-    expect(classNameOf(findReferenceBlock())).toMatch(/\bwrap-anywhere\b/);
-  });
-
-  it("is never truncated, ellipsized, or line-clamped", () => {
-    const className = classNameOf(findReferenceBlock());
-    expect(className).not.toMatch(/\btruncate\b|\bline-clamp-\d+\b|\btext-ellipsis\b|\bwhitespace-nowrap\b/);
-  });
-
-  it("is clearly labeled, and the confirm-typing instruction no longer duplicates the name inline (no confusing duplicate accessible text)", () => {
-    const content = readFileSync(COMPONENT_FILE, "utf8");
-    expect(content).toContain("Exact organization name");
-    // The old inline rendering — the label itself containing
-    // {organizationName} — must be gone; the reference block above is
-    // now the only place this component renders the raw value.
-    expect(content).not.toMatch(/Type\s*<span[^>]*>\{organizationName\}/);
+  it("never uses the Clipboard API, an automatic copy, or a Copy button", () => {
+    expect(content).not.toMatch(/navigator\.clipboard|useClipboard|Copy(?:Button|ToClipboard)/);
   });
 });

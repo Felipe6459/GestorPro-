@@ -9,6 +9,12 @@ import { injectTestSession } from "../support/e2e-session";
  * already proves the read-side denial contract (dbQuery-set suspendedAt
  * only); this file is the first place any of it is driven through the
  * real Suspend/Reactivate controls on the Organization Detail page.
+ *
+ * ORGANIZATION_IDENTITY_CONFIRMATION_DESIGN correction: confirmation is
+ * now the fixed phrase `SUSPEND <slug>`, never Organization.name — see
+ * organization-suspension-confirmation.ts's own header comment for the
+ * full reasoning. fixtures.orgA.slug (already part of TestFixtures) is
+ * used directly; no separate name lookup is needed anymore.
  */
 
 // Must match playwright.config.ts's own fixed PLATFORM_ADMIN_EMAILS value
@@ -18,13 +24,14 @@ import { injectTestSession } from "../support/e2e-session";
 const PLATFORM_ADMIN_EMAIL = "platform-admin-e2e@example.com";
 const SECTION_TITLES = ["Business Identity", "Subscription", "Organization", "Team", "Usage", "Clients", "Projects", "Recent Activity"];
 
+function confirmationPhrase(slug: string): string {
+  return `SUSPEND ${slug}`;
+}
+
 let fixtures: TestFixtures;
-let orgAName: string;
 
 test.beforeAll(async () => {
   fixtures = await seedE2EFixtures();
-  const org = await dbQuery<{ name: string }>("organization", "findUniqueOrThrow", { where: { id: fixtures.orgA.id }, select: { name: true } });
-  orgAName = org.name;
 });
 
 test.afterAll(async () => {
@@ -67,7 +74,10 @@ test.describe("Operator status display", () => {
 });
 
 test.describe("Suspend flow", () => {
-  test("the Suspend button requires both a selected reason and the exact organization name before it can be confirmed", async ({ context, baseURL }) => {
+  test("the Suspend button requires both a selected reason and the exact SUSPEND <slug> phrase before it can be confirmed", async ({
+    context,
+    baseURL,
+  }) => {
     const page = await asAdmin(context, baseURL!);
     await gotoDetail(page);
     await page.getByRole("button", { name: "Suspend" }).click();
@@ -78,12 +88,12 @@ test.describe("Suspend flow", () => {
     await expect(confirmButton).toBeDisabled();
 
     await dialog.getByLabel("Reason").selectOption("POLICY_VIOLATION");
-    await expect(confirmButton).toBeDisabled(); // name not yet typed
+    await expect(confirmButton).toBeDisabled(); // phrase not yet typed
 
-    await dialog.locator("input[type=text]").fill("wrong name");
-    await expect(confirmButton).toBeDisabled(); // wrong name typed
+    await dialog.locator("input[type=text]").fill("wrong phrase");
+    await expect(confirmButton).toBeDisabled(); // wrong phrase typed
 
-    await dialog.locator("input[type=text]").fill(orgAName);
+    await dialog.locator("input[type=text]").fill(confirmationPhrase(fixtures.orgA.slug));
     await expect(confirmButton).toBeEnabled();
   });
 
@@ -94,7 +104,7 @@ test.describe("Suspend flow", () => {
 
     const dialog = page.getByRole("dialog", { name: "Suspend organization" });
     await dialog.getByLabel("Reason").selectOption("OTHER");
-    await dialog.locator("input[type=text]").fill(orgAName);
+    await dialog.locator("input[type=text]").fill(confirmationPhrase(fixtures.orgA.slug));
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(dialog).toBeHidden();
 
@@ -115,7 +125,7 @@ test.describe("Suspend flow", () => {
 
     const dialog = page.getByRole("dialog", { name: "Suspend organization" });
     await dialog.getByLabel("Reason").selectOption("SECURITY_RISK");
-    await dialog.locator("input[type=text]").fill(orgAName);
+    await dialog.locator("input[type=text]").fill(confirmationPhrase(fixtures.orgA.slug));
     await dialog.getByRole("button", { name: "Suspend" }).click();
 
     await expect(page.getByText("Organization suspended")).toBeVisible();
@@ -136,7 +146,7 @@ test.describe("Suspend flow", () => {
 
     const dialog = page.getByRole("dialog", { name: "Suspend organization" });
     await dialog.getByLabel("Reason").selectOption("OTHER");
-    await dialog.locator("input[type=text]").fill(orgAName);
+    await dialog.locator("input[type=text]").fill(confirmationPhrase(fixtures.orgA.slug));
     const confirmButton = dialog.getByRole("button", { name: "Suspend" });
     await confirmButton.click();
     // Immediately after the first click, the button must already be
@@ -164,7 +174,7 @@ test.describe("Suspend flow", () => {
       await adminPage.getByRole("button", { name: "Suspend" }).click();
       const suspendDialog = adminPage.getByRole("dialog", { name: "Suspend organization" });
       await suspendDialog.getByLabel("Reason").selectOption("OTHER");
-      await suspendDialog.locator("input[type=text]").fill(orgAName);
+      await suspendDialog.locator("input[type=text]").fill(confirmationPhrase(fixtures.orgA.slug));
       await suspendDialog.getByRole("button", { name: "Suspend" }).click();
       await expect(adminPage.getByText("Organization suspended")).toBeVisible();
 
@@ -191,7 +201,7 @@ test.describe("Reactivate flow", () => {
     await dbQuery("organization", "update", { where: { id: fixtures.orgA.id }, data: { suspendedAt: new Date().toISOString() } });
   });
 
-  test("requires confirmation but never requires typing the organization name", async ({ context, baseURL }) => {
+  test("requires confirmation but never requires typing anything", async ({ context, baseURL }) => {
     const page = await asAdmin(context, baseURL!);
     await gotoDetail(page);
     await page.getByRole("button", { name: "Reactivate" }).click();
@@ -277,7 +287,7 @@ test.describe("Regression — every existing Organization Detail section is stil
     await page.getByRole("button", { name: "Suspend" }).click();
     const suspendDialog = page.getByRole("dialog", { name: "Suspend organization" });
     await suspendDialog.getByLabel("Reason").selectOption("OTHER");
-    await suspendDialog.locator("input[type=text]").fill(orgAName);
+    await suspendDialog.locator("input[type=text]").fill(confirmationPhrase(fixtures.orgA.slug));
     await suspendDialog.getByRole("button", { name: "Suspend" }).click();
     await expect(page.getByText("Organization suspended")).toBeVisible();
 
@@ -292,24 +302,27 @@ test.describe("Regression — every existing Organization Detail section is stil
 });
 
 /**
- * Confirmation-input hardening hotfix — discovered during a paused,
- * authorized Production Suspend cycle: the exact-name field had no
- * protection against browser/OS text assistance and gave no visible
- * feedback on a non-matching attempt. Uses a dedicated synthetic
- * organization (never fixtures.orgA) whose name deliberately contains an
- * ASCII apostrophe and other punctuation — the same shape as this app's
- * own default auto-provisioned "<name>'s Workspace" organizations,
- * the leading hypothesis for what the real Production attempt hit.
+ * Confirmation-phrase hardening. Uses a dedicated synthetic organization
+ * (never fixtures.orgA) whose name deliberately contains an ASCII
+ * apostrophe and other punctuation — the same shape as this app's own
+ * default auto-provisioned "<name>'s Workspace" organizations. Under
+ * ORGANIZATION_IDENTITY_CONFIRMATION_DESIGN, that name plays no role in
+ * confirmation at all anymore (only the organization's own slug does) —
+ * kept here specifically to prove that structurally: an org whose name
+ * would have broken the old contract confirms cleanly under the new one.
  */
-test.describe("Confirmation input hardening (synthetic organization name with an apostrophe and punctuation)", () => {
+test.describe("Confirmation input hardening (synthetic organization with an apostrophe/punctuation name, confirmed via its slug)", () => {
   const SYNTHETIC_ORG_NAME = "Alex's Bistro & Co., Ltd.";
   let syntheticOrgId: string;
+  let syntheticOrgSlug: string;
 
   test.beforeAll(async () => {
+    const slug = `e2e-hardening-${randomUUID()}`;
     const org = await dbQuery<{ id: string }>("organization", "create", {
-      data: { name: SYNTHETIC_ORG_NAME, slug: `e2e-hardening-${randomUUID()}` },
+      data: { name: SYNTHETIC_ORG_NAME, slug },
     });
     syntheticOrgId = org.id;
+    syntheticOrgSlug = slug;
   });
 
   test.afterAll(async () => {
@@ -338,7 +351,17 @@ test.describe("Confirmation input hardening (synthetic organization name with an
     await expect(input).toHaveAttribute("spellcheck", "false");
   });
 
-  test("a non-empty mismatch shows the accessible bounded message with aria-invalid/aria-describedby, and an exact match clears the mismatch-specific parts", async ({
+  test("the dialog states the slug-based phrase, never the organization's name", async ({ context, baseURL }) => {
+    const page = await asAdmin(context, baseURL!);
+    await gotoSyntheticDetail(page);
+    await page.getByRole("button", { name: "Suspend" }).click();
+    const dialog = page.getByRole("dialog", { name: "Suspend organization" });
+    const dialogText = await dialog.innerText();
+    expect(dialogText).toContain(confirmationPhrase(syntheticOrgSlug));
+    expect(dialogText).not.toContain(SYNTHETIC_ORG_NAME);
+  });
+
+  test("a non-empty mismatch shows the accessible bounded message with aria-invalid/aria-describedby, and an exact match clears both", async ({
     context,
     baseURL,
   }) => {
@@ -348,44 +371,32 @@ test.describe("Confirmation input hardening (synthetic organization name with an
     const dialog = page.getByRole("dialog", { name: "Suspend organization" });
     const input = dialog.locator('input[type="text"]');
 
-    // Discoverability hotfix: aria-describedby now always references the
-    // exact-name reference block, even before anything is typed.
-    const describedByBefore = await input.getAttribute("aria-describedby");
-    expect(describedByBefore).not.toBeNull();
     await expect(input).not.toHaveAttribute("aria-invalid");
+    await expect(input).not.toHaveAttribute("aria-describedby");
 
-    // The curly-apostrophe variant — visually near-identical, a different code point.
-    await input.fill("Alex’s Bistro & Co., Ltd.");
-    await expect(dialog.getByText("Name does not match.")).toBeVisible();
+    await input.fill(SYNTHETIC_ORG_NAME); // the old contract's own value — never valid under the new one
+    await expect(dialog.getByText("Doesn't match.")).toBeVisible();
     await expect(input).toHaveAttribute("aria-invalid", "true");
-    const describedByDuringMismatch = await input.getAttribute("aria-describedby");
-    expect(describedByDuringMismatch).not.toBeNull();
-    // Now references both the reference block and the mismatch message —
-    // aria-describedby is a space-separated id list, never a single CSS
-    // selector (a bare space is a descendant combinator, not an id
-    // separator).
-    const ids = describedByDuringMismatch!.split(/\s+/);
-    expect(ids.length).toBeGreaterThanOrEqual(2);
-    const describedTexts = await Promise.all(ids.map((id) => dialog.locator(`#${id}`).innerText()));
-    expect(describedTexts.join(" ")).toContain("Name does not match.");
+    const describedBy = await input.getAttribute("aria-describedby");
+    expect(describedBy).not.toBeNull();
+    await expect(dialog.locator(`#${describedBy}`)).toHaveText("Doesn't match.");
 
-    await input.fill(SYNTHETIC_ORG_NAME);
-    await expect(dialog.getByText("Name does not match.")).toHaveCount(0);
+    await input.fill(confirmationPhrase(syntheticOrgSlug));
+    await expect(dialog.getByText("Doesn't match.")).toHaveCount(0);
     await expect(input).not.toHaveAttribute("aria-invalid");
-    // Back to referencing only the reference block, exactly like before anything was typed.
-    await expect(input).toHaveAttribute("aria-describedby", describedByBefore!);
+    await expect(input).not.toHaveAttribute("aria-describedby");
   });
 
-  test("is empty (no message, not disabled-looking-like-an-error) before anything is typed", async ({ context, baseURL }) => {
+  test("is empty (no message) before anything is typed", async ({ context, baseURL }) => {
     const page = await asAdmin(context, baseURL!);
     await gotoSyntheticDetail(page);
     await page.getByRole("button", { name: "Suspend" }).click();
     const dialog = page.getByRole("dialog", { name: "Suspend organization" });
-    await expect(dialog.getByText("Name does not match.")).toHaveCount(0);
+    await expect(dialog.getByText("Doesn't match.")).toHaveCount(0);
     await expect(dialog.locator('input[type="text"]')).not.toHaveAttribute("aria-invalid");
   });
 
-  test("Suspend confirm stays disabled for every near-miss variant (case, whitespace, curly apostrophe, en dash) and enables only for the exact match", async ({
+  test("Suspend confirm stays disabled for every near-miss variant (missing prefix, wrong slug, case change, trailing space, extra character, the old name-based text) and enables only for the exact phrase", async ({
     context,
     baseURL,
   }) => {
@@ -396,19 +407,21 @@ test.describe("Confirmation input hardening (synthetic organization name with an
     await dialog.getByLabel("Reason").selectOption("OTHER");
     const input = dialog.locator('input[type="text"]');
     const confirmButton = dialog.getByRole("button", { name: "Suspend" });
+    const phrase = confirmationPhrase(syntheticOrgSlug);
 
     for (const variant of [
-      SYNTHETIC_ORG_NAME.toLowerCase(),
-      SYNTHETIC_ORG_NAME.toUpperCase(),
-      `${SYNTHETIC_ORG_NAME} `,
-      SYNTHETIC_ORG_NAME.replace("'", "’"), // curly apostrophe
-      SYNTHETIC_ORG_NAME.replace("&", "–"), // en dash swapped in for a punctuation character
+      syntheticOrgSlug, // missing "SUSPEND " prefix
+      `SUSPEND wrong-slug-${randomUUID().slice(0, 8)}`, // wrong slug
+      phrase.toLowerCase(),
+      `${phrase} `,
+      `${phrase}!`,
+      SYNTHETIC_ORG_NAME, // the old, replaced contract's own value
     ]) {
       await input.fill(variant);
       await expect(confirmButton).toBeDisabled();
     }
 
-    await input.fill(SYNTHETIC_ORG_NAME);
+    await input.fill(phrase);
     await expect(confirmButton).toBeEnabled();
   });
 
@@ -419,7 +432,7 @@ test.describe("Confirmation input hardening (synthetic organization name with an
     const dialog = page.getByRole("dialog", { name: "Suspend organization" });
     await dialog.getByLabel("Reason").selectOption("OTHER");
     await dialog.locator('input[type="text"]').fill("definitely wrong");
-    await expect(dialog.getByText("Name does not match.")).toBeVisible();
+    await expect(dialog.getByText("Doesn't match.")).toBeVisible();
     await dialog.getByRole("button", { name: "Cancel" }).click();
     await expect(dialog).toBeHidden();
 
@@ -438,7 +451,7 @@ test.describe("Confirmation input hardening (synthetic organization name with an
     await page.getByRole("button", { name: "Suspend" }).click();
     const dialog = page.getByRole("dialog", { name: "Suspend organization" });
     await dialog.getByLabel("Reason").selectOption("OTHER");
-    await dialog.locator('input[type="text"]').fill(SYNTHETIC_ORG_NAME);
+    await dialog.locator('input[type="text"]').fill(confirmationPhrase(syntheticOrgSlug));
     await dialog.getByRole("button", { name: "Suspend" }).click();
 
     await expect(page.getByText("Organization suspended")).toBeVisible();
@@ -449,47 +462,33 @@ test.describe("Confirmation input hardening (synthetic organization name with an
 });
 
 /**
- * Expected-name discoverability hotfix — discovered when a real operator
- * could not find the full expected organization name anywhere reliably
- * readable during a paused, authorized Production Suspend cycle: the
- * page header could visually clip/squeeze a long name, and the dialog's
- * own former inline rendering shared the same unprotected string.
- *
- * These tests never click the final Suspend confirmation (per this
- * hotfix's own explicit scope) — every one either checks enabled/
- * disabled state or ends by clicking Cancel.
+ * ORGANIZATION_IDENTITY_CONFIRMATION_DESIGN correction: the dialog's own
+ * former "Exact organization name" reference block is gone; the full
+ * name's one permanent home is now the Organization Detail page's own
+ * "Organization" section (the new "Name" field). These tests prove that
+ * field remains fully visible/wrapped/overflow-free for long or unusual
+ * names, and that the dialog itself never falls back to showing the
+ * name again.
  */
-test.describe("Expected-name discoverability (dedicated reference block)", () => {
+test.describe("Organization Name field discoverability (Organization Detail section)", () => {
   const LONG_MULTIWORD_NAME = "Silver Oak Mountain Ridge Consulting and Advisory Partners International Group, LLC";
   const LONG_UNBROKEN_NAME = `${"X".repeat(120)}Corp`; // one unbroken token, no spaces at all
-  const PUNCTUATED_NAME = "O'Brien & Sons, Inc.";
 
   let longMultiwordOrgId: string;
   let longUnbrokenOrgId: string;
-  let punctuatedOrgId: string;
 
   test.beforeAll(async () => {
-    const [a, b, c] = await Promise.all([
-      dbQuery<{ id: string }>("organization", "create", { data: { name: LONG_MULTIWORD_NAME, slug: `e2e-disco-multiword-${randomUUID()}` } }),
-      dbQuery<{ id: string }>("organization", "create", { data: { name: LONG_UNBROKEN_NAME, slug: `e2e-disco-unbroken-${randomUUID()}` } }),
-      dbQuery<{ id: string }>("organization", "create", { data: { name: PUNCTUATED_NAME, slug: `e2e-disco-punct-${randomUUID()}` } }),
+    const [a, b] = await Promise.all([
+      dbQuery<{ id: string }>("organization", "create", { data: { name: LONG_MULTIWORD_NAME, slug: `e2e-name-multiword-${randomUUID()}` } }),
+      dbQuery<{ id: string }>("organization", "create", { data: { name: LONG_UNBROKEN_NAME, slug: `e2e-name-unbroken-${randomUUID()}` } }),
     ]);
     longMultiwordOrgId = a.id;
     longUnbrokenOrgId = b.id;
-    punctuatedOrgId = c.id;
   });
 
   test.afterAll(async () => {
-    for (const id of [longMultiwordOrgId, longUnbrokenOrgId, punctuatedOrgId]) {
-      await dbQuery("platformAdminAuditEvent", "deleteMany", { where: { organizationId: id } });
+    for (const id of [longMultiwordOrgId, longUnbrokenOrgId]) {
       await dbQuery("organization", "delete", { where: { id } });
-    }
-  });
-
-  test.afterEach(async () => {
-    for (const id of [longMultiwordOrgId, longUnbrokenOrgId, punctuatedOrgId]) {
-      await dbQuery("organization", "update", { where: { id }, data: { suspendedAt: null } });
-      await dbQuery("platformAdminAuditEvent", "deleteMany", { where: { organizationId: id } });
     }
   });
 
@@ -497,7 +496,7 @@ test.describe("Expected-name discoverability (dedicated reference block)", () =>
     await page.goto(`/platform-admin/organizations/${orgId}`);
   }
 
-  test("the reference block renders a long multi-word name in full, with no horizontal overflow at narrow and wide viewports", async ({
+  test("the Organization section's Name field renders a long multi-word name in full, with no horizontal overflow at narrow and wide viewports", async ({
     context,
     baseURL,
   }) => {
@@ -505,19 +504,17 @@ test.describe("Expected-name discoverability (dedicated reference block)", () =>
     for (const width of [375, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       await gotoOrgDetail(page, longMultiwordOrgId);
-      await page.getByRole("button", { name: "Suspend" }).click();
-      const dialog = page.getByRole("dialog", { name: "Suspend organization" });
-      await expect(dialog.getByText(LONG_MULTIWORD_NAME)).toBeVisible();
+      const orgSection = page.getByRole("region", { name: "Organization" });
+      await expect(orgSection.getByText(LONG_MULTIWORD_NAME)).toBeVisible();
       const { scrollWidth, clientWidth } = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
         clientWidth: document.documentElement.clientWidth,
       }));
       expect(scrollWidth, `width=${width}`).toBeLessThanOrEqual(clientWidth);
-      await page.keyboard.press("Escape");
     }
   });
 
-  test("the reference block renders a long unbroken (no-space) name in full, wrapped safely, with no horizontal overflow", async ({
+  test("the Organization section's Name field renders a long unbroken (no-space) name in full, wrapped safely, with no horizontal overflow", async ({
     context,
     baseURL,
   }) => {
@@ -525,15 +522,13 @@ test.describe("Expected-name discoverability (dedicated reference block)", () =>
     for (const width of [375, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       await gotoOrgDetail(page, longUnbrokenOrgId);
-      await page.getByRole("button", { name: "Suspend" }).click();
-      const dialog = page.getByRole("dialog", { name: "Suspend organization" });
-      await expect(dialog.getByText(LONG_UNBROKEN_NAME)).toBeVisible();
+      const orgSection = page.getByRole("region", { name: "Organization" });
+      await expect(orgSection.getByText(LONG_UNBROKEN_NAME)).toBeVisible();
       const { scrollWidth, clientWidth } = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
         clientWidth: document.documentElement.clientWidth,
       }));
       expect(scrollWidth, `width=${width}`).toBeLessThanOrEqual(clientWidth);
-      await page.keyboard.press("Escape");
     }
   });
 
@@ -553,70 +548,11 @@ test.describe("Expected-name discoverability (dedicated reference block)", () =>
     }
   });
 
-  test("selecting the displayed expected value and pasting it into the confirmation input enables Suspend, for a name with an apostrophe and punctuation", async ({
-    context,
-    baseURL,
-  }) => {
+  test("the Name field's value is manually selectable (select-all)", async ({ context, baseURL }) => {
     const page = await asAdmin(context, baseURL!);
-    await gotoOrgDetail(page, punctuatedOrgId);
-    await page.getByRole("button", { name: "Suspend" }).click();
-    const dialog = page.getByRole("dialog", { name: "Suspend organization" });
-    await dialog.getByLabel("Reason").selectOption("OTHER");
-
-    // Simulates "select the reference block (select-all), copy, paste into
-    // the input" without depending on the real OS clipboard (not reliable
-    // in a headless CI browser): reads the reference block's own text
-    // content — exactly what a select-all click would select — and pastes
-    // that into the input, proving the *value* the block exposes is the
-    // exact value the confirmation needs.
-    const referenceText = await dialog.locator("p.select-all").innerText();
-    expect(referenceText).toBe(PUNCTUATED_NAME);
-    await dialog.locator('input[type="text"]').fill(referenceText);
-
-    await expect(dialog.getByRole("button", { name: "Suspend" })).toBeEnabled();
-  });
-
-  test("adding one character to an otherwise-exact match disables Suspend and shows the mismatch message; removing it restores the enabled state", async ({
-    context,
-    baseURL,
-  }) => {
-    const page = await asAdmin(context, baseURL!);
-    await gotoOrgDetail(page, punctuatedOrgId);
-    await page.getByRole("button", { name: "Suspend" }).click();
-    const dialog = page.getByRole("dialog", { name: "Suspend organization" });
-    await dialog.getByLabel("Reason").selectOption("OTHER");
-    const input = dialog.locator('input[type="text"]');
-    const confirmButton = dialog.getByRole("button", { name: "Suspend" });
-
-    await input.fill(PUNCTUATED_NAME);
-    await expect(confirmButton).toBeEnabled();
-
-    await input.fill(`${PUNCTUATED_NAME}!`);
-    await expect(confirmButton).toBeDisabled();
-    await expect(dialog.getByText("Name does not match.")).toBeVisible();
-
-    await input.fill(PUNCTUATED_NAME);
-    await expect(dialog.getByText("Name does not match.")).toHaveCount(0);
-    await expect(confirmButton).toBeEnabled();
-  });
-
-  test("Cancel submits no mutation, even after the reference block was used to reach an exact, enabled match", async ({ context, baseURL }) => {
-    const page = await asAdmin(context, baseURL!);
-    await gotoOrgDetail(page, punctuatedOrgId);
-    await page.getByRole("button", { name: "Suspend" }).click();
-    const dialog = page.getByRole("dialog", { name: "Suspend organization" });
-    await dialog.getByLabel("Reason").selectOption("OTHER");
-    await dialog.locator('input[type="text"]').fill(PUNCTUATED_NAME);
-    await expect(dialog.getByRole("button", { name: "Suspend" })).toBeEnabled();
-    await dialog.getByRole("button", { name: "Cancel" }).click();
-    await expect(dialog).toBeHidden();
-
-    const org = await dbQuery<{ suspendedAt: string | null }>("organization", "findUniqueOrThrow", {
-      where: { id: punctuatedOrgId },
-      select: { suspendedAt: true },
-    });
-    expect(org.suspendedAt).toBeNull();
-    const events = await dbQuery<unknown[]>("platformAdminAuditEvent", "findMany", { where: { organizationId: punctuatedOrgId } });
-    expect(events).toHaveLength(0);
+    await gotoOrgDetail(page, longMultiwordOrgId);
+    const orgSection = page.getByRole("region", { name: "Organization" });
+    const nameValue = orgSection.locator("dd").filter({ hasText: LONG_MULTIWORD_NAME }).first();
+    await expect(nameValue.locator(".select-all")).toHaveText(LONG_MULTIWORD_NAME);
   });
 });

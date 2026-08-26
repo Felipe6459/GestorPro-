@@ -7,10 +7,11 @@ import { ConfirmDialog, type ConfirmDialogHandle } from "@/components/ui/confirm
 import { useToast } from "@/components/toast/toast-provider";
 import { suspendOrganizationAction, reactivateOrganizationAction } from "@/app/(platform-admin)/platform-admin/organizations/[id]/actions";
 import { SUSPENSION_REASON_CODES, type SuspensionReasonCode } from "@/lib/platform-admin/organization-suspension-reasons";
-import { canConfirmSuspend, showsNameMismatch } from "@/lib/platform-admin/organization-suspension-confirmation";
+import { buildSuspendConfirmationPhrase, canConfirmSuspend, showsPhraseMismatch } from "@/lib/platform-admin/organization-suspension-confirmation";
 
 /**
- * Platform Admin Organization Suspension, PR 2. The one status
+ * Platform Admin Organization Suspension, PR 2 (+ the
+ * ORGANIZATION_IDENTITY_CONFIRMATION_DESIGN correction). The one status
  * indicator + control pair on Organization Detail — deliberately never
  * reuses StatusBadge/STATUS_TONES' own "SUSPENDED" key (that belongs to
  * OrganizationLifecycleStatus, a distinct billing-derived concept — see
@@ -18,6 +19,18 @@ import { canConfirmSuspend, showsNameMismatch } from "@/lib/platform-admin/organ
  * organization's own id, the acting admin's email, or any audit data —
  * this is an operator control surface, but its own visible text stays as
  * bounded as the tenant-facing /organization-unavailable page's does.
+ *
+ * Suspend confirmation is keyed to the organization's own slug, never
+ * its name: Organization.name is a customer-facing display/brand name
+ * (used verbatim in invoice PDFs and notification-email copy) — long,
+ * arbitrarily punctuated, and proven across this feature's own two
+ * prior hotfixes never reliably retypeable. slug is DB-unique, immutable
+ * after creation, and lowercase-ASCII-only (see organization-suspension-
+ * confirmation.ts's own header comment) — structurally immune to the
+ * browser/OS text-substitution bugs that affected the name-based
+ * contract. This component never receives or renders Organization.name
+ * at all; the Organization Detail page's own "Organization" section
+ * (page.tsx) is the one place the full name lives now.
  */
 
 const REASON_LABELS: Record<SuspensionReasonCode, string> = {
@@ -34,11 +47,11 @@ function formatSuspendedSince(suspendedAt: string): string {
 
 export function OrganizationSuspensionControls({
   organizationId,
-  organizationName,
+  organizationSlug,
   suspendedAt,
 }: {
   organizationId: string;
-  organizationName: string;
+  organizationSlug: string;
   /** ISO string, or null when active — a plain Date can't cross the Server->Client boundary as a prop. */
   suspendedAt: string | null;
 }) {
@@ -53,13 +66,13 @@ export function OrganizationSuspensionControls({
       {suspendedAt ? (
         <ReactivateControl organizationId={organizationId} />
       ) : (
-        <SuspendControl organizationId={organizationId} organizationName={organizationName} />
+        <SuspendControl organizationId={organizationId} organizationSlug={organizationSlug} />
       )}
     </div>
   );
 }
 
-function SuspendControl({ organizationId, organizationName }: { organizationId: string; organizationName: string }) {
+function SuspendControl({ organizationId, organizationSlug }: { organizationId: string; organizationSlug: string }) {
   const router = useRouter();
   const { showToast } = useToast();
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -68,13 +81,13 @@ function SuspendControl({ organizationId, organizationName }: { organizationId: 
   const [reasonCode, setReasonCode] = useState<SuspensionReasonCode | "">("");
   const titleId = useId();
   const descriptionId = useId();
-  const nameReferenceId = useId();
-  const nameInputId = useId();
-  const nameMismatchId = useId();
+  const confirmInputId = useId();
+  const mismatchId = useId();
   const reasonSelectId = useId();
 
-  const canConfirm = canConfirmSuspend(confirmText, organizationName, reasonCode);
-  const nameMismatches = showsNameMismatch(confirmText, organizationName);
+  const confirmationPhrase = buildSuspendConfirmationPhrase(organizationSlug);
+  const canConfirm = canConfirmSuspend(confirmText, organizationSlug, reasonCode);
+  const phraseMismatches = showsPhraseMismatch(confirmText, organizationSlug);
 
   function closeAndReset() {
     dialogRef.current?.close();
@@ -147,33 +160,20 @@ function SuspendControl({ organizationId, organizationName }: { organizationId: 
         </select>
 
         {/*
-          Discoverability hotfix: the exact expected value now has its own
-          dedicated, never-truncated reference — not just the page header
-          (which this same fix also protects, see page.tsx) and not just
-          this dialog's own former inline rendering, both of which gave a
-          long/unusual organization name nowhere reliably readable to copy
-          from. select-all (user-select: all) makes a single click select
-          the whole value, without any Clipboard API/automatic-copy/Copy
-          button — deliberately out of scope for this minimal hotfix.
-          wrap-anywhere (overflow-wrap: anywhere) guarantees even a
-          single long unbroken token wraps instead of overflowing this
-          fixed-max-width dialog — the stronger of Tailwind's two wrap
-          utilities: break-words (overflow-wrap: break-word) alone was
-          proven, by this exact discoverability hotfix's own E2E
-          coverage, not to be respected by this dialog's min-content
-          sizing for an unbroken string, while wrap-anywhere is. Never
-          truncated, ellipsized, or line-clamped.
+          ORGANIZATION_IDENTITY_CONFIRMATION_DESIGN correction: the
+          expected value is now short and slug-derived, so it's stated
+          directly inline in this one label — no separate reference
+          block (removed along with the fragile "type the exact
+          organization name" contract it existed to support).
+          wrap-anywhere on both the label and the inline <code> keeps
+          this safe at narrow widths even for a longer slug, matching
+          this codebase's own established wrap-protection convention.
         */}
-        <p className="mt-4 text-sm font-medium text-gray-700">Exact organization name</p>
-        <p id={nameReferenceId} className="mt-1 w-full select-all wrap-anywhere rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900">
-          {organizationName}
-        </p>
-
-        <label htmlFor={nameInputId} className="mt-4 block text-sm font-medium text-gray-700">
-          Type the name above to confirm
+        <label htmlFor={confirmInputId} className="mt-4 block wrap-anywhere text-sm font-medium text-gray-700">
+          Type <code className="wrap-anywhere rounded bg-gray-100 px-1 py-0.5 font-mono text-gray-900">{confirmationPhrase}</code> to confirm.
         </label>
         <input
-          id={nameInputId}
+          id={confirmInputId}
           type="text"
           value={confirmText}
           onChange={(event) => setConfirmText(event.target.value)}
@@ -181,13 +181,13 @@ function SuspendControl({ organizationId, organizationName }: { organizationId: 
           autoCorrect="off"
           autoCapitalize="none"
           spellCheck={false}
-          aria-describedby={nameMismatches ? `${nameReferenceId} ${nameMismatchId}` : nameReferenceId}
-          aria-invalid={nameMismatches ? true : undefined}
+          aria-describedby={phraseMismatches ? mismatchId : undefined}
+          aria-invalid={phraseMismatches ? true : undefined}
           className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
         />
-        {nameMismatches ? (
-          <p id={nameMismatchId} className="mt-1 text-sm text-red-600">
-            Name does not match.
+        {phraseMismatches ? (
+          <p id={mismatchId} className="mt-1 text-sm text-red-600">
+            Doesn&apos;t match.
           </p>
         ) : null}
 
