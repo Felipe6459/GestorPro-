@@ -28,9 +28,18 @@ import { buildSuspendConfirmationPhrase, canConfirmSuspend, showsPhraseMismatch 
  * after creation, and lowercase-ASCII-only (see organization-suspension-
  * confirmation.ts's own header comment) — structurally immune to the
  * browser/OS text-substitution bugs that affected the name-based
- * contract. This component never receives or renders Organization.name
- * at all; the Organization Detail page's own "Organization" section
- * (page.tsx) is the one place the full name lives now.
+ * contract.
+ *
+ * organization-selection hardening: `organizationName` is reintroduced
+ * here, but strictly as a **display-only** prop — an identity summary
+ * inside each dialog so an operator whose focus is now trapped in the
+ * modal still has an accessible cross-check for which organization they
+ * selected (duplicate/generic "<name>'s Workspace" names made this a
+ * real risk once the modal's own backdrop visually obscures the page
+ * behind it). It is never passed to organization-suspension-
+ * confirmation.ts, never compared against anything, and never part of
+ * the typed-confirmation contract — that remains exclusively
+ * `SUSPEND <slug>`, unchanged.
  */
 
 const REASON_LABELS: Record<SuspensionReasonCode, string> = {
@@ -47,10 +56,13 @@ function formatSuspendedSince(suspendedAt: string): string {
 
 export function OrganizationSuspensionControls({
   organizationId,
+  organizationName,
   organizationSlug,
   suspendedAt,
 }: {
   organizationId: string;
+  /** Display-only — never part of the typed-confirmation contract (see this file's own header comment). */
+  organizationName: string;
   organizationSlug: string;
   /** ISO string, or null when active — a plain Date can't cross the Server->Client boundary as a prop. */
   suspendedAt: string | null;
@@ -64,15 +76,33 @@ export function OrganizationSuspensionControls({
         </p>
       </div>
       {suspendedAt ? (
-        <ReactivateControl organizationId={organizationId} />
+        <ReactivateControl organizationId={organizationId} organizationName={organizationName} organizationSlug={organizationSlug} />
       ) : (
-        <SuspendControl organizationId={organizationId} organizationSlug={organizationSlug} />
+        <SuspendControl organizationId={organizationId} organizationName={organizationName} organizationSlug={organizationSlug} />
       )}
     </div>
   );
 }
 
-function SuspendControl({ organizationId, organizationSlug }: { organizationId: string; organizationSlug: string }) {
+/** The organization identity summary shared by both dialogs — display-only, never part of the confirmation comparison. */
+function OrganizationIdentitySummary({ organizationName, organizationSlug }: { organizationName: string; organizationSlug: string }) {
+  return (
+    <>
+      <span className="wrap-anywhere font-medium text-gray-900">{organizationName}</span> (
+      <span className="wrap-anywhere font-mono">{organizationSlug}</span>)
+    </>
+  );
+}
+
+function SuspendControl({
+  organizationId,
+  organizationName,
+  organizationSlug,
+}: {
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+}) {
   const router = useRouter();
   const { showToast } = useToast();
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -81,6 +111,7 @@ function SuspendControl({ organizationId, organizationSlug }: { organizationId: 
   const [reasonCode, setReasonCode] = useState<SuspensionReasonCode | "">("");
   const titleId = useId();
   const descriptionId = useId();
+  const identitySummaryId = useId();
   const confirmInputId = useId();
   const mismatchId = useId();
   const reasonSelectId = useId();
@@ -123,7 +154,7 @@ function SuspendControl({ organizationId, organizationSlug }: { organizationId: 
       <dialog
         ref={dialogRef}
         aria-labelledby={titleId}
-        aria-describedby={descriptionId}
+        aria-describedby={`${descriptionId} ${identitySummaryId}`}
         onClick={(event) => {
           if (event.target === dialogRef.current) closeAndReset();
         }}
@@ -138,6 +169,17 @@ function SuspendControl({ organizationId, organizationSlug }: { organizationId: 
         </h2>
         <p id={descriptionId} className="mt-2 text-sm text-gray-600">
           Suspending blocks staff and client access immediately. No data is deleted, and you can reactivate at any time.
+        </p>
+        {/*
+          organization-selection hardening: a compact, non-interactive
+          identity cross-check — display-only, never fed into the
+          confirmation comparison below. Its id is added to the dialog's
+          own aria-describedby (above) so it's announced automatically
+          when the dialog opens, without an extra tab stop or a second
+          reference block.
+        */}
+        <p id={identitySummaryId} className="mt-2 text-sm text-gray-600">
+          You are about to suspend <OrganizationIdentitySummary organizationName={organizationName} organizationSlug={organizationSlug} />.
         </p>
 
         <label htmlFor={reasonSelectId} className="mt-4 block text-sm font-medium text-gray-700">
@@ -204,7 +246,15 @@ function SuspendControl({ organizationId, organizationSlug }: { organizationId: 
   );
 }
 
-function ReactivateControl({ organizationId }: { organizationId: string }) {
+function ReactivateControl({
+  organizationId,
+  organizationName,
+  organizationSlug,
+}: {
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+}) {
   const router = useRouter();
   const { showToast } = useToast();
   const dialogRef = useRef<ConfirmDialogHandle>(null);
@@ -236,7 +286,12 @@ function ReactivateControl({ organizationId }: { organizationId: string }) {
       <ConfirmDialog
         ref={dialogRef}
         title="Reactivate organization"
-        description="Staff and client access will be restored immediately."
+        description={
+          <>
+            Staff and client access to <OrganizationIdentitySummary organizationName={organizationName} organizationSlug={organizationSlug} /> will
+            be restored immediately.
+          </>
+        }
         confirmLabel="Reactivate"
         onConfirm={runReactivate}
       />

@@ -75,6 +75,7 @@ export default async function PlatformAdminOrganizationDetailPage({
       <div className="rounded-lg border border-gray-200 bg-white p-6">
         <OrganizationSuspensionControls
           organizationId={organization.id}
+          organizationName={organization.name}
           organizationSlug={organization.slug}
           suspendedAt={organization.suspendedAt ? organization.suspendedAt.toISOString() : null}
         />

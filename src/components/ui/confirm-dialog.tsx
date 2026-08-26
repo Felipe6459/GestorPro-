@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useImperativeHandle, useRef, type Ref } from "react";
+import { useId, useImperativeHandle, useRef, type ReactNode, type Ref } from "react";
 
 export type ConfirmDialogHandle = {
   open: () => void;
@@ -11,6 +11,15 @@ export type ConfirmDialogHandle = {
  * modal focus trapping, Escape-to-close, and backdrop are all provided by
  * the browser, no extra dependency needed. Opened imperatively via a ref
  * so any trigger (a plain button, a table row action, etc.) can control it.
+ *
+ * `description` is `ReactNode`, not `string` — every existing caller
+ * already passes a plain string (a string is a valid ReactNode, so this
+ * is a purely additive widening, no existing call site changes) — widened
+ * so a caller that needs to embed inline-styled content (e.g. an
+ * organization identity summary with its own wrap-safety class) can do so
+ * without a second, separately-wired description element: this one <p>
+ * is already the dialog's own aria-describedby target, so anything placed
+ * here is automatically part of the dialog's accessible description.
  */
 export function ConfirmDialog({
   ref,
@@ -23,7 +32,7 @@ export function ConfirmDialog({
 }: {
   ref?: Ref<ConfirmDialogHandle>;
   title: string;
-  description: string;
+  description: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;

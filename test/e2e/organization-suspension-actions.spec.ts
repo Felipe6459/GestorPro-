@@ -351,14 +351,25 @@ test.describe("Confirmation input hardening (synthetic organization with an apos
     await expect(input).toHaveAttribute("spellcheck", "false");
   });
 
-  test("the dialog states the slug-based phrase, never the organization's name", async ({ context, baseURL }) => {
+  test("the confirmation phrase itself is slug-based and never falls back to the organization's name (the display-only identity summary elsewhere in the dialog is a separate concern)", async ({
+    context,
+    baseURL,
+  }) => {
     const page = await asAdmin(context, baseURL!);
     await gotoSyntheticDetail(page);
     await page.getByRole("button", { name: "Suspend" }).click();
     const dialog = page.getByRole("dialog", { name: "Suspend organization" });
     const dialogText = await dialog.innerText();
     expect(dialogText).toContain(confirmationPhrase(syntheticOrgSlug));
-    expect(dialogText).not.toContain(SYNTHETIC_ORG_NAME);
+    // The organization-selection-hardening identity summary now legitimately
+    // displays the name elsewhere in this same dialog (display-only, never
+    // part of the confirmation contract) — so the *whole dialog* can no
+    // longer be asserted name-free. What must still hold is that the
+    // confirmation phrase itself — the one value the operator retypes —
+    // never contains the name.
+    const phraseText = await dialog.locator("code").innerText();
+    expect(phraseText).not.toContain(SYNTHETIC_ORG_NAME);
+    expect(phraseText).toBe(confirmationPhrase(syntheticOrgSlug));
   });
 
   test("a non-empty mismatch shows the accessible bounded message with aria-invalid/aria-describedby, and an exact match clears both", async ({
@@ -554,5 +565,169 @@ test.describe("Organization Name field discoverability (Organization Detail sect
     const orgSection = page.getByRole("region", { name: "Organization" });
     const nameValue = orgSection.locator("dd").filter({ hasText: LONG_MULTIWORD_NAME }).first();
     await expect(nameValue.locator(".select-all")).toHaveText(LONG_MULTIWORD_NAME);
+  });
+});
+
+/**
+ * Organization-selection hardening: `organizationName` is reintroduced as
+ * a display-only identity summary (name + slug) inside both dialogs — see
+ * organization-suspension-controls.tsx's own header comment. These tests
+ * prove the summary is genuinely present and accessible in both dialogs,
+ * that it resolves the exact ambiguity it exists for (two organizations
+ * sharing one name), that it wraps safely, and — the one invariant that
+ * must never regress — that the org's own name still cannot substitute
+ * for its slug in the typed Suspend confirmation.
+ */
+test.describe("Organization identity summary inside Suspend/Reactivate dialogs (display-only, never part of confirmation)", () => {
+  const DUPLICATE_NAME = "Acme Workspace";
+  const LONG_IDENTITY_NAME = "Silver Oak Mountain Ridge Consulting and Advisory Partners International Group, LLC";
+
+  let duplicateOrgAId: string;
+  let duplicateOrgASlug: string;
+  let duplicateOrgBId: string;
+  let duplicateOrgBSlug: string;
+  let longIdentityOrgId: string;
+  let longIdentityOrgSlug: string;
+
+  test.beforeAll(async () => {
+    const slugA = `e2e-identity-dup-a-${randomUUID()}`;
+    const slugB = `e2e-identity-dup-b-${randomUUID()}`;
+    const slugLong = `e2e-identity-long-${randomUUID()}`;
+    const [a, b, c] = await Promise.all([
+      dbQuery<{ id: string }>("organization", "create", { data: { name: DUPLICATE_NAME, slug: slugA } }),
+      dbQuery<{ id: string }>("organization", "create", { data: { name: DUPLICATE_NAME, slug: slugB } }),
+      dbQuery<{ id: string }>("organization", "create", { data: { name: LONG_IDENTITY_NAME, slug: slugLong } }),
+    ]);
+    duplicateOrgAId = a.id;
+    duplicateOrgASlug = slugA;
+    duplicateOrgBId = b.id;
+    duplicateOrgBSlug = slugB;
+    longIdentityOrgId = c.id;
+    longIdentityOrgSlug = slugLong;
+  });
+
+  test.afterAll(async () => {
+    for (const id of [duplicateOrgAId, duplicateOrgBId, longIdentityOrgId]) {
+      await dbQuery("platformAdminAuditEvent", "deleteMany", { where: { organizationId: id } });
+      await dbQuery("organization", "delete", { where: { id } });
+    }
+  });
+
+  test.afterEach(async () => {
+    for (const id of [duplicateOrgAId, duplicateOrgBId, longIdentityOrgId]) {
+      await dbQuery("organization", "update", { where: { id }, data: { suspendedAt: null } });
+      await dbQuery("platformAdminAuditEvent", "deleteMany", { where: { organizationId: id } });
+    }
+  });
+
+  async function gotoOrgDetail(page: Page, orgId: string) {
+    await page.goto(`/platform-admin/organizations/${orgId}`);
+  }
+
+  function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  // Matches the identity summary's own rendered shape — "<name> (<slug>)" —
+  // and only that: the Suspend dialog's confirmation phrase also contains
+  // the bare slug (as "SUSPEND <slug>"), so asserting on the slug alone is
+  // ambiguous there. Requiring the name immediately followed by the
+  // parenthesized slug uniquely identifies the identity summary itself.
+  function identitySummaryPattern(name: string, slug: string): RegExp {
+    return new RegExp(`${escapeRegExp(name)}\\s*\\(\\s*${escapeRegExp(slug)}\\s*\\)`);
+  }
+
+  test("the Suspend dialog shows a display-only identity summary with the organization's name and slug", async ({ context, baseURL }) => {
+    const page = await asAdmin(context, baseURL!);
+    await gotoOrgDetail(page, duplicateOrgAId);
+    await page.getByRole("button", { name: "Suspend" }).click();
+    const dialog = page.getByRole("dialog", { name: "Suspend organization" });
+    await expect(dialog.getByText(identitySummaryPattern(DUPLICATE_NAME, duplicateOrgASlug))).toBeVisible();
+  });
+
+  test("the Reactivate dialog shows the same display-only identity summary", async ({ context, baseURL }) => {
+    await dbQuery("organization", "update", { where: { id: duplicateOrgAId }, data: { suspendedAt: new Date().toISOString() } });
+    const page = await asAdmin(context, baseURL!);
+    await gotoOrgDetail(page, duplicateOrgAId);
+    await page.getByRole("button", { name: "Reactivate" }).click();
+    const dialog = page.getByRole("dialog", { name: "Reactivate organization" });
+    await expect(dialog.getByText(identitySummaryPattern(DUPLICATE_NAME, duplicateOrgASlug))).toBeVisible();
+  });
+
+  test("two organizations sharing the identical name remain unambiguous — each dialog shows its own distinct slug, never the other's", async ({
+    context,
+    baseURL,
+  }) => {
+    const page = await asAdmin(context, baseURL!);
+
+    await gotoOrgDetail(page, duplicateOrgAId);
+    await page.getByRole("button", { name: "Suspend" }).click();
+    const dialogA = page.getByRole("dialog", { name: "Suspend organization" });
+    // The identity summary shows the shared name AND this organization's
+    // own slug together — this is what actually resolves the ambiguity,
+    // not the slug alone (the confirmation phrase already showed a slug
+    // pre-hardening; the name appearing beside it is the new part).
+    await expect(dialogA.getByText(identitySummaryPattern(DUPLICATE_NAME, duplicateOrgASlug))).toBeVisible();
+    await expect(dialogA.getByText(duplicateOrgBSlug)).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(dialogA).toBeHidden();
+
+    await gotoOrgDetail(page, duplicateOrgBId);
+    await page.getByRole("button", { name: "Suspend" }).click();
+    const dialogB = page.getByRole("dialog", { name: "Suspend organization" });
+    await expect(dialogB.getByText(identitySummaryPattern(DUPLICATE_NAME, duplicateOrgBSlug))).toBeVisible();
+    await expect(dialogB.getByText(duplicateOrgASlug)).toHaveCount(0);
+  });
+
+  test("a long organization name inside the identity summary wraps safely with no horizontal overflow at a narrow viewport", async ({
+    context,
+    baseURL,
+  }) => {
+    const page = await asAdmin(context, baseURL!);
+    await page.setViewportSize({ width: 375, height: 900 });
+    await gotoOrgDetail(page, longIdentityOrgId);
+    await page.getByRole("button", { name: "Suspend" }).click();
+    const dialog = page.getByRole("dialog", { name: "Suspend organization" });
+    await expect(dialog.getByText(identitySummaryPattern(LONG_IDENTITY_NAME, longIdentityOrgSlug))).toBeVisible();
+    const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+  });
+
+  test("the identity summary is part of the Suspend dialog's own accessible description (its id is included in aria-describedby)", async ({
+    context,
+    baseURL,
+  }) => {
+    const page = await asAdmin(context, baseURL!);
+    await gotoOrgDetail(page, duplicateOrgAId);
+    await page.getByRole("button", { name: "Suspend" }).click();
+    const dialog = page.getByRole("dialog", { name: "Suspend organization" });
+    const describedBy = await dialog.getAttribute("aria-describedby");
+    expect(describedBy).not.toBeNull();
+    const ids = describedBy!.trim().split(/\s+/);
+    expect(ids.length).toBeGreaterThanOrEqual(2);
+    const combinedText = (await Promise.all(ids.map((id) => dialog.locator(`#${id}`).innerText()))).join(" ");
+    expect(combinedText).toContain(duplicateOrgASlug);
+  });
+
+  test("the identity summary never enables Suspend confirmation by itself — the organization's own name does not substitute for its slug", async ({
+    context,
+    baseURL,
+  }) => {
+    const page = await asAdmin(context, baseURL!);
+    await gotoOrgDetail(page, duplicateOrgAId);
+    await page.getByRole("button", { name: "Suspend" }).click();
+    const dialog = page.getByRole("dialog", { name: "Suspend organization" });
+    await dialog.getByLabel("Reason").selectOption("OTHER");
+    const confirmButton = dialog.getByRole("button", { name: "Suspend" });
+
+    await dialog.locator('input[type="text"]').fill(DUPLICATE_NAME);
+    await expect(confirmButton).toBeDisabled();
+
+    await dialog.locator('input[type="text"]').fill(confirmationPhrase(duplicateOrgASlug));
+    await expect(confirmButton).toBeEnabled();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
   });
 });
