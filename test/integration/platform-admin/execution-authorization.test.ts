@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePlatformAdmin } from "@/lib/platform-admin/authorization";
 import { getOrganizationDetail } from "@/lib/platform-admin/queries/organization-detail";
 import { listOrganizations, parseOrganizationListParams } from "@/lib/platform-admin/queries/organizations";
+import { listUsers, parseUserListParams } from "@/lib/platform-admin/queries/users";
 import { getPlatformDashboardData } from "@/lib/platform-admin/queries/platform-dashboard";
 import { getFailureMonitoringSummary } from "@/lib/platform-admin/queries/failure-monitoring";
 import PlatformAdminConfigurationPage from "@/app/(platform-admin)/platform-admin/configuration/page";
@@ -176,6 +177,34 @@ describe("listOrganizations — execution-level guard", () => {
     asPlatformAdmin();
     const spy = vi.spyOn(prisma, "$transaction");
     const result = await listOrganizations(params, new Date());
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(result.total).toBeGreaterThan(0);
+  });
+});
+
+describe("listUsers — execution-level guard", () => {
+  const params = parseUserListParams({});
+
+  it("unauthenticated: zero Prisma calls, redirects to /login", async () => {
+    asUnauthenticated();
+    const spy = vi.spyOn(prisma, "$transaction");
+    const signal = await catchRedirect(() => listUsers(params));
+    expect(signal.url).toBe("/login");
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("authenticated non-admin: zero Prisma calls, redirects to /dashboard", async () => {
+    asNonAdmin();
+    const spy = vi.spyOn(prisma, "$transaction");
+    const signal = await catchRedirect(() => listUsers(params));
+    expect(signal.url).toBe("/dashboard");
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("allowlisted admin: the real reader still executes and returns real data", async () => {
+    asPlatformAdmin();
+    const spy = vi.spyOn(prisma, "$transaction");
+    const result = await listUsers(params);
     expect(spy).toHaveBeenCalledTimes(1);
     expect(result.total).toBeGreaterThan(0);
   });
