@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getOrganizationDetail } from "@/lib/platform-admin/queries/organization-detail";
+import { formatAuditActionLabel, formatAuditReasonLabel } from "@/lib/platform-admin/audit-event-labels";
 import { formatFileSize } from "@/lib/format";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -14,6 +15,23 @@ export const metadata: Metadata = {
 
 function formatDate(date: Date | null): string {
   return date ? date.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "Not set";
+}
+
+/**
+ * Recent Admin Actions only — every other timestamp on this page
+ * (Trial start/end, Created, Client/Project rows, Recent Activity) is
+ * genuinely date-only by this page's own established convention.
+ * Same-day Suspend/Reactivate pairs are a realistic, expected sequence
+ * for this specific feature, so the time is the useful part here.
+ */
+function formatDateTime(date: Date): string {
+  return date.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function formatLimit(value: number | null): string {
@@ -293,6 +311,54 @@ export default async function PlatformAdminOrganizationDetailPage({
                 </div>
               </li>
             ))}
+          </ul>
+        )}
+      </DetailSection>
+
+      {/*
+        Recent Admin Actions. Reads PlatformAdminAuditEvent — a
+        deliberately separate model from Activity above (see this
+        component's own schema comment): a Platform Admin action is taken
+        by an allowlisted operator identity, never a User/Membership row.
+        Bounded (RECENT_ADMIN_ACTIONS_TAKE), newest-first, no pagination —
+        the same "small preview, no filters yet" shape as Recent Activity
+        just above. This page already establishes organization identity
+        once in its own header; no id/organizationId is rendered per row
+        (getOrganizationDetail() never even selects them — see that
+        query's own comment). actorEmail here is the *Platform Admin
+        operator's* own email (accountability context for who took the
+        action), never the organization owner's — a different concern
+        from the "never show owner email" rule the Suspend/Reactivate
+        dialogs themselves follow.
+      */}
+      <DetailSection id="recent-admin-actions" title="Recent Admin Actions">
+        {detail.recentAdminActions.length === 0 ? (
+          <EmptyState
+            title="No admin actions recorded yet."
+            description="Suspend and reactivate actions taken by Platform Admin will appear here."
+          />
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {detail.recentAdminActions.map((event, index) => {
+              const reasonLabel = formatAuditReasonLabel(event.reasonCode);
+              return (
+                // index as key: these rows carry no id at all, by design (see
+                // getOrganizationDetail's own comment) — a static,
+                // non-reorderable, server-rendered list makes this safe.
+                <li key={index} className="py-3 first:pt-0 last:pb-0">
+                  <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                    <p className="wrap-anywhere text-sm text-gray-900">
+                      <span className="font-medium">{formatAuditActionLabel(event.action)}</span>
+                      {reasonLabel ? <span className="text-gray-500"> — {reasonLabel}</span> : null}
+                    </p>
+                    <time dateTime={event.createdAt.toISOString()} className="shrink-0 text-xs text-gray-500">
+                      {formatDateTime(event.createdAt)}
+                    </time>
+                  </div>
+                  <p className="wrap-anywhere text-xs text-gray-500">by {event.actorEmail}</p>
+                </li>
+              );
+            })}
           </ul>
         )}
       </DetailSection>

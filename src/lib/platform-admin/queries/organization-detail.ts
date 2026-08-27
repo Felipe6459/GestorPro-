@@ -10,6 +10,8 @@ import type { SubscriptionStateInput } from "@/lib/billing/access-mode";
 
 const RECENT_ACTIVITY_TAKE = 15;
 const PREVIEW_TAKE = 10;
+/** Recent Admin Actions — matches PREVIEW_TAKE's own bound; this is a preview of the same shape (bounded, newest-first, no pagination), just against PlatformAdminAuditEvent instead of Client/Project. */
+const RECENT_ADMIN_ACTIONS_TAKE = 10;
 
 const CLIENT_INVITATION_STATUSES = ["PENDING", "ACCEPTED", "REVOKED", "EXPIRED"] as const;
 
@@ -55,6 +57,24 @@ export type OrganizationOwner = {
   email: string;
 };
 
+/**
+ * Recent Admin Actions (Organization Detail). Deliberately no `id` and
+ * no `organizationId` field here at all — not merely unrendered, never
+ * selected from the database in the first place (see the `select` this
+ * type backs), so there is nothing for a future edit to accidentally
+ * expose. `action`/`reasonCode` stay as their raw stored values here;
+ * formatAuditActionLabel()/formatAuditReasonLabel() (audit-event-
+ * labels.ts) do the display-safe formatting at render time, the same
+ * "format at the edge, not in the query" split this file already uses
+ * for lifecycleStatus/planDisplayName below.
+ */
+export type RecentAdminAction = {
+  action: string;
+  reasonCode: string | null;
+  actorEmail: string;
+  createdAt: Date;
+};
+
 export type OrganizationDetail = {
   organization: OrganizationDetailHeader;
   /** Business Identity section — reused verbatim from company-profile.ts, already organizationId-parameterized and "any member may view" (a strictly less privileged read than this). */
@@ -84,6 +104,7 @@ export type OrganizationDetail = {
   /** Derived from `staff` below (role === OWNER) — zero extra queries, same organization every membership already belongs to. Null only if an organization somehow has no OWNER membership (shouldn't happen given this app's own invariants, but never assumed). */
   owner: OrganizationOwner | null;
   recentActivity: { id: string; display: ActivityDisplayModel }[];
+  recentAdminActions: RecentAdminAction[];
   staff: OrganizationStaffMember[];
   projects: { preview: OrganizationEntityPreview[]; total: number };
   clients: { preview: OrganizationEntityPreview[]; total: number };
@@ -122,6 +143,7 @@ export async function getOrganizationDetail(organizationId: string, now: Date): 
     entitlements,
     rawSubscription,
     activityRows,
+    recentAdminActions,
     staffRows,
     projectRows,
     projectsTotal,
@@ -148,6 +170,19 @@ export async function getOrganizationDetail(organizationId: string, now: Date): 
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: RECENT_ACTIVITY_TAKE,
       include: { actor: { select: { name: true, email: true } } },
+    }),
+    // Recent Admin Actions. `id` and `organizationId` are deliberately
+    // absent from this select — not merely unrendered downstream, never
+    // read from the database at all (this page already establishes
+    // organization identity once, in its own header; duplicating a raw
+    // id/organizationId per row here would add exposure with no reader
+    // benefit). `id` is still the query's own tie-break column, which
+    // orderBy can reference without selecting it.
+    prisma.platformAdminAuditEvent.findMany({
+      where: { organizationId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: RECENT_ADMIN_ACTIONS_TAKE,
+      select: { action: true, reasonCode: true, actorEmail: true, createdAt: true },
     }),
     prisma.membership.findMany({
       where: { organizationId },
@@ -214,6 +249,7 @@ export async function getOrganizationDetail(organizationId: string, now: Date): 
         createdAt: row.createdAt,
       }),
     })),
+    recentAdminActions,
     staff: staffRows.map((row) => ({
       id: row.user.id,
       name: row.user.name,
