@@ -4,6 +4,8 @@ import type { Role } from "@/generated/prisma/enums";
 import { getCompanyProfile, type CompanyProfileData } from "@/lib/organization-setup/company-profile";
 import { getOrganizationEntitlements, type OrganizationEntitlements } from "@/lib/billing/entitlements";
 import { getPlan } from "@/lib/billing/plans";
+import { getOrganizationOnboardingProgress } from "@/lib/onboarding/progress";
+import { toOnboardingProgressView, type OnboardingProgressView } from "@/lib/platform-admin/onboarding-progress-view";
 import { formatActivity, type ActivityDisplayModel } from "@/lib/activity/format-activity";
 import { classifyOrganizationLifecycle, type OrganizationLifecycleStatus } from "./organizations";
 import type { SubscriptionStateInput } from "@/lib/billing/access-mode";
@@ -103,6 +105,21 @@ export type OrganizationDetail = {
   trialStartedAt: Date | null;
   /** Derived from `staff` below (role === OWNER) — zero extra queries, same organization every membership already belongs to. Null only if an organization somehow has no OWNER membership (shouldn't happen given this app's own invariants, but never assumed). */
   owner: OrganizationOwner | null;
+  /**
+   * Read-only Platform Admin view of the same authoritative onboarding
+   * engine the tenant Dashboard already uses
+   * (getOrganizationOnboardingProgress() — src/lib/onboarding/
+   * progress.ts), narrowed to an operator-safe shape by
+   * toOnboardingProgressView() (onboarding-progress-view.ts) before it
+   * ever reaches this type — no targetHref, no actionable/blockedReason/
+   * skippable/completionSource, no raw onboarding-row id. A distinct
+   * category from lifecycleStatus/entitlements above: never conflated
+   * with subscription/billing readiness, and unaffected by
+   * organization.suspendedAt — onboarding progress is a historical fact,
+   * orthogonal to the current suspension override, and is computed and
+   * shown identically whether or not the organization is suspended.
+   */
+  onboarding: OnboardingProgressView;
   recentActivity: { id: string; display: ActivityDisplayModel }[];
   recentAdminActions: RecentAdminAction[];
   staff: OrganizationStaffMember[];
@@ -141,6 +158,7 @@ export async function getOrganizationDetail(organizationId: string, now: Date): 
   const [
     businessIdentity,
     entitlements,
+    onboardingProgress,
     rawSubscription,
     activityRows,
     recentAdminActions,
@@ -155,6 +173,14 @@ export async function getOrganizationDetail(organizationId: string, now: Date): 
   ] = await Promise.all([
     getCompanyProfile(organizationId),
     getOrganizationEntitlements(organizationId, { now }),
+    // getOrganizationOnboardingProgress() already resolves organizationId
+    // as a plain parameter (never resolved from a tenant session) — the
+    // same "just an organizationId in, a real read out" shape every
+    // other reader in this file already has. Nothing about this call is
+    // Platform-Admin-specific; the narrowing to an operator-safe shape
+    // happens after this Promise.all resolves, via
+    // toOnboardingProgressView() below.
+    getOrganizationOnboardingProgress(organizationId),
     // getOrganizationEntitlements() already reads a Subscription row
     // internally, but doesn't expose trialStartedAt or a form
     // classifyOrganizationLifecycle() can consume directly — this one
@@ -238,6 +264,7 @@ export async function getOrganizationDetail(organizationId: string, now: Date): 
     owner: ownerMembership
       ? { id: ownerMembership.user.id, name: ownerMembership.user.name, email: ownerMembership.user.email }
       : null,
+    onboarding: toOnboardingProgressView(onboardingProgress),
     tasksTotal,
     recentActivity: activityRows.map((row) => ({
       id: row.id,
