@@ -1,9 +1,11 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { RouteLoadingAnnouncement } from "@/components/ui/page-loading";
 
 /** Mirrors settings/billing/loading.tsx's own multi-card shape — matches this page's real layout: header, then five stacked section cards. */
 export default function OrganizationDetailLoading() {
   return (
     <div className="space-y-8">
+      <RouteLoadingAnnouncement label="Loading organization" />
       <div>
         <Skeleton className="h-4 w-28" />
         <Skeleton className="mt-3 h-7 w-56" />
