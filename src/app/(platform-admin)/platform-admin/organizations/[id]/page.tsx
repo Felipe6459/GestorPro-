@@ -181,6 +181,43 @@ export default async function PlatformAdminOrganizationDetailPage({
         </dl>
       </DetailSection>
 
+      {/*
+        Onboarding (read-only). Reuses the exact same authoritative
+        engine the tenant Dashboard already uses
+        (getOrganizationOnboardingProgress() — src/lib/onboarding/
+        progress.ts), narrowed to an operator-safe shape by
+        getOrganizationDetail() itself (see that query's own comment on
+        the `onboarding` field). Deliberately its own DetailSection, not
+        folded into Subscription just above — onboarding progress and
+        subscription/lifecycle status are two genuinely different
+        categories, and this section's own copy never implies "launch
+        ready." No link, button, or skip/dismiss control anywhere here:
+        this view is read-only by construction, the same as every other
+        Platform Admin support-context section on this page. A suspended
+        organization's onboarding progress renders identically to an
+        active one — suspension is orthogonal to onboarding history.
+      */}
+      <DetailSection id="onboarding" title="Onboarding">
+        <p className="text-sm text-gray-600">
+          {detail.onboarding.requiredCompleted} of {detail.onboarding.requiredTotal} required steps complete
+          <span className="text-gray-400">
+            {" "}
+            · {detail.onboarding.completedCount} of {detail.onboarding.totalCount} steps overall ({detail.onboarding.percent}%)
+          </span>
+        </p>
+        <ul className="mt-4 divide-y divide-gray-100">
+          {detail.onboarding.steps.map((step) => (
+            <li key={step.key} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+              <span className="wrap-anywhere text-sm text-gray-900">
+                {step.label}
+                {step.required ? <span className="ml-1.5 text-xs text-gray-400">(required)</span> : null}
+              </span>
+              <StatusBadge status={step.status} />
+            </li>
+          ))}
+        </ul>
+      </DetailSection>
+
       <DetailSection id="organization" title="Organization">
         <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {/*
