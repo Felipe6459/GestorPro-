@@ -1,9 +1,11 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { RouteLoadingAnnouncement } from "@/components/ui/page-loading";
 
 /** Mirrors the Organization Details loading skeleton — one card per DetailSection. Branding + Email + Billing + Domain + Legal + Deployment + Environment as of D6, the final Phase D section — this page's shape is now stable. */
 export default function PlatformAdminConfigurationLoading() {
   return (
     <div className="space-y-8">
+      <RouteLoadingAnnouncement label="Loading configuration" />
       <div>
         <Skeleton className="h-7 w-40" />
         <Skeleton className="mt-2 h-4 w-72" />
