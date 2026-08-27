@@ -41,7 +41,15 @@ const FORBIDDEN_NEW_LOADING_FILES = [
   "src/app/(auth)/signup/loading.tsx",
   "src/app/(auth)/forgot-password/loading.tsx",
   "src/app/(auth)/reset-password/loading.tsx",
-  "src/app/(platform-admin)/platform-admin/users/loading.tsx",
+  // Platform Admin Users' own loading.tsx was forbidden here because, at
+  // the time this list was written, Users was a synchronous placeholder
+  // shell with no async work at all — a loading.tsx would have been
+  // dead code. A later PR (#127) replaced the shell with a real,
+  // DB-backed paginated read (listUsers()), and a subsequent PR added
+  // the loading state itself once that async work existed. That
+  // original rationale no longer applies, so this entry is
+  // intentionally removed here — not an oversight, and not a weakening
+  // of any other entry in this list.
   "src/app/(dashboard)/clients/new/loading.tsx",
   "src/app/(dashboard)/projects/new/loading.tsx",
   "src/app/(dashboard)/tasks/new/loading.tsx",
