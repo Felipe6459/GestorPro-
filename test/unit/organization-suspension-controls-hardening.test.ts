@@ -126,37 +126,170 @@ describe("OrganizationSuspensionControls — visible, accessible mismatch feedba
 
 /**
  * ORGANIZATION_IDENTITY_CONFIRMATION_DESIGN correction: the discoverability
- * hotfix's own dedicated "Exact organization name" reference block —
- * and Organization.name itself — must be completely gone from this
- * component. The full name's one remaining home is the Organization
- * Detail page's own "Organization" section (see organization-detail-
- * header-wrap.test.ts's sibling coverage of page.tsx, and this file's
- * own check of the new Field there).
+ * hotfix's own dedicated "Exact organization name" reference block is
+ * gone — that specific large, retype-it-back reference panel is retired
+ * for good.
+ *
+ * organization-selection hardening: organizationName is now
+ * *reintroduced*, but strictly as a display-only identity summary (see
+ * the sibling describe block below). This block proves the negative
+ * space around that reintroduction: the old confirmation-by-retyping
+ * label/copy never comes back, and — most importantly — organizationName
+ * is never passed into any of the pure confirmation-logic functions, no
+ * matter how it's used elsewhere in this file for display.
  */
-describe("OrganizationSuspensionControls — the former exact-name reference block is gone", () => {
+describe("OrganizationSuspensionControls — the former exact-name reference block is gone, and Organization.name can never re-enter the confirmation logic", () => {
   const content = readFileSync(COMPONENT_FILE, "utf8");
+  const sourceFile = parseComponentFile();
 
-  it('no longer renders the "Exact organization name" label anywhere', () => {
+  it('no longer renders the retired "Exact organization name" confirmation label', () => {
     expect(content).not.toContain("Exact organization name");
   });
 
-  it("no longer accepts or reads Organization.name (an organizationName identifier) anywhere in this file", () => {
-    expect(content).not.toMatch(/organizationName/);
+  it("no longer renders the retired \"Type the name above to confirm\" label", () => {
+    expect(content).not.toContain("Type the name above to confirm");
   });
 
-  it("no longer renders {organizationName} (or any name-shaped prop) as a JSX expression child anywhere", () => {
-    const sourceFile = parseComponentFile();
-    let found = false;
+  it("organizationName is never passed as an argument to buildSuspendConfirmationPhrase, canConfirmSuspend, suspendConfirmationMatches, or showsPhraseMismatch", () => {
+    const confirmationFunctionNames = new Set([
+      "buildSuspendConfirmationPhrase",
+      "canConfirmSuspend",
+      "suspendConfirmationMatches",
+      "showsPhraseMismatch",
+    ]);
+    const violations: string[] = [];
+    function visit(node: ts.Node) {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && confirmationFunctionNames.has(node.expression.text)) {
+        for (const arg of node.arguments) {
+          if (ts.isIdentifier(arg) && arg.text === "organizationName") {
+            violations.push(node.expression.text);
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(sourceFile);
+    expect(violations).toEqual([]);
+  });
+
+  it("this module's own confirmation-phrase import is unaffected — still imports exactly the slug-based contract, nothing name-shaped", () => {
+    expect(content).toMatch(/import\s*\{\s*buildSuspendConfirmationPhrase,\s*canConfirmSuspend,\s*showsPhraseMismatch\s*\}\s*from\s*"@\/lib\/platform-admin\/organization-suspension-confirmation"/);
+  });
+});
+
+/**
+ * organization-selection hardening: a compact, display-only identity
+ * summary (organization name + slug) now appears inside both dialogs —
+ * the modal's own backdrop otherwise leaves an operator with no
+ * accessible cross-check for which organization they selected once
+ * focus is trapped inside it, a real risk for duplicate/generic
+ * "<name>'s Workspace" organizations. This is pure presentation: it is
+ * never referenced by canConfirm/phraseMismatches (proved by the
+ * describe block above), and the typed-confirmation contract remains
+ * exclusively `SUSPEND <slug>`.
+ */
+describe("OrganizationSuspensionControls — organization identity summary (display-only, name + slug)", () => {
+  const content = readFileSync(COMPONENT_FILE, "utf8");
+  const sourceFile = parseComponentFile();
+
+  function findFunctionDeclaration(name: string): ts.FunctionDeclaration {
+    let found: ts.FunctionDeclaration | undefined;
     function visit(node: ts.Node) {
       if (found) return;
-      if (ts.isJsxExpression(node) && node.expression && ts.isIdentifier(node.expression) && node.expression.text === "organizationName") {
-        found = true;
+      if (ts.isFunctionDeclaration(node) && node.name?.text === name) {
+        found = node;
         return;
       }
       ts.forEachChild(node, visit);
     }
     visit(sourceFile);
-    expect(found).toBe(false);
+    if (!found) throw new Error(`No function declaration named ${name} found.`);
+    return found;
+  }
+
+  function findJsxElementsByTag(root: ts.Node, tagName: string): (ts.JsxElement | ts.JsxSelfClosingElement)[] {
+    const results: (ts.JsxElement | ts.JsxSelfClosingElement)[] = [];
+    function visit(node: ts.Node) {
+      if (ts.isJsxElement(node) && node.openingElement.tagName.getText() === tagName) results.push(node);
+      if (ts.isJsxSelfClosingElement(node) && node.tagName.getText() === tagName) results.push(node);
+      ts.forEachChild(node, visit);
+    }
+    visit(root);
+    return results;
+  }
+
+  it("a shared OrganizationIdentitySummary component exists, accepting organizationName and organizationSlug", () => {
+    const fn = findFunctionDeclaration("OrganizationIdentitySummary");
+    const params = fn.parameters[0];
+    expect(params).toBeDefined();
+    const paramText = params.getText(sourceFile);
+    expect(paramText).toContain("organizationName");
+    expect(paramText).toContain("organizationSlug");
+  });
+
+  it("OrganizationIdentitySummary renders both organizationName and organizationSlug, each wrap-anywhere for narrow-width safety", () => {
+    const fn = findFunctionDeclaration("OrganizationIdentitySummary");
+    const spans = findJsxElementsByTag(fn, "span");
+    expect(spans.length).toBeGreaterThanOrEqual(2);
+    for (const span of spans) {
+      const className = span.getText(sourceFile);
+      expect(className).toMatch(/\bwrap-anywhere\b/);
+    }
+    const fnText = fn.getText(sourceFile);
+    expect(fnText).toContain("{organizationName}");
+    expect(fnText).toContain("{organizationSlug}");
+  });
+
+  it("OrganizationIdentitySummary never renders an id, email, or audit-shaped value", () => {
+    // AST identifier matching, not a text/regex substring scan — a naive
+    // substring check for "organizationId" would false-positive on this
+    // component's own name, OrganizationIdentitySummary.
+    const fn = findFunctionDeclaration("OrganizationIdentitySummary");
+    const forbiddenIdentifiers = new Set(["organizationId", "actorEmail", "email", "reasonCode"]);
+    let violation: string | null = null;
+    function visit(node: ts.Node) {
+      if (violation) return;
+      if (ts.isJsxExpression(node) && node.expression && ts.isIdentifier(node.expression) && forbiddenIdentifiers.has(node.expression.text)) {
+        violation = node.expression.text;
+        return;
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(fn);
+    expect(violation).toBeNull();
+  });
+
+  function findJsxAttributeValueText(element: ts.JsxElement | ts.JsxSelfClosingElement, attrName: string): string | null {
+    const openingElement = ts.isJsxSelfClosingElement(element) ? element : element.openingElement;
+    for (const prop of openingElement.attributes.properties) {
+      if (!ts.isJsxAttribute(prop) || prop.name.getText() !== attrName) continue;
+      const init = prop.initializer;
+      if (init && ts.isJsxExpression(init) && init.expression) return init.expression.getText(sourceFile);
+      return null;
+    }
+    return null;
+  }
+
+  it("the Suspend dialog includes the identity summary, and its id is added to the dialog's own aria-describedby", () => {
+    expect(content).toMatch(/You are about to suspend <OrganizationIdentitySummary/);
+    const dialogs = findJsxElementsByTag(sourceFile, "dialog");
+    const suspendDialog = dialogs.find((d) => d.getText(sourceFile).includes("Suspend organization"));
+    expect(suspendDialog).toBeDefined();
+    // AST attribute lookup, not a brace-counting regex on raw text — the
+    // real value is a template literal (`${descriptionId} ${identitySummaryId}`),
+    // whose own nested braces a naive `\{([^}]*)\}` regex cannot parse
+    // correctly.
+    const describedBy = findJsxAttributeValueText(suspendDialog!, "aria-describedby");
+    expect(describedBy).not.toBeNull();
+    expect(describedBy).toContain("identitySummaryId");
+    expect(describedBy).toContain("descriptionId");
+  });
+
+  it("the Reactivate dialog's ConfirmDialog description includes the same identity summary component", () => {
+    const reactivateFn = findFunctionDeclaration("ReactivateControl");
+    const confirmDialogs = findJsxElementsByTag(reactivateFn, "ConfirmDialog");
+    expect(confirmDialogs).toHaveLength(1);
+    expect(confirmDialogs[0].getText(sourceFile)).toContain("OrganizationIdentitySummary");
   });
 });
 
