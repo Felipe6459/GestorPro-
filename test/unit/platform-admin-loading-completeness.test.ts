@@ -13,9 +13,14 @@ import { describe, expect, it } from "vitest";
  * Scope: Dashboard and Observability gain a real loading.tsx for the
  * first time; Organizations/Organization Detail/Configuration gain a
  * RouteLoadingAnnouncement inside their own already-existing skeleton.
- * Users is deliberately excluded — its own loading-state/contract
- * decision is a separate, deferred task; this file also proves that
- * exclusion held.
+ * Users was deliberately excluded when this file was written — its own
+ * loading-state/contract decision was a separate, deferred task. That
+ * task has since shipped: Users now has its own loading.tsx, and the
+ * historical contract's own Users prohibition was narrowly lifted — see
+ * platform-admin-users-loading.test.ts for that later addition's own
+ * completeness proof. The two assertions below that referenced Users'
+ * absence are updated accordingly rather than left incorrect; nothing
+ * else in this file's own five-file scope changed.
  */
 
 const PLATFORM_ADMIN_LOADING_FILES = [
@@ -37,8 +42,8 @@ describe("Platform Admin loading-state completeness — exactly the intended fil
     expect(existsSync(path), `expected ${path} to exist`).toBe(true);
   });
 
-  it("Users' own loading.tsx does NOT exist — deliberately deferred to a separate task", () => {
-    expect(existsSync("src/app/(platform-admin)/platform-admin/users/loading.tsx")).toBe(false);
+  it("Users' own loading.tsx now exists — the deferred task shipped (see platform-admin-users-loading.test.ts)", () => {
+    expect(existsSync("src/app/(platform-admin)/platform-admin/users/loading.tsx")).toBe(true);
   });
 
   it("no route-group-root loading.tsx was added (would blanket every sibling route, including Users)", () => {
@@ -88,13 +93,15 @@ describe("every Platform Admin loading file is a pure, server-renderable present
   });
 });
 
-describe("the historical route-loading-adoption-contract.test.ts remains untouched by this PR", () => {
+describe("the historical route-loading-adoption-contract.test.ts — the route-group-root prohibition remains untouched", () => {
   const contractSource = readFileSync("test/unit/route-loading-adoption-contract.test.ts", "utf-8");
 
-  it("Users' loading.tsx is still explicitly named in FORBIDDEN_NEW_LOADING_FILES", () => {
-    expect(contractSource).toContain('"src/app/(platform-admin)/platform-admin/users/loading.tsx"');
-  });
-
+  // Users' own former entry in FORBIDDEN_NEW_LOADING_FILES was narrowly,
+  // deliberately removed by the later PR that added Users' loading.tsx —
+  // see platform-admin-users-loading.test.ts, which proves that removal
+  // directly, alongside every *other* historical entry's own continued
+  // presence. Re-asserting Users' absence here would now be wrong, so it
+  // is intentionally not repeated in this file.
   it("the route-group-root loading.tsx is still explicitly named in FORBIDDEN_NEW_LOADING_FILES", () => {
     expect(contractSource).toContain('"src/app/(platform-admin)/loading.tsx"');
   });
