@@ -8,6 +8,7 @@ import { buildInvoiceTotalsViewModel } from "@/lib/invoices/totals-view-model";
 import { getSupportedInvoiceCurrencies } from "@/lib/invoices/currencies";
 import { formatDateOnly } from "@/lib/invoices/date-only";
 import { canAccessPaymentDetails } from "@/lib/organization-setup/authorization";
+import { getInvoiceIssuanceReadiness } from "@/lib/organization-setup/invoice-readiness";
 import { classifyInvoiceArchival } from "@/lib/invoices/pdf/classify-archival";
 import { updateInvoiceAction } from "./actions";
 import { InvoiceAttachmentsSection } from "./attachments-section";
@@ -75,6 +76,16 @@ export default async function EditInvoicePage({
       })
     : null;
 
+  // Advisory pre-issuance readiness notice — fetched only for a DRAFT
+  // invoice, and only when canIssue is already true. getInvoiceIssuanceReadiness()
+  // touches OrganizationPaymentDetails (via a narrow, id-only select) the
+  // same way getPaymentDetails() does — this guard is what keeps that read
+  // OWNER-only in practice, exactly like every other Payment Details call
+  // site in this app; it performs no role check of its own. Never fetched
+  // for the read-only (non-DRAFT) branch — there is no Issue control there
+  // for this notice to sit beside.
+  const readiness = isDraft && canIssue ? await getInvoiceIssuanceReadiness(organizationId) : undefined;
+
   const boundUpdateInvoiceAction = updateInvoiceAction.bind(null, invoice.id, invoice.updatedAt.toISOString());
 
   return (
@@ -97,6 +108,7 @@ export default async function EditInvoicePage({
             invoiceNumber={invoice.invoiceNumber}
             expectedUpdatedAt={invoice.updatedAt.toISOString()}
             canIssue={canIssue}
+            readiness={readiness}
             action={boundUpdateInvoiceAction}
             projects={(projects ?? []).map((project) => ({
               id: project.id,

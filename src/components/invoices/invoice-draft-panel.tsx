@@ -4,8 +4,10 @@ import { useState } from "react";
 import { InvoiceForm } from "./invoice-form";
 import { InvoiceIssueControls } from "./invoice-issue-controls";
 import { InvoiceSendControls } from "./invoice-send-controls";
+import { InvoiceIssuanceReadinessNotice } from "./invoice-issuance-readiness-notice";
 import type { InvoiceFormState } from "@/types";
 import type { InvoiceLineItemFormValue } from "@/lib/invoices/line-items-form";
+import type { InvoiceIssuanceReadiness } from "@/lib/organization-setup/invoice-readiness";
 
 type InvoiceFormDefaults = {
   invoiceNumber?: string;
@@ -42,6 +44,7 @@ export function InvoiceDraftPanel({
   invoiceNumber,
   expectedUpdatedAt,
   canIssue,
+  readiness,
   action,
   projects,
   currencyOptions,
@@ -52,6 +55,8 @@ export function InvoiceDraftPanel({
   invoiceNumber: string;
   expectedUpdatedAt: string;
   canIssue: boolean;
+  /** Only ever populated (by the page) when canIssue is true — see EditInvoicePage's own doc comment. */
+  readiness?: InvoiceIssuanceReadiness;
   action: (prevState: InvoiceFormState, formData: FormData) => Promise<InvoiceFormState>;
   projects: { id: string; label: string }[];
   currencyOptions: readonly string[];
@@ -74,6 +79,7 @@ export function InvoiceDraftPanel({
       />
       {canIssue && (
         <div className="mt-6 border-t border-gray-200 pt-6">
+          {readiness && <InvoiceIssuanceReadinessNotice readiness={readiness} />}
           <InvoiceIssueControls
             invoiceId={invoiceId}
             invoiceNumber={invoiceNumber}
