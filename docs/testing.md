@@ -263,6 +263,160 @@ faked with an assertion that would pass regardless of real behavior — per
 this project's own rule: leave a documented gap, never write a test that
 can't fail.
 
+**A separate, harness-reliability limitation** (not a coverage gap — an
+occasional false-failure risk in the integration suite's own database
+engine): see [Known harness limitation: PGlite/pg-pool connection-reuse
+race](#known-harness-limitation-pglitepg-pool-connection-reuse-race)
+below before ever dismissing an unexplained integration-test failure.
+
+## Known harness limitation: PGlite/pg-pool connection-reuse race
+
+The integration (and E2E) harness has a reproducible, non-deterministic
+failure mode in its own database plumbing — **not** a generic "known
+flake" to shrug off. It is documented here in detail specifically so a
+future integration-suite failure can be correctly triaged instead of
+either (a) wrongly dismissed, or (b) chased as a phantom product bug.
+
+### Signature (sanitized)
+
+- A Prisma write call (e.g. `.create()`) unexpectedly resolving to
+  `null`, where a real, valid row must have been returned.
+- A Prisma result missing a field a valid result must always contain, or
+  an error surfaced from `@prisma/adapter-pg`/`pg` describing a malformed
+  invocation (e.g. "Invalid `prisma.<model>.<method>()` invocation ...
+  Missing data field").
+- Appears immediately after a test that intentionally aborts a
+  transaction — a unique/FK constraint collision, or a
+  `Promise.all`/`Promise.allSettled` concurrent-write race.
+- Can surface either in the same file as the aborting transaction, or in
+  a completely unrelated concurrency/uniqueness-oriented integration test
+  that happens to run immediately afterward in the same suite
+  invocation — it has been observed moving between files across repeated
+  full-suite runs.
+- An isolated run of the affected file, on its own, commonly passes
+  cleanly — a fresh, single-file Vitest invocation gets its own fresh
+  PGlite instance, removing the shared-connection precondition below.
+
+### Mechanism (evidence, not full re-derivation)
+
+`src/lib/prisma.ts` runs with `PGLITE_TEST_DB` set for both the
+integration and E2E suites, capping the `pg.Pool` at `max: 1` (PGlite's
+socket server services one connection at a time). `pg-pool`'s own
+`Pool.query()` releases that connection back to the pool **before**
+resolving the caller's own promise/callback — installed-version behavior,
+confirmed unchanged in the latest published `pg-pool` source. Combined
+with PGlite's own documented single-connection multiplexing (which does
+not claim to cover every case), a query dispatched immediately after an
+aborted transaction can occasionally receive a stale or malformed result.
+A custom `pg.Client` override cannot reach this: the problematic
+ordering lives inside `pg-pool`'s own `query()` wrapper, one layer above
+anything a `Client` subclass's `query()` method can see.
+
+### Proven
+
+- Reproducible on demand under this repo's PGlite integration harness via
+  a dedicated adversarial regression test (kept local-only — see
+  "Diagnostic history" below).
+- Systemic, not confined to one test file — observed moving between
+  unrelated concurrency/uniqueness-oriented integration tests across
+  repeated full-suite runs.
+- Tied to the shared, single-connection (`max: 1`) pool lifecycle
+  specifically — an isolated single-file run does not reproduce it.
+- Not caused by any UI/layout change (specifically ruled out against
+  PR #135, the staff-app max-width change) — that PR's diff never touched
+  database code, and the failure reproduces independently against
+  unrelated, unmodified test files.
+- Unsafe to patch around: two independent attempts at a pool-level
+  `connect()`/`release()` monkey-patch were tried and rejected — both
+  failed to close the race and introduced new, previously-absent
+  wire-protocol errors (`unexpected commandComplete`/`parseComplete`).
+
+### Not proven
+
+- That real production PostgreSQL has the same defect — no real-Postgres
+  control experiment could be run in this environment (no Docker, no
+  system Postgres available here); this remains an open question.
+- That the defect is exclusively a PGlite limitation, as opposed to a
+  more general `pg`/`pg-pool`/`@prisma/adapter-pg` interaction that could
+  also occur against real Postgres under similar single-connection
+  contention.
+- That every `null`/malformed Prisma result in a future integration
+  failure is this issue — each occurrence must still be checked against
+  the signature above, never assumed.
+- That any specific future CI failure can be dismissed without
+  investigation. It cannot, ever, on the strength of this document alone.
+
+### CI triage policy
+
+Follow in order, every time an integration-suite failure isn't obviously
+a real product regression:
+
+1. Inspect the exact failing test name and error signature.
+2. Compare it against the signature above.
+3. Confirm the change under review does not touch the failing test's own
+   file, the business logic it exercises, or the harness itself
+   (`src/lib/prisma.ts`, `test/support/local-postgres.ts`,
+   `test/integration/global-setup.ts`) before considering this known
+   issue at all.
+4. Reproduce the exact failing test locally, in isolation.
+5. If isolated reproduction is clean, run the broader relevant
+   integration context locally (the same file plus its neighbors, or a
+   full suite run) to see whether the same signature reappears.
+6. Never dismiss a new assertion failure or a genuine business-state
+   mismatch as this harness issue merely because this document exists —
+   a real regression must still be found and fixed.
+7. Never add retries, timeouts, or assertion weakening to hide this or
+   any other integration-test failure.
+
+**CI rerun rule**: a single rerun of the unchanged SHA is permissible
+only once all of the following hold: the failure matches the documented
+signature above, the PR's diff is unrelated to the failing test, the
+business logic it exercises, and the harness files listed in step 3, and
+local investigation (steps 1–5) found no product regression. Do not
+rerun in a loop. If the rerun fails again, or fails with a different
+signature, investigation is mandatory — treat it as a new, unexplained
+failure.
+
+### Known upstream state
+
+As of this investigation: Prisma / `@prisma/adapter-pg` `7.9.1`, `pg`
+`8.22.0`, `pg-pool` `3.14.0`, `@electric-sql/pglite` `0.5.4`.
+
+- `pg-pool` `3.14.0` was the latest published version at investigation
+  time and still releases the connection before resolving the
+  pool-query caller — unchanged behavior, not a recent regression.
+- Prisma has a related, still-open adapter-pg concurrency issue,
+  [prisma/prisma#29407](https://github.com/prisma/prisma/issues/29407)
+  (concurrent `performIO` dispatch on a single `pg.Client`) — related in
+  kind, **not** proof of this exact defect; its fix PRs (#29468, #29979)
+  are unmerged.
+- No released version of `pg`, `pg-pool`, Prisma/`@prisma/adapter-pg`, or
+  PGlite was found to contain a confirmed fix for either mechanism.
+
+### Diagnostic history
+
+A deterministic adversarial regression test (5/5 reproductions, first
+iteration every time) exists on a local-only, unpublished branch
+(`fix/pglite-connection-reuse-race`, commit `43f18e1`) used during this
+investigation. It is deliberately **not** merged into `main` — `main`
+stays green — and is not referenced by any script or CI workflow.
+
+### Reconsider this documented limitation when
+
+- Prisma/`@prisma/adapter-pg` ships a confirmed fix for adapter-level
+  connection/query-ordering safety.
+- PGlite or `@electric-sql/pglite-socket` ships a confirmed fix for its
+  single-connection multiplexing coverage.
+- Integration CI reliability degrades materially beyond this documented
+  pattern.
+- A real-PostgreSQL-capable local or CI environment becomes available —
+  the preferred next diagnostic is running the same adversarial sequence
+  against real PostgreSQL with the pool forced to `max: 1`, to determine
+  whether this is PGlite-specific or a broader `pg`/Prisma hazard.
+- A Production symptom matching this failure class (an impossible `null`
+  result, a malformed Prisma error) is ever observed — that would be a
+  materially different, urgent situation, not covered by this document.
+
 ## Why some things are deliberately not E2E
 
 E2E tests are the slowest and least precise layer to debug when they fail
