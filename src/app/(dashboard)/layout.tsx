@@ -106,7 +106,23 @@ export default async function DashboardLayout({
           unreadNotificationCount={unreadNotificationCount}
           recentNotifications={recentNotifications}
         />
-        <main className="flex-1 p-6">{children}</main>
+        {/*
+          Design/polish: staff-app main content max-width. main itself
+          keeps its existing flex-1/p-6 responsibility unchanged; only a
+          new inner mx-auto max-w-7xl wrapper is added around children, so
+          content is centered and bounded on wide desktop viewports while
+          staying full-width (the cap never engages) on anything narrower
+          — matching the bounded-content convention Client Portal
+          ((app)/layout.tsx) and Platform Admin ((platform-admin)/
+          layout.tsx) already use, at a wider cap (7xl vs their 5xl) since
+          staff screens carry wider tables and denser operational content.
+          No individual page was touched — every existing page.tsx's own
+          className continues to apply inside this wrapper exactly as
+          before.
+        */}
+        <main className="flex-1 p-6">
+          <div className="mx-auto max-w-7xl">{children}</div>
+        </main>
       </div>
     </div>
   );
