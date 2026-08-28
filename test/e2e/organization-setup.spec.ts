@@ -465,6 +465,101 @@ test.describe("Domain Settings", () => {
   });
 });
 
+/**
+ * Pre-Launch Audit F1 fix — src/components/settings/settings-nav.tsx,
+ * rendered once by src/app/(dashboard)/settings/layout.tsx across every
+ * /settings/* page. Before this fix, /settings/company, /settings/payment,
+ * and /settings/domain had no persistent UI path back to them once
+ * onboarding was dismissed/completed (see the invoice-issuance-readiness
+ * notice's own "renders nothing once both are configured" behavior,
+ * test/e2e/invoice-issuance-readiness.spec.ts) — reachable only by typing
+ * the URL directly. These tests prove real click-through reachability and
+ * that link visibility matches the exact same canonical authorization
+ * helpers (organization-setup/authorization.ts) each destination page
+ * already independently enforces — never a second, separately-invented
+ * permission check.
+ */
+test.describe("Settings navigation (Pre-Launch Audit F1)", () => {
+  test("OWNER can reach Company, Payment details, and Domain through real Settings nav clicks — never a typed URL", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    // Start from the one page the primary Sidebar's own "Settings" link
+    // already reaches — the exact starting point a real user has today.
+    await page.goto("/settings/notifications");
+
+    const settingsNav = page.getByRole("navigation", { name: "Settings" });
+    await expect(settingsNav).toBeVisible();
+
+    await settingsNav.getByRole("link", { name: "Company" }).click();
+    await expect(page).toHaveURL(/\/settings\/company$/);
+    await expect(page.getByRole("heading", { name: "Business identity", level: 1 })).toBeVisible();
+
+    await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Payment details" }).click();
+    await expect(page).toHaveURL(/\/settings\/payment$/);
+    await expect(page.getByRole("heading", { name: "Payment receiving details", level: 1 })).toBeVisible();
+
+    await page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Domain" }).click();
+    await expect(page).toHaveURL(/\/settings\/domain$/);
+    await expect(page.getByRole("heading", { name: "Domain settings", level: 1 })).toBeVisible();
+  });
+
+  test("the current Settings destination is marked aria-current, and only that link", async ({ page, context, baseURL }) => {
+    await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    await page.goto("/settings/domain");
+
+    const settingsNav = page.getByRole("navigation", { name: "Settings" });
+    await expect(settingsNav.getByRole("link", { name: "Domain" })).toHaveAttribute("aria-current", "page");
+    await expect(settingsNav.locator('[aria-current="page"]')).toHaveCount(1);
+    await expect(settingsNav.getByRole("link", { name: "Company" })).not.toHaveAttribute("aria-current", "page");
+  });
+
+  test("OWNER sees the Payment details nav entry; MEMBER and ADMIN never see it, matching canAccessPaymentDetails", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+    await page.goto("/settings/company");
+    await expect(page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Payment details" })).toBeVisible();
+
+    await actAsMember(context, baseURL!, fixtures.member, fixtures.orgA.id);
+    await page.goto("/settings/company");
+    await expect(page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Payment details" })).toHaveCount(0);
+
+    await actAsMember(context, baseURL!, fixtures.admin, fixtures.orgA.id);
+    await page.goto("/settings/company");
+    await expect(page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Payment details" })).toHaveCount(0);
+  });
+
+  test("Company, Domain, Notifications, and Billing nav entries stay visible to MEMBER — matching their existing 'any member may view' pages", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await actAsMember(context, baseURL!, fixtures.member, fixtures.orgA.id);
+    await page.goto("/settings/company");
+
+    const settingsNav = page.getByRole("navigation", { name: "Settings" });
+    for (const label of ["Company", "Domain", "Notifications", "Billing"]) {
+      await expect(settingsNav.getByRole("link", { name: label })).toBeVisible();
+    }
+  });
+
+  test("a MEMBER who navigates straight to /settings/payment by URL still gets Access denied — the nav link is discoverability only, never the security boundary", async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    await actAsMember(context, baseURL!, fixtures.member, fixtures.orgA.id);
+    await page.goto("/settings/payment");
+    await expect(page.getByRole("heading", { name: "Access denied" })).toBeVisible();
+    await expect(page.getByLabel("Bank name")).toHaveCount(0);
+  });
+});
+
 test.describe("Client Portal identity", () => {
   test.beforeEach(async ({ context, baseURL }) => {
     await injectTestSession(context, { id: fixtures.portalUser.id, email: fixtures.portalUser.email }, baseURL!);
