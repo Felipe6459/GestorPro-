@@ -421,14 +421,23 @@ function emptyDryRunSummary(): ReconciliationDryRunSummary {
 }
 
 // --- Diagnostics (pure reads, safe in both the real and dry-run summaries) --
+//
+// Both exported (Platform Admin Observability follow-up) so
+// src/lib/platform-admin/queries/failure-monitoring.ts can reuse this
+// exact, already-audited Prisma logic verbatim — never a second,
+// independently-written copy of the same WHERE clause. Both remain pure
+// counts (`prisma.invoicePdfArchiveObject.count()`): no row is ever
+// selected, so there is no id/storagePath/organizationId/invoiceId for a
+// caller to accidentally leak, regardless of what it does with the
+// returned number.
 
-async function countManualReviewPending(): Promise<number> {
+export async function countManualReviewPending(): Promise<number> {
   return prisma.invoicePdfArchiveObject.count({
     where: { status: { in: [...RECONCILABLE_STATUSES] }, cleanupAttemptCount: { gte: MAX_CLEANUP_ATTEMPTS } },
   });
 }
 
-async function countInconsistentClaimState(): Promise<number> {
+export async function countInconsistentClaimState(): Promise<number> {
   return prisma.invoicePdfArchiveObject.count({
     where: {
       status: { in: [...RECONCILABLE_STATUSES] },

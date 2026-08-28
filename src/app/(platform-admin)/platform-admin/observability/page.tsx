@@ -43,9 +43,10 @@ export default async function PlatformAdminObservabilityPage() {
           </span>
         </div>
         <p className="mt-1 text-sm text-gray-600">
-          A read-only, aggregate-only view of durable billing webhook and invoice email failures already recorded in
-          the database — nothing on this page can retry, resend, resolve, or otherwise change any record. Every
-          figure below covers the last 7 days, generated at page load; no filter or wider window is available.
+          A read-only, aggregate-only view of durable billing webhook, invoice email, and PDF archive-reconciliation
+          failures already recorded in the database — nothing on this page can retry, resend, resolve, or otherwise
+          change any record. Generated at page load; no filter or wider window is available. Most figures below
+          cover the last 7 days — the PDF archive reconciliation section is the one exception (see its own note).
         </p>
       </div>
 
@@ -98,6 +99,32 @@ export default async function PlatformAdminObservabilityPage() {
           label="stale pending invoice email attempt"
           emptyMessage="No stale pending invoice email attempts in the last 7 days."
         />
+      </DetailSection>
+
+      <DetailSection id="pdf-archive-reconciliation" title="PDF archive reconciliation">
+        <SectionIntro>
+          The daily archive-reconciliation job already retries these automatically — these two figures cover only
+          what is left over: an archive object that has exhausted automatic cleanup retries, or one whose internal
+          claim state is inconsistent (a data-integrity anomaly). Unlike every section above, these are not windowed
+          to 7 days — they reflect the current backlog.{" "}
+          <strong className="font-semibold text-gray-900">
+            This does not cover PDF rendering, oversized-PDF, or snapshot/logo failures — those remain visible only
+            in Vercel&rsquo;s own bounded diagnostic log events (see the runbook). A zero count here is not proof the
+            invoice/PDF subsystem overall is healthy.
+          </strong>
+        </SectionIntro>
+        <div className="flex flex-col gap-4 sm:flex-row sm:gap-8">
+          <SingleCount
+            count={summary.pdfArchiveManualReviewPendingCount}
+            label="manual-review-pending PDF archive object"
+            emptyMessage="No PDF archive objects pending manual review."
+          />
+          <SingleCount
+            count={summary.pdfArchiveInconsistentClaimStateCount}
+            label="claim-inconsistent PDF archive object"
+            emptyMessage="No PDF archive objects with an inconsistent claim state."
+          />
+        </div>
       </DetailSection>
 
       <p className="text-xs text-gray-500">

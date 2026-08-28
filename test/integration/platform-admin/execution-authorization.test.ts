@@ -235,27 +235,40 @@ describe("getPlatformDashboardData — execution-level guard (platform-wide aggr
 });
 
 describe("getFailureMonitoringSummary — execution-level guard", () => {
-  it("unauthenticated: zero Prisma calls, redirects to /login", async () => {
+  it("unauthenticated: zero Prisma calls (including the reused PDF archive-reconciliation counters), redirects to /login", async () => {
     asUnauthenticated();
     const spy = vi.spyOn(prisma.webhookEvent, "groupBy");
+    // Invoice/PDF diagnostics research follow-up — countManualReviewPending()/
+    // countInconsistentClaimState() (reused verbatim from reconcile-archive-
+    // objects.ts) must never execute for an unauthorized caller either.
+    const archiveSpy = vi.spyOn(prisma.invoicePdfArchiveObject, "count");
     const signal = await catchRedirect(() => getFailureMonitoringSummary(new Date()));
     expect(signal.url).toBe("/login");
     expect(spy).not.toHaveBeenCalled();
+    expect(archiveSpy).not.toHaveBeenCalled();
   });
 
-  it("authenticated non-admin: zero Prisma calls, redirects to /dashboard", async () => {
+  it("authenticated non-admin: zero Prisma calls (including the reused PDF archive-reconciliation counters), redirects to /dashboard", async () => {
     asNonAdmin();
     const spy = vi.spyOn(prisma.webhookEvent, "groupBy");
+    const archiveSpy = vi.spyOn(prisma.invoicePdfArchiveObject, "count");
     const signal = await catchRedirect(() => getFailureMonitoringSummary(new Date()));
     expect(signal.url).toBe("/dashboard");
     expect(spy).not.toHaveBeenCalled();
+    expect(archiveSpy).not.toHaveBeenCalled();
   });
 
-  it("allowlisted admin: the real reader still executes and returns real data", async () => {
+  it("allowlisted admin: the real reader still executes and returns real data, including both reused PDF archive-reconciliation counters", async () => {
     asPlatformAdmin();
     const spy = vi.spyOn(prisma.webhookEvent, "groupBy");
+    // Exactly two calls: countManualReviewPending() and
+    // countInconsistentClaimState() each issue their own
+    // prisma.invoicePdfArchiveObject.count() — never a combined/reimplemented
+    // query.
+    const archiveSpy = vi.spyOn(prisma.invoicePdfArchiveObject, "count");
     await getFailureMonitoringSummary(new Date());
     expect(spy).toHaveBeenCalledTimes(1);
+    expect(archiveSpy).toHaveBeenCalledTimes(2);
   });
 });
 
