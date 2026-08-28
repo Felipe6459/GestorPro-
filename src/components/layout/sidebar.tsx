@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { siteConfig } from "@/config/site";
 
 const links = [
   { href: "/dashboard", label: "Dashboard" },
@@ -29,7 +30,7 @@ export function Sidebar({ disablePrefetch = false }: { disablePrefetch?: boolean
       className="flex shrink-0 gap-1 overflow-x-auto border-b border-gray-200 bg-white p-3 md:w-56 md:flex-col md:gap-1.5 md:border-r md:border-b-0 md:p-4"
     >
       <span className="hidden px-2 pb-4 text-lg font-semibold tracking-tight text-gray-900 md:block">
-        Client Portal CRM
+        {siteConfig.name}
       </span>
       {links.map((link) => {
         const active = isActive(pathname, link.href);

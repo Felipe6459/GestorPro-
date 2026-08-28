@@ -35,7 +35,7 @@ describe("getPlatformLegalConfig", () => {
   it("falls back to the site name and safe, honest defaults when nothing is configured — never a fabricated address or mailbox", () => {
     const config = getPlatformLegalConfig();
 
-    expect(config.legalName).toBe("Client Portal CRM");
+    expect(config.legalName).toBe("Aqenra");
     expect(config.legalAddress).toBeNull();
     expect(config.supportEmail).toBeNull();
     expect(config.jurisdiction).toBe("the jurisdiction in which the Service operator is located");
@@ -87,7 +87,7 @@ describe("getPlatformLegalConfig", () => {
 
     const config = getPlatformLegalConfig();
 
-    expect(config.legalName).toBe("Client Portal CRM");
+    expect(config.legalName).toBe("Aqenra");
     expect(config.legalAddress).toBeNull();
   });
 
