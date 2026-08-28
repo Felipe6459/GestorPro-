@@ -202,6 +202,54 @@ test.describe("Company Profile", () => {
       // A field never set for this organization still renders, as "Not set" — read permissions cover every field, not just the ones happened to be filled in.
       await expect(page.getByText("Tax ID / VAT")).toBeVisible();
     });
+
+    /**
+     * Design/polish — the shared DefinitionList/DefinitionItem primitive
+     * (src/components/ui/definition-list.tsx) adopted here. Same
+     * established unbroken-token convention as
+     * organization-suspension-actions.spec.ts's own LONG_UNBROKEN_NAME —
+     * one token, no spaces at all, so wrapping can only come from
+     * `wrap-anywhere` (overflow-wrap: anywhere), never a natural word
+     * break.
+     */
+    test("MEMBER's read-only summary safely wraps a long unbroken legal name, no horizontal overflow", async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const LONG_LEGAL_NAME = `${"X".repeat(120)}Corp`;
+      await actAsMember(context, baseURL!, fixtures.owner, fixtures.orgA.id);
+      await page.goto("/settings/company");
+      await page.getByLabel("Legal company name").fill(LONG_LEGAL_NAME);
+      await page.getByLabel("Country").fill("United States");
+      await page.getByLabel("Currency").selectOption("USD");
+      await page.getByLabel("Time zone").selectOption("America/New_York");
+      await Promise.all([
+        page.waitForResponse((r) => r.url().includes("/settings/company") && r.request().method() === "POST"),
+        page.getByRole("button", { name: "Save company profile" }).click(),
+      ]);
+
+      await actAsMember(context, baseURL!, fixtures.member, fixtures.orgA.id);
+
+      // Representative widths, matching this repo's own established sweep
+      // (see responsive-layout.spec.ts) — narrow mobile through wide
+      // desktop, since the shell itself is now capped at max-w-7xl (PR
+      // #135) rather than unbounded.
+      for (const width of [320, 375, 768, 1024, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto("/settings/company");
+        await expect(page.getByText(LONG_LEGAL_NAME)).toBeVisible();
+
+        const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+          scrollWidth: document.documentElement.scrollWidth,
+          clientWidth: document.documentElement.clientWidth,
+        }));
+        expect(
+          scrollWidth,
+          `at ${width}px: scrollWidth (${scrollWidth}) should not exceed clientWidth (${clientWidth})`,
+        ).toBeLessThanOrEqual(clientWidth);
+      }
+    });
   });
 
   test.describe("Logo upload (Sale-Ready Phase A.1, PR5)", () => {
