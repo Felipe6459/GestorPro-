@@ -50,23 +50,52 @@ import { INVOICE_NOTES_MAX_LENGTH } from "@/lib/validation/invoice";
  * PDF review already identified as a separate, later step; nothing here
  * claims otherwise.
  *
- * A related, honestly-reported observation (not asserted as a pass/fail
- * expectation, since it cannot be confirmed as a defect without visual
- * rendering): the existing 200-line-item fixture already proves this
- * renderer's line-items table paginates correctly (its own PDF gains many
- * `/Type /Page` objects). By contrast, an extreme payment-instructions
- * value (tens of thousands of characters) was observed, during
- * investigation for this file, to still produce only a single `/Type
- * /Page` object — the `notes`/`payment` sections are rendered inside a
- * `wrap={false}` View (document.tsx), which keeps a block from being
- * *split* across pages but does not itself guarantee an oversized block
- * gets pushed to a fresh page or wrapped at all. This may mean extremely
- * long payment instructions render past the bottom of a page rather than
- * flowing onto a second one — but that is a hypothesis from a structural
- * byte-level signal, not a proven visual defect, and no fix is proposed
- * here for that reason. See this task's final report for the same
- * caveat, and consider it a candidate for the follow-up human visual
- * review already scoped as separate.
+ * CONFIRMED DEFECT AND FIX (owner visual-review follow-up): the
+ * observation this file originally reported here as an unproven,
+ * unasserted hypothesis was subsequently confirmed by the owner's actual
+ * visual review of a rendered PDF — an oversized `payment`/`notes`
+ * section (individually taller than one full page) did not paginate;
+ * instead, the entire page's layout corrupted (seller/date/recipient
+ * blocks overlapping each other), even though `validatePdfBuffer()`
+ * still reported the bytes as a structurally valid PDF. This is the
+ * concrete case the "byte-level validity is insufficient" framing in
+ * this follow-up's own task refers to.
+ *
+ * Root cause, confirmed by rendering real pages to images locally (a
+ * Swift/PDFKit rasterizer, used only as an ad hoc local diagnostic tool —
+ * never added to this repo or its CI, since it's macOS-only) and by a
+ * binary-search over payment-instructions length: `document.tsx`'s
+ * `notes`/`payment` sections were each a `wrap={false}` View. `wrap=
+ * {false}` correctly pushes an unsplittable block to a fresh page when it
+ * doesn't fit the current page's remaining space (proven safe by
+ * scenario 6/8 below at moderate lengths) — but once that same
+ * unsplittable block's own content is taller than one entire page, there
+ * is no next page it can be "pushed to" that would fit it either, and
+ * `@react-pdf/renderer`'s page-layout pass corrupts, not just for that
+ * block but for other siblings on the page. The fix: removed `wrap=
+ * {false}` from the `notes` and `payment` sections in document.tsx, so
+ * they flow and split across pages like ordinary content instead of
+ * being treated as one unsplittable unit. `totalsBlock` and each
+ * `tableRow` deliberately keep their own `wrap={false}` — their content
+ * is bounded (a handful of computed, always-short lines; a single line
+ * item capped at 500 characters — see calculateInvoiceTotals's own
+ * MAX_DESCRIPTION_LENGTH) and can never legally exceed one page, so there
+ * is nothing unsafe about keeping them atomic.
+ *
+ * `countPageObjects()` below (a plain, portable regex over the
+ * uncompressed PDF object structure — PDF page *objects* are never
+ * FlateDecode-compressed, unlike the content streams discussed above; a
+ * real, already-proven signal, per the existing 200-line-item fixture's
+ * own many-page output) is used as a structural regression proxy: before
+ * the fix, the confirmed-broken scenario below produced exactly one page
+ * object; after the fix, it produces several. This proves pagination
+ * occurred instead of a silent collapse — it does NOT independently
+ * reprove the absence of overlap on each of those pages; that stronger
+ * claim rests on the actual rendered-image review performed locally for
+ * this fix (see the task's own final report) and, per this task's own
+ * evidence boundary, still ultimately requires the owner's own visual
+ * confirmation of the regenerated artifacts before this fix is
+ * considered fully verified.
  */
 
 function mustCalculate(input: InvoiceCalculationInput) {
@@ -133,6 +162,20 @@ async function expectValidRender(input: InvoicePdfBuildInput): Promise<Buffer> {
   return buffer;
 }
 
+/**
+ * A coarse, portable pagination signal — counts `/Type /Page` object
+ * dictionaries in the PDF's own (uncompressed) object structure. Never a
+ * text-content or visual-overlap claim (see this file's own header
+ * comment) — only "did this content paginate across more than one page,
+ * or collapse into one." Already proven meaningful by the pre-existing
+ * 200-line-item fixture (invoice-pdf-document.test.tsx), whose own table
+ * correctly produces many page objects.
+ */
+function countPageObjects(buffer: Buffer): number {
+  const raw = buffer.toString("latin1");
+  return (raw.match(/\/Type\s*\/Page[^s]/g) ?? []).length;
+}
+
 // 300 non-repeating-looking characters — long enough to genuinely stress
 // single-line layout, short of anything that would trip a real app-level
 // length limit (none exists for OrganizationProfile.legalName today; see
@@ -162,6 +205,24 @@ const MULTILINE_PAYMENT_INSTRUCTIONS = [
   "For questions, contact the billing department directly, not the account manager.",
   "International wires must include full correspondent bank details.",
 ].join("\n");
+
+// The exact shape of content that reproduced the confirmed defect during
+// the owner's visual review: several realistic paragraphs, repeated
+// enough times that the payment section's own rendered height exceeds a
+// single A4 page — genuinely multi-line, wrapping content (unlike
+// LONG_NOTES below, whose single 10,000-character unbroken "word" never
+// grows tall regardless of length, since there is no space to wrap on).
+// Repeated 6 times to comfortably clear the threshold empirically found
+// while investigating this defect (4 repeats already reproduced it) —
+// not chosen to be barely-above-threshold, so this stays a robust
+// regression guard rather than a fragile one.
+const DEFECT_REPRO_PARAGRAPHS = [
+  "Please remit payment via wire transfer only — no checks, cash, or third-party payment apps are accepted for this account under any circumstances.",
+  "Reference the invoice number shown above in the wire memo field exactly as printed, including the leading letters, so our accounting team can reconcile your payment without delay.",
+  "A confirmation email including your bank's wire transfer reference number is required within 24 hours of sending payment; please send it to billing@synthetic-fixture.test with the invoice number in the subject line.",
+  "For international wires, please ensure your bank includes full correspondent bank details (SWIFT/BIC, intermediary bank name and address, and any applicable routing information), as incomplete wires are frequently delayed, rejected, or returned by our receiving bank, which can result in a delay to your service.",
+];
+const EXTREME_MULTILINE_PAYMENT_INSTRUCTIONS = Array.from({ length: 6 }, () => DEFECT_REPRO_PARAGRAPHS.join("\n\n")).join("\n\n---\n\n");
 
 const LONG_NOTES = "N".repeat(INVOICE_NOTES_MAX_LENGTH);
 
@@ -244,12 +305,28 @@ describe("invoice PDF renderer — long/multi-line seller and payment content", 
     );
   });
 
+  it("regression: payment instructions taller than one full page now paginate onto multiple pages, instead of collapsing into a single corrupted page (the confirmed owner-visual-review defect)", async () => {
+    const buffer = await expectValidRender(
+      baseInput({
+        issuer: {
+          ...SHORT_ISSUER,
+          payment: { bankName: "First Bank", accountHolder: "Acme Corp", accountNumber: "000123456", swiftBic: "FBUS1234", paymentInstructions: EXTREME_MULTILINE_PAYMENT_INSTRUCTIONS },
+        },
+      }),
+    );
+    // Before the fix, this exact scenario produced exactly one /Type
+    // /Page object despite the content clearly being taller than one
+    // page — the hallmark of the confirmed collapse-instead-of-paginate
+    // defect. After the fix, it must produce more than one.
+    expect(countPageObjects(buffer)).toBeGreaterThan(1);
+  });
+
   it("scenario 7: notes at the exact currently-enforced maximum length (INVOICE_NOTES_MAX_LENGTH) render without throwing", async () => {
     expect(LONG_NOTES).toHaveLength(INVOICE_NOTES_MAX_LENGTH);
     await expectValidRender(baseInput({ notes: LONG_NOTES }));
   });
 
-  it("scenario 8: combined stress case — every long/multi-line value simultaneously — renders without throwing, to a valid, deterministic PDF, and both the payment section and unrelated sections still contribute content", async () => {
+  it("scenario 8: combined stress case — every long/multi-line value simultaneously, including payment instructions taller than one page — renders without throwing, to a valid, deterministic, correctly-paginating PDF, and both the payment section and unrelated sections still contribute content", async () => {
     const stressInput = baseInput({
       issuer: {
         ...SHORT_ISSUER,
@@ -261,7 +338,7 @@ describe("invoice PDF renderer — long/multi-line seller and payment content", 
           accountHolder: LONG_ACCOUNT_HOLDER,
           accountNumber: LONG_ACCOUNT_NUMBER,
           swiftBic: LONG_SWIFT_BIC,
-          paymentInstructions: MULTILINE_PAYMENT_INSTRUCTIONS,
+          paymentInstructions: EXTREME_MULTILINE_PAYMENT_INSTRUCTIONS,
         },
       },
       recipient: {
@@ -273,6 +350,11 @@ describe("invoice PDF renderer — long/multi-line seller and payment content", 
     });
 
     const stressed = await expectValidRender(stressInput);
+
+    // The combined stress case now correctly paginates rather than
+    // collapsing (see the dedicated regression test above for the
+    // isolated, minimal reproduction of this same defect).
+    expect(countPageObjects(stressed)).toBeGreaterThan(1);
 
     // Determinism: the exact same stressed input renders to the exact same
     // byte length on a second, independent render. Not full byte-for-byte
