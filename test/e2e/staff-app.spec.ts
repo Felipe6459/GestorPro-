@@ -28,6 +28,12 @@ test("dashboard opens for an injected staff session", async ({ page }) => {
   await expect(page.getByRole("heading", { name: /dashboard/i })).toBeVisible();
 });
 
+test("sidebar shows the product wordmark from the central branding config, not a hardcoded string", async ({ page }) => {
+  await page.goto("/dashboard");
+  const nav = page.getByRole("navigation", { name: "Primary" });
+  await expect(nav.getByText("Aqenra", { exact: true })).toBeVisible();
+});
+
 test("sidebar navigation reaches every staff section", async ({ page }) => {
   await page.goto("/dashboard");
   const nav = page.getByRole("navigation", { name: "Primary" });
