@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { seedTestData, cleanupTestData, type TestFixtures } from "../../fixtures/seed";
 import { getFailureMonitoringSummary } from "@/lib/platform-admin/queries/failure-monitoring";
+import { MAX_CLEANUP_ATTEMPTS } from "@/lib/invoices/pdf/reconcile-archive-objects";
 import { setMockAuthUser, resetAuthMock } from "../../support/auth-mock";
 
 // PLATFORM_ADMIN_EXECUTION_AUTHORIZATION_AUDIT correction:
@@ -47,9 +48,11 @@ const MARKERS = {
 
 const WEBHOOK_EVENT_ID_PREFIX = "evt_failure-monitoring-test";
 const INVOICE_NUMBER_PREFIX = "INV-FAILURE-MONITORING";
+const ARCHIVE_OBJECT_STORAGE_PATH_PREFIX = "test-archive/failure-monitoring";
 
 const createdWebhookEventIds: string[] = [];
 const createdInvoiceIds: string[] = [];
+const createdArchiveObjectIds: string[] = [];
 
 async function seedWebhookEvent(overrides: {
   processingStatus?: "PENDING" | "PROCESSING" | "PROCESSED" | "FAILED" | "IGNORED";
@@ -113,6 +116,32 @@ async function seedAttempt(
   });
 }
 
+async function seedArchiveObject(
+  fixtures: TestFixtures,
+  overrides: {
+    status?: "PENDING_UPLOAD" | "REFERENCED" | "CLEANUP_PENDING" | "CLEANED";
+    cleanupAttemptCount?: number;
+    cleanupLockedAt?: Date | null;
+    cleanupClaimToken?: string | null;
+  },
+) {
+  const id = randomUUID();
+  const row = await prisma.invoicePdfArchiveObject.create({
+    data: {
+      id,
+      organizationId: fixtures.orgA.id,
+      documentVersion: 1,
+      storagePath: `${ARCHIVE_OBJECT_STORAGE_PATH_PREFIX}/${id}.pdf`,
+      status: overrides.status ?? "PENDING_UPLOAD",
+      cleanupAttemptCount: overrides.cleanupAttemptCount ?? 0,
+      cleanupLockedAt: overrides.cleanupLockedAt ?? null,
+      cleanupClaimToken: overrides.cleanupClaimToken ?? null,
+    },
+  });
+  createdArchiveObjectIds.push(row.id);
+  return row;
+}
+
 describe("getFailureMonitoringSummary — §9 Platform Admin Observability", () => {
   let fixtures: TestFixtures;
 
@@ -123,6 +152,11 @@ describe("getFailureMonitoringSummary — §9 Platform Admin Observability", () 
   });
 
   afterAll(async () => {
+    if (createdArchiveObjectIds.length > 0) {
+      // Restrict-referenced by Organization — must be deleted before
+      // cleanupTestData(fixtures) below removes fixtures.orgA.
+      await prisma.invoicePdfArchiveObject.deleteMany({ where: { id: { in: createdArchiveObjectIds } } });
+    }
     if (createdInvoiceIds.length > 0) {
       await prisma.invoiceEmailAttempt.deleteMany({ where: { invoiceId: { in: createdInvoiceIds } } });
       await prisma.invoice.deleteMany({ where: { id: { in: createdInvoiceIds } } });
@@ -305,8 +339,61 @@ describe("getFailureMonitoringSummary — §9 Platform Admin Observability", () 
     });
   });
 
+  describe("InvoicePdfArchiveObject reconciliation health (manual review / inconsistent claim state)", () => {
+    it("counts a row pending manual review once its cleanupAttemptCount reaches MAX_CLEANUP_ATTEMPTS, in either reconcilable status", async () => {
+      const before = await getFailureMonitoringSummary(REFERENCE_NOW);
+      const beforeCount = before.pdfArchiveManualReviewPendingCount;
+
+      await seedArchiveObject(fixtures, { status: "PENDING_UPLOAD", cleanupAttemptCount: MAX_CLEANUP_ATTEMPTS });
+      const afterFirst = await getFailureMonitoringSummary(REFERENCE_NOW);
+      expect(afterFirst.pdfArchiveManualReviewPendingCount).toBe(beforeCount + 1);
+
+      await seedArchiveObject(fixtures, { status: "CLEANUP_PENDING", cleanupAttemptCount: MAX_CLEANUP_ATTEMPTS + 5 });
+      const afterSecond = await getFailureMonitoringSummary(REFERENCE_NOW);
+      expect(afterSecond.pdfArchiveManualReviewPendingCount).toBe(beforeCount + 2);
+    });
+
+    it("does not count a row below MAX_CLEANUP_ATTEMPTS, and never counts a REFERENCED or CLEANED row regardless of its attempt count", async () => {
+      const before = await getFailureMonitoringSummary(REFERENCE_NOW);
+      const beforeCount = before.pdfArchiveManualReviewPendingCount;
+
+      await seedArchiveObject(fixtures, { status: "PENDING_UPLOAD", cleanupAttemptCount: MAX_CLEANUP_ATTEMPTS - 1 });
+      await seedArchiveObject(fixtures, { status: "REFERENCED", cleanupAttemptCount: MAX_CLEANUP_ATTEMPTS + 100 });
+      await seedArchiveObject(fixtures, { status: "CLEANED", cleanupAttemptCount: MAX_CLEANUP_ATTEMPTS + 100 });
+
+      const after = await getFailureMonitoringSummary(REFERENCE_NOW);
+      expect(after.pdfArchiveManualReviewPendingCount).toBe(beforeCount);
+    });
+
+    it("counts inconsistent claim state when exactly one of cleanupLockedAt/cleanupClaimToken is set, in either reconcilable status", async () => {
+      const before = await getFailureMonitoringSummary(REFERENCE_NOW);
+      const beforeCount = before.pdfArchiveInconsistentClaimStateCount;
+
+      await seedArchiveObject(fixtures, { status: "PENDING_UPLOAD", cleanupLockedAt: REFERENCE_NOW, cleanupClaimToken: null });
+      const afterFirst = await getFailureMonitoringSummary(REFERENCE_NOW);
+      expect(afterFirst.pdfArchiveInconsistentClaimStateCount).toBe(beforeCount + 1);
+
+      await seedArchiveObject(fixtures, { status: "CLEANUP_PENDING", cleanupLockedAt: null, cleanupClaimToken: randomUUID() });
+      const afterSecond = await getFailureMonitoringSummary(REFERENCE_NOW);
+      expect(afterSecond.pdfArchiveInconsistentClaimStateCount).toBe(beforeCount + 2);
+    });
+
+    it("does not count a consistent claim state (both set or both null), and never counts a REFERENCED or CLEANED row regardless of its claim fields", async () => {
+      const before = await getFailureMonitoringSummary(REFERENCE_NOW);
+      const beforeCount = before.pdfArchiveInconsistentClaimStateCount;
+
+      await seedArchiveObject(fixtures, { status: "PENDING_UPLOAD", cleanupLockedAt: null, cleanupClaimToken: null });
+      await seedArchiveObject(fixtures, { status: "CLEANUP_PENDING", cleanupLockedAt: REFERENCE_NOW, cleanupClaimToken: randomUUID() });
+      await seedArchiveObject(fixtures, { status: "REFERENCED", cleanupLockedAt: REFERENCE_NOW, cleanupClaimToken: null });
+      await seedArchiveObject(fixtures, { status: "CLEANED", cleanupLockedAt: null, cleanupClaimToken: randomUUID() });
+
+      const after = await getFailureMonitoringSummary(REFERENCE_NOW);
+      expect(after.pdfArchiveInconsistentClaimStateCount).toBe(beforeCount);
+    });
+  });
+
   describe("privacy and read-only guarantees", () => {
-    it("the summary's own JSON never contains a recipient email, an invoiceId, a webhook organizationId, or any row id", async () => {
+    it("the summary's own JSON never contains a recipient email, an invoiceId, a webhook organizationId, a PDF archive object id/storagePath, or any other row id", async () => {
       const invoice = await seedPlainInvoice(fixtures);
       await seedAttempt(invoice.id, { status: "FAILED", failureReason: "provider_error", attemptedAt: new Date(REFERENCE_NOW.getTime() - 1 * DAY_MS) });
       await seedWebhookEvent({
@@ -315,6 +402,7 @@ describe("getFailureMonitoringSummary — §9 Platform Admin Observability", () 
         organizationId: fixtures.orgA.id,
         createdAt: new Date(REFERENCE_NOW.getTime() - 1 * DAY_MS),
       });
+      const archiveObject = await seedArchiveObject(fixtures, { status: "PENDING_UPLOAD", cleanupAttemptCount: MAX_CLEANUP_ATTEMPTS });
 
       const summary = await getFailureMonitoringSummary(REFERENCE_NOW);
       const serialized = JSON.stringify(summary);
@@ -322,25 +410,36 @@ describe("getFailureMonitoringSummary — §9 Platform Admin Observability", () 
       expect(serialized).not.toContain(MARKERS.recipientEmail);
       expect(serialized).not.toContain(fixtures.orgA.id);
       expect(serialized).not.toContain(invoice.id);
+      expect(serialized).not.toContain(archiveObject.id);
+      expect(serialized).not.toContain(archiveObject.storagePath);
+      expect(serialized).not.toContain(ARCHIVE_OBJECT_STORAGE_PATH_PREFIX);
       for (const id of createdWebhookEventIds) {
+        expect(serialized).not.toContain(id);
+      }
+      for (const id of createdArchiveObjectIds) {
         expect(serialized).not.toContain(id);
       }
     });
 
-    it("calling the summary never mutates a single WebhookEvent or InvoiceEmailAttempt row", async () => {
+    it("calling the summary never mutates a single WebhookEvent, InvoiceEmailAttempt, or InvoicePdfArchiveObject row", async () => {
       const invoice = await seedPlainInvoice(fixtures);
       const attempt = await seedAttempt(invoice.id, { status: "PENDING", attemptedAt: new Date(REFERENCE_NOW.getTime() - 1 * DAY_MS) });
       const event = await seedWebhookEvent({ processingStatus: "PENDING", createdAt: new Date(REFERENCE_NOW.getTime() - 3 * HOUR_MS) });
+      const archiveObject = await seedArchiveObject(fixtures, { status: "PENDING_UPLOAD", cleanupAttemptCount: MAX_CLEANUP_ATTEMPTS });
 
       await getFailureMonitoringSummary(REFERENCE_NOW);
 
       const attemptAfter = await prisma.invoiceEmailAttempt.findUniqueOrThrow({ where: { id: attempt.id } });
       const eventAfter = await prisma.webhookEvent.findUniqueOrThrow({ where: { id: event.id } });
+      const archiveObjectAfter = await prisma.invoicePdfArchiveObject.findUniqueOrThrow({ where: { id: archiveObject.id } });
 
       expect(attemptAfter.status).toBe("PENDING");
       expect(attemptAfter.updatedAt.getTime()).toBe(attempt.updatedAt.getTime());
       expect(eventAfter.processingStatus).toBe("PENDING");
       expect(eventAfter.updatedAt.getTime()).toBe(event.updatedAt.getTime());
+      expect(archiveObjectAfter.status).toBe("PENDING_UPLOAD");
+      expect(archiveObjectAfter.cleanupAttemptCount).toBe(MAX_CLEANUP_ATTEMPTS);
+      expect(archiveObjectAfter.updatedAt.getTime()).toBe(archiveObject.updatedAt.getTime());
     });
   });
 });

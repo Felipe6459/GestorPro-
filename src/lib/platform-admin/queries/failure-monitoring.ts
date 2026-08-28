@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { requirePlatformAdmin } from "@/lib/platform-admin/authorization";
 import { STALE_PENDING_THRESHOLD_MS } from "@/lib/invoices/email/send-invoice-email";
+import { countManualReviewPending, countInconsistentClaimState } from "@/lib/invoices/pdf/reconcile-archive-objects";
 
 /**
  * §9 of docs/production-observability-runbook.md — the Platform Admin
@@ -47,6 +48,18 @@ import { STALE_PENDING_THRESHOLD_MS } from "@/lib/invoices/email/send-invoice-em
  * performance tradeoff this implies at higher invoice-email volume
  * (docs/production-observability-runbook.md §10 already names the same
  * limitation for the manual SQL equivalent).
+ *
+ * Invoice/PDF diagnostics research follow-up: two more aggregate counts
+ * (pdfArchiveManualReviewPendingCount, pdfArchiveInconsistentClaimStateCount)
+ * reuse countManualReviewPending()/countInconsistentClaimState() directly
+ * from src/lib/invoices/pdf/reconcile-archive-objects.ts — the exact same
+ * Prisma logic the daily reconciliation cron already computes, never a
+ * second, independently-written copy of it. A prior research pass
+ * concluded a separate Invoice/PDF diagnostics page is not justified and
+ * that this exact pair of already-durable, already-safe counts was this
+ * page's one genuine blind spot; earliest-stage Issue-pipeline failures
+ * (render/snapshot/PDF-size) remain deliberately log-only and are not
+ * made durable by this addition.
  */
 
 const WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
@@ -72,6 +85,23 @@ export type FailureMonitoringSummary = {
   webhookStalePendingCount: number;
   invoiceEmailFailuresByStatusAndReason: InvoiceEmailFailureBucket[];
   invoiceEmailStalePendingCount: number;
+  /**
+   * Invoice/PDF diagnostics research follow-up — reuses
+   * countManualReviewPending()/countInconsistentClaimState() verbatim
+   * from src/lib/invoices/pdf/reconcile-archive-objects.ts (the same
+   * counts that module's own daily cron reconciliation already computes
+   * and returns as an HTTP response body no human ever sees). Unlike
+   * every count above, these are NOT windowed to the last 7 days — they
+   * reflect the reconciliation ledger's current, unbounded backlog,
+   * exactly like the reconciliation module's own summaries do. This
+   * covers only post-ledger-creation archive/storage failures — it does
+   * NOT cover PDF render failures, oversized-PDF rejections, or snapshot/
+   * logo-provenance failures, all of which remain deliberately
+   * log-only (see docs/production-observability-runbook.md §8/§10) and
+   * are not made durable by this field's addition.
+   */
+  pdfArchiveManualReviewPendingCount: number;
+  pdfArchiveInconsistentClaimStateCount: number;
 };
 
 /** Every count this module produces comes from either a Prisma `count()`/`groupBy()._count` (already a plain JS number — no PostgreSQL bigint ever crosses the client boundary, since raw SQL is never used here) or an in-memory tally starting at 0. This is a defensive assertion that intent stays true, not a real bigint→number coercion — there is nothing here to coerce. */
@@ -158,21 +188,27 @@ export async function getFailureMonitoringSummary(now: Date = new Date()): Promi
   const webhookStaleCutoff = new Date(now.getTime() - WEBHOOK_STALE_PENDING_CUTOFF_MS);
   const invoiceEmailStaleCutoff = new Date(now.getTime() - STALE_PENDING_THRESHOLD_MS);
 
-  const [webhookFailureGroups, webhookStalePendingCount, invoiceEmailAttemptRows] = await Promise.all([
-    prisma.webhookEvent.groupBy({
-      by: ["failureCode"],
-      where: { processingStatus: "FAILED", createdAt: { gte: windowStart, lte: now } },
-      _count: true,
-    }),
-    prisma.webhookEvent.count({
-      where: { processingStatus: "PENDING", createdAt: { gte: windowStart, lt: webhookStaleCutoff } },
-    }),
-    prisma.invoiceEmailAttempt.findMany({
-      where: { attemptedAt: { gte: windowStart, lte: now } },
-      select: { invoiceId: true, status: true, failureReason: true, attemptedAt: true },
-      orderBy: [{ invoiceId: "asc" }, { attemptedAt: "desc" }, { id: "desc" }],
-    }),
-  ]);
+  const [webhookFailureGroups, webhookStalePendingCount, invoiceEmailAttemptRows, pdfArchiveManualReviewPendingCount, pdfArchiveInconsistentClaimStateCount] =
+    await Promise.all([
+      prisma.webhookEvent.groupBy({
+        by: ["failureCode"],
+        where: { processingStatus: "FAILED", createdAt: { gte: windowStart, lte: now } },
+        _count: true,
+      }),
+      prisma.webhookEvent.count({
+        where: { processingStatus: "PENDING", createdAt: { gte: windowStart, lt: webhookStaleCutoff } },
+      }),
+      prisma.invoiceEmailAttempt.findMany({
+        where: { attemptedAt: { gte: windowStart, lte: now } },
+        select: { invoiceId: true, status: true, failureReason: true, attemptedAt: true },
+        orderBy: [{ invoiceId: "asc" }, { attemptedAt: "desc" }, { id: "desc" }],
+      }),
+      // Not windowed — see FailureMonitoringSummary's own doc comment on
+      // why these two reuse the reconciliation module's unbounded-backlog
+      // semantics verbatim, rather than a new 7-day-windowed reframing.
+      countManualReviewPending(),
+      countInconsistentClaimState(),
+    ]);
 
   const webhookFailuresByCode: WebhookFailureBucket[] = webhookFailureGroups
     .map((group) => ({ failureCode: group.failureCode, count: assertSafeCount(group._count, "webhookFailuresByCode") }))
@@ -188,5 +224,7 @@ export async function getFailureMonitoringSummary(now: Date = new Date()): Promi
     webhookStalePendingCount: assertSafeCount(webhookStalePendingCount, "webhookStalePendingCount"),
     invoiceEmailFailuresByStatusAndReason: failuresByStatusAndReason,
     invoiceEmailStalePendingCount: stalePendingCount,
+    pdfArchiveManualReviewPendingCount: assertSafeCount(pdfArchiveManualReviewPendingCount, "pdfArchiveManualReviewPendingCount"),
+    pdfArchiveInconsistentClaimStateCount: assertSafeCount(pdfArchiveInconsistentClaimStateCount, "pdfArchiveInconsistentClaimStateCount"),
   };
 }
