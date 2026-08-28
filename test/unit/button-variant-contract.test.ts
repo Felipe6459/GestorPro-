@@ -38,8 +38,13 @@ function extractClassValue(variant: Variant): string {
 // bg-gray-900, text-red-500, ...) — deliberately excludes non-color
 // text-* utilities that share the same prefix (text-sm, text-center,
 // text-left, ...), which are sizing/alignment, not color, and must never
-// be flagged as a same-property conflict.
-const COLOR_UTILITY_PATTERN = /^(bg|text)-(black|white|transparent|current|inherit|[a-z]+-\d{2,3})$/;
+// be flagged as a same-property conflict. "accent" is the Aqenra brand
+// PR 2 custom Tailwind v4 theme color (globals.css's --color-accent) —
+// without it here, bg-accent would silently stop being recognized as a
+// color utility at all, quietly disabling this test's own "background
+// and foreground utilities must never be the same color" check for
+// exactly the variant (primary) this same historical bug originally hit.
+const COLOR_UTILITY_PATTERN = /^(bg|text)-(black|white|transparent|current|inherit|accent|[a-z]+-\d{2,3})$/;
 
 function tailwindColorUtilities(classString: string): string[] {
   return classString.split(/\s+/).filter((cls) => COLOR_UTILITY_PATTERN.test(cls));
@@ -83,5 +88,19 @@ describe("Button — variant classes never overlap on the same color utility (co
     expect(renderedTemplate).not.toBeNull();
     const literalColorUtilities = tailwindColorUtilities(renderedTemplate![1]);
     expect(literalColorUtilities).toEqual([]);
+  });
+
+  // Aqenra brand PR 2 — the primary variant's own accent color, proven
+  // directly rather than only via the generic same-color-conflict check
+  // above: it must use the Aqenra accent tokens (globals.css), never the
+  // old bg-black/hover:bg-gray-800 pair.
+  it("the primary variant uses the Aqenra accent tokens, not the old black background", () => {
+    const primary = extractClassValue("primary");
+    expect(primary).toContain("bg-accent");
+    expect(primary).toContain("hover:bg-accent-hover");
+    expect(primary).not.toMatch(/\bbg-black\b/);
+    expect(primary).not.toMatch(/hover:bg-gray-800\b/);
+    // White foreground is unchanged by this brand correction.
+    expect(primary).toContain("text-white");
   });
 });

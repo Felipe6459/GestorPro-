@@ -34,6 +34,20 @@ test("sidebar shows the product wordmark from the central branding config, not a
   await expect(nav.getByText("Aqenra", { exact: true })).toBeVisible();
 });
 
+/**
+ * Aqenra brand PR 2 — real, browser-computed proof that the active nav
+ * item renders the approved Aqenra Indigo accent (#2E2A6B = rgb(46, 42,
+ * 107)) rather than the old bg-black. A computed-style assertion, not a
+ * class-name/snapshot check — genuinely fails if the accent token ever
+ * silently resolves to the wrong color or reverts to black.
+ */
+test("sidebar active navigation item uses the Aqenra accent color, not the old black", async ({ page }) => {
+  await page.goto("/dashboard");
+  const nav = page.getByRole("navigation", { name: "Primary" });
+  const activeLink = nav.getByRole("link", { name: "Dashboard" });
+  await expect(activeLink).toHaveCSS("background-color", "rgb(46, 42, 107)");
+});
+
 test("sidebar navigation reaches every staff section", async ({ page }) => {
   await page.goto("/dashboard");
   const nav = page.getByRole("navigation", { name: "Primary" });

@@ -62,13 +62,18 @@ describe("SegmentErrorState — real render, never leaks raw error content", () 
     expect(html).toMatch(/<button[^>]*>[\s\S]*Try again[\s\S]*<\/button>/);
   });
 
-  it("uses the shared Button component's primary (black) variant classes — matches existing app conventions", () => {
+  it("uses the shared Button component's primary (Aqenra accent) variant classes — matches existing app conventions", () => {
     const html = renderToStaticMarkup(
       <SegmentErrorState error={makeSensitiveError()} reset={() => {}} description="Test description." />,
     );
     const buttonMatch = html.match(/<button[^>]*class="([^"]*)"[^>]*>/);
     expect(buttonMatch).not.toBeNull();
-    expect(buttonMatch![1]).toContain("bg-black");
+    // Aqenra brand PR 2 — Button's primary variant moved from bg-black to
+    // the Aqenra accent token (src/components/ui/button.tsx). Still
+    // proving the same thing this test always proved: SegmentErrorState
+    // genuinely reuses the shared Button component's real primary
+    // variant, not a hand-rolled duplicate.
+    expect(buttonMatch![1]).toContain("bg-accent");
     expect(buttonMatch![1]).toContain("focus-visible:ring-2");
   });
 
