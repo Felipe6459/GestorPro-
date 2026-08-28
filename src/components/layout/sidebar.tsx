@@ -49,8 +49,12 @@ export function Sidebar({ disablePrefetch = false }: { disablePrefetch?: boolean
             // TEST_MODE (never in a real deployment) removes that whole
             // class of intermittent E2E hangs.
             prefetch={disablePrefetch ? false : undefined}
+            // Aqenra brand PR 2 — active-state bg-black replaced with the
+            // approved Aqenra Indigo accent token (globals.css). The
+            // shared focus-visible ring below is unchanged (a separately
+            // scoped, deliberately deferred normalization).
             className={`whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 ${
-              active ? "bg-black text-white" : "text-gray-700 hover:bg-gray-100"
+              active ? "bg-accent text-white" : "text-gray-700 hover:bg-gray-100"
             }`}
           >
             {link.label}

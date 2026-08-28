@@ -8,12 +8,26 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /*
+   * Aqenra brand PR 2 — the approved Aqenra Indigo accent (see the
+   * accompanying design research). Deliberately just these two shades:
+   * every current consumer (the primary Button variant, the Sidebar's
+   * active nav state) only ever needs a base fill and a hover fill —
+   * no third token is introduced speculatively. The app-wide
+   * focus-visible:ring-black convention is unchanged in this PR (a
+   * separately scoped, deliberately deferred normalization), so no
+   * focus-specific accent token exists here either.
+   */
+  --accent: #2E2A6B;
+  --accent-hover: #221E52;
   color-scheme: light;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

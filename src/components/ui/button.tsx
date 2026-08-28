@@ -20,7 +20,11 @@ import { SpinnerIcon } from "@/components/ui/icons";
  * appearance, so no existing caller's rendered output changes.
  */
 const VARIANT_CLASSES = {
-  primary: "bg-black text-white hover:bg-gray-800",
+  // Aqenra brand PR 2 — bg-black/hover:bg-gray-800 replaced with the
+  // approved Aqenra Indigo accent tokens (globals.css). Everything else
+  // about this variant (white text, sizing, disabled/loading behavior,
+  // the shared focus-visible ring below) is unchanged.
+  primary: "bg-accent text-white hover:bg-accent-hover",
   secondary: "border border-gray-300 bg-white text-gray-900 hover:bg-gray-50",
   dangerOutline: "border border-gray-300 bg-white text-red-600 hover:bg-red-50",
 } as const;
