@@ -2,6 +2,7 @@ import { getCurrentMembership } from "@/lib/current-user";
 import { getCompanyProfile } from "@/lib/organization-setup/company-profile";
 import { canManageCompanyProfile } from "@/lib/organization-setup/authorization";
 import { getSupportedCurrencies, getSupportedTimezones } from "@/lib/validation/company-profile";
+import { DefinitionList, DefinitionItem } from "@/components/ui/definition-list";
 import { CompanyProfileForm } from "./company-profile-form";
 import { LogoUploadForm } from "./logo-upload-form";
 
@@ -54,64 +55,22 @@ export default async function CompanyProfilePage() {
               />
             </div>
           )}
-          <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <dt className="text-xs font-medium text-gray-500">Display name</dt>
-              <dd className="text-sm text-gray-900">{profile.displayName}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-gray-500">Legal name</dt>
-              <dd className="text-sm text-gray-900">{profile.legalName ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-gray-500">Currency</dt>
-              <dd className="text-sm text-gray-900">{profile.currency ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-gray-500">Time zone</dt>
-              <dd className="text-sm text-gray-900">{profile.timezone ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-gray-500">Support email</dt>
-              <dd className="text-sm text-gray-900">{profile.supportEmail ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-gray-500">Website</dt>
-              <dd className="text-sm text-gray-900">{profile.website ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-gray-500">Phone</dt>
-              <dd className="text-sm text-gray-900">{profile.phone ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-gray-500">Country</dt>
-              <dd className="text-sm text-gray-900">{profile.country ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-gray-500">Street address</dt>
-              <dd className="text-sm text-gray-900">{profile.streetAddress ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-gray-500">City</dt>
-              <dd className="text-sm text-gray-900">{profile.city ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-gray-500">State / Province</dt>
-              <dd className="text-sm text-gray-900">{profile.state ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-gray-500">Postal code</dt>
-              <dd className="text-sm text-gray-900">{profile.postalCode ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-gray-500">Tax ID / VAT</dt>
-              <dd className="text-sm text-gray-900">{profile.taxId ?? "Not set"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-gray-500">Brand color</dt>
-              <dd className="text-sm text-gray-900">{profile.brandColor ?? "Not set"}</dd>
-            </div>
-          </dl>
+          <DefinitionList>
+            <DefinitionItem label="Display name" value={profile.displayName} />
+            <DefinitionItem label="Legal name" value={profile.legalName ?? "Not set"} />
+            <DefinitionItem label="Currency" value={profile.currency ?? "Not set"} />
+            <DefinitionItem label="Time zone" value={profile.timezone ?? "Not set"} />
+            <DefinitionItem label="Support email" value={profile.supportEmail ?? "Not set"} />
+            <DefinitionItem label="Website" value={profile.website ?? "Not set"} />
+            <DefinitionItem label="Phone" value={profile.phone ?? "Not set"} />
+            <DefinitionItem label="Country" value={profile.country ?? "Not set"} />
+            <DefinitionItem label="Street address" value={profile.streetAddress ?? "Not set"} />
+            <DefinitionItem label="City" value={profile.city ?? "Not set"} />
+            <DefinitionItem label="State / Province" value={profile.state ?? "Not set"} />
+            <DefinitionItem label="Postal code" value={profile.postalCode ?? "Not set"} />
+            <DefinitionItem label="Tax ID / VAT" value={profile.taxId ?? "Not set"} />
+            <DefinitionItem label="Brand color" value={profile.brandColor ?? "Not set"} />
+          </DefinitionList>
         </div>
       )}
     </div>
