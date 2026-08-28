@@ -197,14 +197,14 @@ export function InvoicePdfDocument({ viewModel }: { viewModel: InvoicePdfViewMod
         </View>
 
         {viewModel.notes && (
-          <View style={styles.section} wrap={false}>
+          <View style={styles.section}>
             <Text style={styles.sectionLabel}>Notes</Text>
             <Text style={styles.sectionText}>{viewModel.notes}</Text>
           </View>
         )}
 
         {issuer.payment && (
-          <View style={styles.section} wrap={false}>
+          <View style={styles.section}>
             <Text style={styles.sectionLabel}>Payment instructions</Text>
             <Text style={styles.sectionText}>Bank: {issuer.payment.bankName}</Text>
             <Text style={styles.sectionText}>Account holder: {issuer.payment.accountHolder}</Text>
