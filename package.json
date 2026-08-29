@@ -9,6 +9,8 @@
     "lint": "eslint",
     "db:seed": "prisma db seed",
     "postinstall": "prisma generate",
+    "prisma:prod:status": "node scripts/prisma-production.mjs status",
+    "prisma:prod:deploy": "node scripts/prisma-production.mjs deploy",
     "test": "npm run test:unit && npm run test:integration",
     "test:unit": "vitest run test/unit",
     "test:unit:watch": "vitest test/unit",

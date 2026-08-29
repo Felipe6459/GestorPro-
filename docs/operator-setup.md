@@ -238,6 +238,18 @@ rules, reinforced by an actual incident during Sale-Ready Phase E, E1:
   Until both are done, production will fail every database query with
   Prisma error `P1000` ("Authentication failed against the database
   server").
+- **Never run a plain `npx prisma migrate status`/`migrate deploy` against
+  production.** A follow-up hardening after the incident above found the
+  actual root cause of that confusion: `prisma.config.ts` only auto-loads
+  a bare `.env`, never `.env.production.local` — so a plain invocation can
+  silently read stale, pre-rotation credentials instead of failing
+  loudly. `.env.production.local` is the one canonical local file for
+  real production credentials; always go through
+  `npm run prisma:prod:status` (read-only) or `npm run prisma:prod:deploy`
+  (mutating — apply only with explicit authorization) instead
+  (`scripts/prisma-production.mjs`) — both refuse to run at all if
+  `.env.production.local` is missing or incomplete, and never fall back
+  to any other `.env` file.
 
 ### Live payments
 
