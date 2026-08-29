@@ -107,12 +107,28 @@ jobs:
       # secret's literal value in all log output regardless, but nothing
       # here ever attempts to print the file's contents in the first
       # place. `set -x` is never enabled anywhere in this workflow.
+      #
+      # Secrets are passed via step `env:`, never spliced directly into
+      # the shell script text: GitHub's own `${{ }}` substitution happens
+      # before Bash ever parses the script, so embedding a secret inside
+      # a double-quoted `echo "...${{ secrets.X }}..."` string is not
+      # byte-safe against a future value containing `"`, `$`, a backtick,
+      # or a backslash — any of those would be reinterpreted by the
+      # shell rather than written literally. Routing through `env:` and
+      # referencing each value only as a quoted `"$VAR"` inside
+      # `printf '%s\n'` delivers it via the process environment instead,
+      # which Bash never re-parses as script syntax — safe for any byte
+      # sequence the secret could ever contain (a literal newline is the
+      # one exception, which no valid Postgres connection string has).
       - name: Materialize ephemeral Production read-only env file
+        env:
+          DB_URL_SECRET: ${{ secrets.PRODUCTION_DATABASE_URL_READONLY }}
+          DIRECT_URL_SECRET: ${{ secrets.PRODUCTION_DIRECT_URL_READONLY }}
         run: |
           set -euo pipefail
           {
-            echo "DATABASE_URL=${{ secrets.PRODUCTION_DATABASE_URL_READONLY }}"
-            echo "DIRECT_URL=${{ secrets.PRODUCTION_DIRECT_URL_READONLY }}"
+            printf 'DATABASE_URL=%s\n' "$DB_URL_SECRET"
+            printf 'DIRECT_URL=%s\n' "$DIRECT_URL_SECRET"
           } > .env.production.local
           chmod 600 .env.production.local
 
