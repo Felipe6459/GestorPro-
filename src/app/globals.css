@@ -10,16 +10,136 @@
   --foreground: #171717;
   /*
    * Aqenra brand PR 2 — the approved Aqenra Indigo accent (see the
-   * accompanying design research). Deliberately just these two shades:
-   * every current consumer (the primary Button variant, the Sidebar's
-   * active nav state) only ever needs a base fill and a hover fill —
-   * no third token is introduced speculatively. The app-wide
+   * accompanying design research). These two shades are the values every
+   * *currently wired* consumer uses (the primary Button variant, the
+   * Sidebar's active nav state): a base fill and a hover fill. Design
+   * System Phase 1 below adds further accent shades (--accent-active,
+   * --accent-subtle) as not-yet-consumed foundation tokens for later
+   * phases — it does not wire anything new to them. The app-wide
    * focus-visible:ring-black convention is unchanged in this PR (a
-   * separately scoped, deliberately deferred normalization), so no
-   * focus-specific accent token exists here either.
+   * separately scoped, deliberately deferred normalization); Phase 1
+   * adds a --focus-ring token below that mirrors that same black, but
+   * nothing is rewired to use it yet either.
    */
   --accent: #2E2A6B;
   --accent-hover: #221E52;
+
+  /*
+   * Design System Phase 1 (foundation tokens) — Aqenra Prototype Round 3
+   * was approved as the visual direction (see the prototype comparison
+   * this PR does not implement any of it yet). This block adds the
+   * smallest additive semantic-token layer needed to support that
+   * direction in later phases, without restyling anything now:
+   *   - --accent / --accent-hover above are UNCHANGED (same hex).
+   *   - Every new token below is currently unused by any component —
+   *     nothing in src/ references these names yet, so adding them
+   *     cannot change what's rendered today. They exist so Phase 2+
+   *     (Button/Table/Sidebar/Drawer work) has one shared vocabulary to
+   *     adopt from, matching the Round-3-approved values where a value
+   *     was already decided, and matching this app's own dominant
+   *     existing ad hoc Tailwind gray/border conventions everywhere a
+   *     Round-3 value wasn't the deciding factor (see the PR description
+   *     for the specific audit each value is drawn from).
+   *   - Radius/shadow/spacing intentionally are NOT added here — see the
+   *     comment further down explaining why they use an --aqenra- prefix
+   *     instead of Tailwind's reserved --radius-, --shadow-, and --spacing
+   *     names.
+   */
+
+  /* SURFACES */
+  --surface: var(--background); /* alias: today's single flat surface */
+  --surface-recessed: #F5F5F7; /* Round-3-approved quiet/recessed tone (sidebar, table header, page gutter) — not yet consumed */
+  --surface-elevated: var(--background); /* alias: reserved for a future distinct "raised" tone */
+  --surface-muted: #F9FAFB; /* matches the dominant existing ad hoc hover:bg-gray-50 */
+
+  /* TEXT */
+  --text-primary: var(--foreground); /* alias */
+  --text-secondary: #4B5563; /* gray-600 — the dominant existing ad hoc secondary-text color */
+  --text-muted: #6B7280; /* gray-500 */
+  --text-inverse: #ffffff;
+
+  /* BORDERS */
+  --border-subtle: #F3F4F6; /* gray-100 */
+  --border-default: #E5E7EB; /* gray-200 — the dominant existing ad hoc border color */
+  --border-strong: #D1D5DB; /* gray-300 */
+
+  /* BRAND (accent/accent-hover above are the existing, unchanged values) */
+  --accent-active: #191536; /* Round-3-approved pressed/active shade */
+  --accent-subtle: #EEEDF9; /* Round-3-approved light tint, e.g. future selected-row wash */
+  --accent-foreground: #ffffff; /* documents the color already hardcoded ad hoc as text-white next to bg-accent */
+
+  /* FOCUS */
+  --focus-ring: #000000; /* deliberately identical to Tailwind's `black`, i.e. today's focus-visible:ring-black — so a future wire-up is a genuine zero-diff swap, not a hidden restyle. The ring-black convention itself is untouched by this PR. */
+
+  /* SEMANTIC — Round-3-approved restrained-saturation values (status-badge.tsx
+     is NOT wired to these in this PR; it keeps its own existing Tailwind
+     classes unchanged) */
+  --success: #1F7A4D;
+  --success-subtle: #EAF6EE;
+  --warning: #8A5A0A;
+  --warning-subtle: #FCF3E1;
+  --danger: #AC3527;
+  --danger-subtle: #FBEBEA;
+  --info: #2A5C99;
+  --info-subtle: #EAF1F9;
+
+  /*
+   * INTERACTIVE — plain custom properties only (var(--selected) /
+   * var(--hover) / var(--disabled), or a Tailwind arbitrary value like
+   * bg-[var(--hover)]). Deliberately NOT mirrored into @theme inline
+   * below: Tailwind already reserves hover:/disabled: as pseudo-class
+   * variant prefixes, and a bare color utility literally named
+   * bg-hover/bg-disabled would read confusingly next to them (e.g.
+   * `hover:bg-hover`). Keeping these as plain vars sidesteps that
+   * without giving up the requested names.
+   */
+  --selected: var(--accent-subtle);
+  --hover: #F9FAFB; /* gray-50, matches the dominant existing ad hoc hover:bg-gray-50 */
+  --disabled: #9CA3AF; /* gray-400, matches the dominant existing ad hoc disabled/muted text color */
+
+  /*
+   * Typography foundation — sizes/weights only, matching this app's own
+   * existing Tailwind text scale (so a future zero-visual-change alias-in
+   * is plausible). Prefixed --aqenra- since these aren't color tokens and
+   * have no natural home in Tailwind's reserved theme namespace. Not
+   * consumed by any component in this PR.
+   */
+  --aqenra-fs-display: 1.75rem;
+  --aqenra-fw-display: 700;
+  --aqenra-fs-page-title: 1.375rem;
+  --aqenra-fw-page-title: 600;
+  --aqenra-fs-section-title: 0.8125rem;
+  --aqenra-fw-section-title: 600;
+  --aqenra-fs-body: 0.875rem;
+  --aqenra-fw-body: 400;
+  --aqenra-fs-meta: 0.75rem;
+  --aqenra-fw-meta: 400;
+  --aqenra-fs-label: 0.8125rem;
+  --aqenra-fw-label: 500;
+
+  /*
+   * Radius / elevation foundation — Round-3-approved restrained values.
+   * Tailwind v4 already reserves the bare names --radius-sm/md/lg/xl and
+   * --shadow-sm/md/lg/xl as part of its own default theme (see
+   * node_modules/tailwindcss/theme.css) — redeclaring those exact names
+   * here would silently change every existing rounded-md/shadow-lg
+   * utility class across the whole app the moment this file loads,
+   * which is exactly the sweeping, unintended restyle this phase must
+   * not cause. The --aqenra- prefix guarantees zero collision. Not
+   * consumed by any component in this PR; the existing Tailwind
+   * spacing scale (--spacing, untouched) remains the shared spacing
+   * foundation — no new spacing tokens are introduced.
+   */
+  --aqenra-radius-sm: 6px;
+  --aqenra-radius-md: 8px;
+  --aqenra-radius-lg: 12px;
+  --aqenra-radius-full: 999px;
+  --aqenra-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --aqenra-shadow-md:
+    0 4px 12px rgba(16, 24, 40, 0.1), 0 1px 2px rgba(16, 24, 40, 0.06);
+  --aqenra-shadow-lg:
+    0 12px 32px rgba(16, 24, 40, 0.16), 0 2px 6px rgba(16, 24, 40, 0.08);
+
   color-scheme: light;
 }
 
@@ -30,6 +150,47 @@
   --color-accent-hover: var(--accent-hover);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /*
+   * Design System Phase 1 — mirrors the new semantic tokens above so
+   * Tailwind generates matching utilities (bg-, text-, border-) for
+   * later phases to adopt. Note --color-text-primary and
+   * --color-border-default (etc.) necessarily produce utilities like
+   * text-text-secondary and border-border-default (the semantic
+   * category name "text"/"border" echoes Tailwind's own utility
+   * prefix) — a known, harmless naming quirk of this mirroring, not a
+   * mistake. INTERACTIVE tokens (--selected, --hover, --disabled) are
+   * intentionally NOT mirrored — see the comment beside their :root
+   * declarations above.
+   */
+  --color-surface: var(--surface);
+  --color-surface-recessed: var(--surface-recessed);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-muted: var(--surface-muted);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-inverse: var(--text-inverse);
+
+  --color-border-subtle: var(--border-subtle);
+  --color-border-default: var(--border-default);
+  --color-border-strong: var(--border-strong);
+
+  --color-accent-active: var(--accent-active);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-focus-ring: var(--focus-ring);
+
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-danger: var(--danger);
+  --color-danger-subtle: var(--danger-subtle);
+  --color-info: var(--info);
+  --color-info-subtle: var(--info-subtle);
 }
 
 body {
