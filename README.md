@@ -242,6 +242,8 @@ The full data model lives in `prisma/schema.prisma` — Organizations/Membership
    npx prisma migrate deploy
    ```
 
+   **This is for a local/fresh database only.** For the real Production database, never run a plain `npx prisma migrate status`/`migrate deploy` — `prisma.config.ts` only auto-loads a bare `.env`, never `.env.production.local` (the canonical local file for real Production credentials — see the [Deployment](#deployment-vercel) section below), so a plain invocation can silently read stale credentials instead of failing loudly. Use `npm run prisma:prod:status` / `npm run prisma:prod:deploy` instead — see below.
+
 2. **(Optional) Seed demo data.** Requires `SUPABASE_SERVICE_ROLE_KEY` to be set — the seed script (`prisma/seed.ts`) creates three real Supabase Auth accounts (two staff, one Client Portal contact — see [Live demo](#live-demo) above for credentials), a real Organization with both staff accounts as Members of it, and fills it with realistic clients, projects, tasks, invoices, comments, and notifications — already connected, so the very first login lands on a populated dashboard rather than an empty workspace:
 
    ```bash
@@ -263,7 +265,11 @@ During active development, use `npx prisma migrate dev` instead of `migrate depl
 1. Push the repo to GitHub.
 2. Import it in Vercel.
 3. Add the environment variables above in Vercel's Project Settings → Environment Variables (Paddle variables only once you're ready to enable real billing — see [Billing](#billing); everything else as needed).
-4. Vercel runs `next build` automatically. Make sure migrations have already been applied to the target database (`npx prisma migrate deploy`, run locally against the production `DIRECT_URL` or via a CI step) — the build does not run migrations for you.
+4. Vercel runs `next build` automatically. Make sure migrations have already been applied to the target database — the build does not run migrations for you. Never run a plain `npx prisma migrate deploy` against Production: it silently falls back to a bare `.env`'s credentials if you forget to source `.env.production.local` yourself. Instead:
+   - Put the real Production `DATABASE_URL`/`DIRECT_URL` in a local, gitignored `.env.production.local` (never committed, never any other tracked file).
+   - Check status first: `npm run prisma:prod:status`.
+   - Apply, only once you mean to: `npm run prisma:prod:deploy` — this is a mutating, Production-authorized operation; run it deliberately, never as a routine step.
+   - Both commands (`scripts/prisma-production.mjs`) refuse to run at all if `.env.production.local` is missing or incomplete, and never fall back to any other `.env` file.
 5. Create the two Supabase Storage buckets in your production project (see [Storage setup](#storage-setup-supabase)) — attachment/logo uploads will fail until this is done.
 6. Deploy.
 
@@ -329,8 +335,9 @@ Both are intended to be green before merging a pull request.
 | `npm run start` | Run the production build |
 | `npm run lint` | ESLint |
 | `npm run db:seed` | Seed demo data (see [Database setup](#database-setup-prisma)) |
-| `npx prisma migrate dev` | Create/apply a migration in development |
-| `npx prisma migrate deploy` | Apply pending migrations (production-safe, non-interactive) |
+| `npx prisma migrate dev` | Create/apply a migration in development (local database only) |
+| `npm run prisma:prod:status` | Check Production migration status — safe, read-only, requires `.env.production.local` |
+| `npm run prisma:prod:deploy` | Apply pending migrations to Production — mutating, requires `.env.production.local` and explicit authorization |
 | `npx prisma studio` | Browse the database |
 | `npm test` | Unit + integration tests |
 | `npm run test:unit` | Unit tests (Vitest) |
