@@ -302,7 +302,27 @@ describe("design system foundation tokens — src/app/globals.css", () => {
     }
   });
 
-  it("Phase 1b: no mechanism anywhere in the app sets data-theme yet — this PR must stay inert", () => {
-    expect(ROOT_LAYOUT).not.toMatch(/data-theme/);
+  it("Theme Resolver Phase B: root layout activates theming through the shared pre-paint script and ThemeProvider, not an ad hoc/duplicated mechanism", () => {
+    // This assertion originally read `expect(ROOT_LAYOUT).not.toMatch(/data-theme/)`
+    // — an accurate description of Phase 1b's own scope (dark token
+    // VALUES, zero activation). Theme Resolver Phase B is the deliberate,
+    // later PR that activates it for real; updating this assertion
+    // (rather than deleting it) keeps this file's own history honest
+    // about what changed and why. Full behavioral coverage of the
+    // resolver itself lives in theme-resolve.test.ts, theme-pre-paint-
+    // script.test.ts, and test/e2e/theme-resolver.spec.ts.
+    //
+    // Root layout deliberately renders a literal `data-theme="light"`
+    // default (not a cookie-derived value) and does NOT import
+    // @/lib/theme/resolve at all — see layout.tsx's own doc comment:
+    // reading the theme cookie in the root layout would opt the whole
+    // app out of static prerendering, so 100% of the cookie
+    // reading/correcting happens in the pre-paint script instead.
+    expect(ROOT_LAYOUT).toMatch(/data-theme="light"/);
+    expect(ROOT_LAYOUT).toMatch(/suppressHydrationWarning/);
+    expect(ROOT_LAYOUT).toMatch(/from "@\/lib\/theme\/pre-paint-script"/);
+    expect(ROOT_LAYOUT).toMatch(/from "@\/components\/theme\/theme-provider"/);
+    expect(ROOT_LAYOUT).not.toMatch(/from "@\/lib\/theme\/resolve"/);
+    expect(ROOT_LAYOUT).not.toMatch(/next\/headers/);
   });
 });
