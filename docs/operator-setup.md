@@ -251,6 +251,49 @@ rules, reinforced by an actual incident during Sale-Ready Phase E, E1:
   `.env.production.local` is missing or incomplete, and never fall back
   to any other `.env` file.
 
+### Automated Production migration-status safeguard
+
+Pre-Launch Audit P2 (durable migration-state safeguard). The **Production
+Migration Status** workflow (`.github/workflows/production-migration-status.yml`)
+runs automatically after every successful Production deployment, can also
+be run manually (`workflow_dispatch`), and has a once-daily scheduled
+backstop in case a deployment event is ever missed. All three modes run
+exactly one command — `npm run prisma:prod:status` — and nothing else.
+
+- **Read-only, always.** The workflow connects as the dedicated
+  `migration_status_readonly` Postgres role — `CONNECT` + `USAGE` on
+  `public` + `SELECT` on `public."_prisma_migrations"` only, no write or
+  DDL privilege at all, empirically validated against real PostgreSQL
+  before this role was created in Production. It never runs
+  `npm run prisma:prod:deploy`, and it cannot apply a migration even if
+  it tried to — this is enforced at both the workflow level (the command
+  literally isn't there) and the database level (the role can't write).
+- **A pending migration makes the workflow fail.** This is intentional —
+  Prisma's own exit code (`0` up to date, `1` pending, confirmed
+  empirically) is the job's pass/fail signal, unparsed. A failing run
+  here means Production's operational status is **NOT READY**, not that
+  anything is broken — the deployed code and the Production schema are
+  simply out of sync until an operator acts.
+- **This is informational, not a merge gate.** Branch protection does
+  not depend on it, and cannot meaningfully: this check can only ever run
+  after the SHA it's checking is already deployed, so it structurally
+  can't gate the PR that introduced the migration.
+- **Remediation requires explicit owner authorization**, then:
+  ```bash
+  npm run prisma:prod:deploy
+  ```
+  followed by manually re-running the workflow (`workflow_dispatch`) to
+  confirm the signal has cleared.
+- **Sequencing for schema-changing releases:** because this project
+  deploys code before an operator applies the corresponding migration
+  (Vercel's build never runs migrations — see above), prefer additive,
+  backward-compatible migrations (new nullable columns/tables) so
+  already-deployed code is unaffected while a migration is pending. For a
+  genuinely breaking change, apply the migration first via
+  `npm run prisma:prod:deploy` while the old code is still live, then
+  ship the dependent code as a separate, later deploy — never rely on
+  code and its own migration landing in the same moment.
+
 ### Live payments
 
 Live billing is disabled by construction — there is no code path in this

@@ -1,0 +1,134 @@
+name: Production Migration Status
+
+# Pre-Launch Audit P2 (durable migration-state safeguard). Read-only,
+# informational — never gates a PR merge (branch protection intentionally
+# does not depend on this) and never applies anything. It answers exactly
+# one question after the fact: does the migration history the now-deployed
+# code expects actually match what's applied to the real Production
+# database? See docs/operator-setup.md's own section on this workflow for
+# the full rationale and remediation steps.
+#
+# Three triggers, deliberately different purposes:
+#   - deployment_status: the primary signal — runs once, right after a
+#     real Production deployment finishes, checked against the EXACT SHA
+#     that deployment just shipped (never "whatever main is now").
+#   - workflow_dispatch: on-demand, e.g. immediately after an operator
+#     runs `npm run prisma:prod:deploy` to confirm the signal cleared.
+#   - schedule: a light once-daily backstop in case a deployment_status
+#     event is ever missed or delayed — not the primary signal.
+#
+# This workflow only ever runs `npm run prisma:prod:status`
+# (scripts/prisma-production.mjs) — the same already-audited helper PR
+# #142 introduced. It never runs `prisma:prod:deploy`, `migrate deploy`,
+# `db push`, or any other mutating command, and connects only as the
+# dedicated `migration_status_readonly` Postgres role (CONNECT + USAGE +
+# SELECT on `_prisma_migrations` only — no write/DDL privilege exists for
+# this role at the database level either, confirmed empirically against
+# real PostgreSQL before this role was created in Production).
+
+on:
+  deployment_status:
+  workflow_dispatch:
+  schedule:
+    # 06:17 UTC daily — an arbitrary, deliberately off-the-hour time
+    # (avoiding the exact top of the hour some GitHub-wide scheduled jobs
+    # cluster around), comfortably after any reasonable deploy window.
+    - cron: "17 6 * * *"
+
+permissions:
+  # Only what actions/checkout needs. Reading the triggering event's own
+  # deployment/deployment_status payload (used below to filter and to
+  # resolve the exact deployed SHA) requires no extra permission — it's
+  # already attached to the run's own event context, not a separate API
+  # call this workflow makes.
+  contents: read
+
+jobs:
+  check-migration-status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # deployment_status fires for every environment (Preview included) and
+    # every state (pending/failure/success/...) — this is the one place
+    # that filter is enforced. workflow_dispatch/schedule always pass
+    # through unfiltered (there is no deployment_status payload to check
+    # for those event types). A Preview deployment, or a Production
+    # deployment that did NOT succeed, makes this job report skipped —
+    # never a false failure.
+    if: >-
+      github.event_name != 'deployment_status' ||
+      (github.event.deployment_status.state == 'success' &&
+       github.event.deployment.environment == 'Production')
+    # Required so only the Production-scoped Environment secrets below
+    # are exposed to this job — a repository-level secret of the same
+    # name would NOT satisfy this; Production's own two secrets are the
+    # only intended source.
+    environment:
+      name: Production
+    steps:
+      - name: Resolve the exact Git SHA to check
+        id: resolve
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "deployment_status" ]; then
+            echo "sha=${{ github.event.deployment.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report sanitized check context (no secrets)
+        run: |
+          set -euo pipefail
+          echo "Trigger: ${{ github.event_name }}"
+          echo "Target environment: Production"
+          echo "Checked Git SHA: ${{ steps.resolve.outputs.sha }}"
+          if [ "${{ github.event_name }}" = "deployment_status" ]; then
+            echo "Deployment ID: ${{ github.event.deployment.id }}"
+            echo "Deployment environment: ${{ github.event.deployment.environment }}"
+          else
+            echo "Note: this is a backstop/on-demand check, not tied to a specific deployment event."
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.resolve.outputs.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Materializes the one physical file scripts/prisma-production.mjs
+      # requires (it never auto-loads a bare .env, by design — see PR
+      # #142) — inside this ephemeral runner's own workspace only, never
+      # uploaded as an artifact, never echoed. GitHub Actions masks each
+      # secret's literal value in all log output regardless, but nothing
+      # here ever attempts to print the file's contents in the first
+      # place. `set -x` is never enabled anywhere in this workflow.
+      - name: Materialize ephemeral Production read-only env file
+        run: |
+          set -euo pipefail
+          {
+            echo "DATABASE_URL=${{ secrets.PRODUCTION_DATABASE_URL_READONLY }}"
+            echo "DIRECT_URL=${{ secrets.PRODUCTION_DIRECT_URL_READONLY }}"
+          } > .env.production.local
+          chmod 600 .env.production.local
+
+      # The real signal. Exit code IS the job's pass/fail — empirically
+      # confirmed against real PostgreSQL: 0 when the schema is up to
+      # date, 1 when a migration is genuinely pending (see the disposable
+      # local-validation task's own report). No output parsing, no
+      # continue-on-error, no `|| true` — a pending migration, an auth
+      # failure, an unreachable database, or any other Prisma CLI failure
+      # all make this step (and therefore this job) fail, exactly as
+      # intended for a read-only "is Production actually ready" signal.
+      - name: Check Production migration status (read-only)
+        run: npm run prisma:prod:status
+
+      # Runs even if the status check above failed — the ephemeral
+      # credential file must never survive this job either way.
+      - name: Remove ephemeral Production env file
+        if: always()
+        run: rm -f .env.production.local
