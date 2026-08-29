@@ -1,9 +1,12 @@
 @import "tailwindcss";
 
 /*
- * This app is light-theme only — no dark: variants are used anywhere in the
- * codebase. `color-scheme: light` stops browsers from applying their own
- * automatic dark rendering to native form controls based on OS preference.
+ * This app renders light-theme BY DEFAULT and today unconditionally — no
+ * dark: Tailwind variants are used anywhere in the codebase, and nothing
+ * anywhere sets a `data-theme` attribute (see Design System Phase 1b below
+ * for exactly what that means). `color-scheme: light` stops browsers from
+ * applying their own automatic dark rendering to native form controls
+ * based on OS preference.
  */
 :root {
   --background: #ffffff;
@@ -141,6 +144,137 @@
     0 12px 32px rgba(16, 24, 40, 0.16), 0 2px 6px rgba(16, 24, 40, 0.08);
 
   color-scheme: light;
+}
+
+/*
+ * Design System Phase 1b (dark token values) — Aqenra Prototype Round 3
+ * Dark was approved as the visual direction for a future resolved dark
+ * theme (see docs/theme-architecture spec — this PR implements none of
+ * that resolver). This block gives every semantic token above a dark
+ * counterpart under the SAME name, selected only by the `data-theme`
+ * attribute on <html>.
+ *
+ * INERT BY DESIGN: nothing anywhere in this codebase ever sets
+ * `data-theme="dark"` — no root-layout change, no script, no cookie, no
+ * class toggle. `:root[data-theme="dark"]` therefore never matches
+ * anything today, so this block has ZERO effect on what currently
+ * renders; it exists purely so a later resolver has real values to
+ * apply. Verified empirically for this exact PR (see the PR
+ * description's manual sanity-check section) by temporarily forcing the
+ * attribute via devtools only, never by adding code that sets it.
+ *
+ * Values are translated from the owner-approved local dark prototype
+ * into this repo's actual (coarser) token inventory — not a literal
+ * copy of the prototype's own CSS, which used a few extra surface tiers
+ * this repo's Phase 1 foundation doesn't have. Every value below was
+ * checked against WCAG's contrast formula before being chosen (see the
+ * PR description); "disabled" is deliberately the one exception, at a
+ * reduced but still perceptible contrast — WCAG's own 1.4.3 exception
+ * for inactive controls, matching the equally-reduced relationship
+ * between --disabled and --text-muted already present in the Light
+ * values above (gray-400 vs gray-500).
+ */
+:root[data-theme="dark"] {
+  --background: #0E1014;
+  --foreground: #ECEDEE;
+
+  /* Same hue family as Light (~245°), lightened and slightly
+     desaturated so it reads as text/fill against a near-black surface
+     without crossing into neon violet — never the Light hex reused
+     verbatim (that deep indigo is nearly illegible as text on black).
+     Checked: white-on-fill ≈4.5:1, this color as text on the page
+     ≈4.2:1 — a deliberate middle value, since Light's token model uses
+     one shade for both a solid button fill and an active-nav text
+     color, and no third token exists to serve them separately. */
+  --accent: #726BCB;
+  --accent-hover: #7871D2;
+  --accent-active: #5F58B5;
+  --accent-subtle: rgba(114, 107, 203, 0.16);
+  --accent-foreground: #ffffff;
+
+  /*
+   * SURFACES — a monotonic five-step ladder (darkest to lightest:
+   * background, recessed, muted, surface, elevated), preserving the
+   * approved hierarchy (page → recessed chrome → default working
+   * surface → floating/overlay surface) using ONLY the token names
+   * Phase 1 already introduced. Unlike Light (where surface/elevated
+   * both alias --background because there's nothing to differentiate
+   * on a white page), Dark gives --surface and --surface-elevated their
+   * own distinct, genuinely lighter values — elevation communicated by
+   * luminance, not by a heavier shadow, which barely registers on a
+   * dark surface anyway (see --aqenra-shadow-* below).
+   */
+  --surface: #1B1F26;
+  --surface-recessed: #14171C;
+  --surface-elevated: #232833;
+  --surface-muted: #171A20;
+
+  /* TEXT — text-primary aliases --foreground, exactly as in Light (the
+     same semantic role, not a concept that should diverge by theme).
+     text-inverse stays pure white in both themes: its role is "text on
+     a vivid solid fill" (e.g. the accent button), which doesn't need a
+     softer off-white the way body text does. */
+  --text-primary: var(--foreground);
+  --text-secondary: #A0A6B0;
+  --text-muted: #767C87;
+  --text-inverse: #ffffff;
+
+  /* BORDERS — light-on-dark, low opacity; "hairline" stays the
+     subtlest, "strong" the most visible, same relative ordering as
+     Light. */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.22);
+
+  /* FOCUS — pure black (Light's value, matching today's
+     focus-visible:ring-black) would be invisible on a near-black
+     surface, so this is the one token that must diverge in hue as well
+     as lightness — a light accent-tinted ring keeps it on-brand rather
+     than a generic white ring. */
+  --focus-ring: #9B96E8;
+
+  /* SEMANTIC — low-opacity tinted washes + readable saturated
+     foreground, never the Light pastel backgrounds reused verbatim
+     (those would look like chalky, washed-out boxes on a dark
+     surface). Meaning stays visually distinguishable: each pair keeps
+     its own hue, only lightness/opacity adapts for the dark ground. */
+  --success: #6FCF97;
+  --success-subtle: rgba(111, 207, 151, 0.14);
+  --warning: #E8B854;
+  --warning-subtle: rgba(232, 184, 84, 0.14);
+  --danger: #E8756A;
+  --danger-subtle: rgba(232, 117, 106, 0.14);
+  --info: #6FA8E8;
+  --info-subtle: rgba(111, 168, 232, 0.14);
+
+  /* INTERACTIVE — selected stays an alias of accent-subtle, same as
+     Light (same role, not a concept that should diverge). hover is a
+     restrained translucent white wash rather than a named surface hex,
+     so it reads correctly regardless of which surface tier it's
+     layered over. disabled is deliberately dimmer than text-muted
+     (matching Light's own gray-400-vs-gray-500 relationship) so a
+     disabled control never gets mistaken for ordinary muted text. */
+  --selected: var(--accent-subtle);
+  --hover: rgba(255, 255, 255, 0.06);
+  --disabled: #5C626B;
+
+  /* Shadows barely register on a dark surface (the whole reason
+     elevation is communicated by lighter surfaces above instead) —
+     kept tighter and darker, doing secondary reinforcement only for
+     genuinely floating elements (a future Drawer/menu), never the
+     primary way two adjacent panels are told apart. */
+  --aqenra-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --aqenra-shadow-md:
+    0 4px 14px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --aqenra-shadow-lg:
+    0 16px 40px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
+
+  /* Radius and typography are shape/scale concerns, not color — they
+     do not change by theme, so none of the --aqenra-radius-, --aqenra-fs-,
+     or --aqenra-fw- families are overridden here; Light's values (above)
+     already apply universally regardless of `data-theme`. */
+
+  color-scheme: dark;
 }
 
 @theme inline {
