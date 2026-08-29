@@ -2,28 +2,63 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// Design System Phase 1 (foundation tokens). This suite exercises
-// src/app/globals.css as plain text — there is no component under test
-// yet, since nothing in src/ consumes these tokens in this PR (see the
-// PR description). The assertions below are deliberately narrow: they
-// check that specific variable declarations exist with the expected
-// value, not a snapshot of the whole file's formatting, so future
-// additive changes to this file (Phase 2+) won't spuriously fail this
-// suite unless they touch one of the specific guarantees below.
+// Design System Phase 1 (foundation tokens) + Phase 1b (dark token
+// values). This suite exercises src/app/globals.css as plain text —
+// there is no component under test yet, since nothing in src/ consumes
+// these tokens in this PR (see the PR description). The assertions
+// below are deliberately narrow: they check that specific variable
+// declarations exist with the expected value, not a snapshot of the
+// whole file's formatting, so future additive changes to this file
+// (Phase 2+) won't spuriously fail this suite unless they touch one of
+// the specific guarantees below.
 const CSS = readFileSync(
   join(__dirname, "../../src/app/globals.css"),
   "utf-8",
 );
 
+const ROOT_LAYOUT = readFileSync(
+  join(__dirname, "../../src/app/layout.tsx"),
+  "utf-8",
+);
+
 // A declaration line looks like `  --name: value;` (single or
 // multi-line values are normalized away for the tokens this suite
-// checks, since none of them span multiple lines).
+// checks, since none of them span multiple lines). Matches the FIRST
+// occurrence in the file, which — since the plain `:root` (Light)
+// block always comes before the `:root[data-theme="dark"]` block below
+// it — means every existing call site of this helper keeps checking
+// Light's value, unaffected by Phase 1b adding a same-named dark
+// declaration further down. Phase-1b-specific tests use
+// declaredValueInDarkBlock() instead, scoped to the dark block only.
 function declaredValue(varName: string): string | undefined {
   const match = CSS.match(
     new RegExp(`--${varName}\\s*:\\s*([^;]+);`),
   );
   return match?.[1]?.trim();
 }
+
+// Phase 1b: everything declared inside :root[data-theme="dark"] { ... },
+// extracted once so dark-specific assertions can't accidentally match a
+// Light declaration of the same name earlier in the file.
+const darkBlockMatch = CSS.match(
+  /:root\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/,
+);
+const DARK_BLOCK = darkBlockMatch?.[1] ?? "";
+
+function declaredValueInDarkBlock(varName: string): string | undefined {
+  const match = DARK_BLOCK.match(new RegExp(`--${varName}\\s*:\\s*([^;]+);`));
+  return match?.[1]?.trim();
+}
+
+// Every `--name` actually declared somewhere in the Light :root block —
+// used to confirm the dark block never introduces a token name Light
+// doesn't already have (no --success-dark, no stray new concept smuggled
+// in alongside the dark values).
+const lightBlockMatch = CSS.match(/^:root\s*\{([\s\S]*?)\n\}/m);
+const LIGHT_BLOCK = lightBlockMatch?.[1] ?? "";
+const LIGHT_TOKEN_NAMES = new Set(
+  [...LIGHT_BLOCK.matchAll(/--([a-z0-9-]+)\s*:/g)].map((m) => m[1]),
+);
 
 describe("design system foundation tokens — src/app/globals.css", () => {
   it("keeps the existing legacy tokens byte-identical (Phase 1 must not restyle the brand)", () => {
@@ -151,15 +186,123 @@ describe("design system foundation tokens — src/app/globals.css", () => {
     expect(CSS).toMatch(/--aqenra-shadow-lg\s*:/);
   });
 
-  it("introduces no dark-mode behavior: no prefers-color-scheme/data-theme rules, and color-scheme stays light", () => {
+  it("Phase 1b: the dark override is CSS-only — no prefers-color-scheme media query, no dark: Tailwind variant, and the default (unscoped) color-scheme stays light", () => {
     // Tailwind's `dark:` variant is a JSX className prefix, not something
     // that would ever appear in this CSS file, so it isn't checked here —
-    // this file's own pre-existing header comment literally contains the
-    // substring "dark:" while explaining that no such variants exist,
-    // which would make that check a guaranteed false positive.
+    // this file's own header comment literally contains the substring
+    // "dark:" while explaining that no such variants exist, which would
+    // make that check a guaranteed false positive.
+    //
+    // prefers-color-scheme is deliberately absent: Phase 1b defines dark
+    // VALUES only, selected exclusively by the `data-theme` attribute — a
+    // media-query-driven System mode is real future resolver behavior
+    // (Phase B), not something this CSS-only PR should pre-empt.
     expect(CSS).not.toMatch(/prefers-color-scheme/);
-    expect(CSS).not.toMatch(/data-theme/);
     expect(declaredValue("color-scheme")).toBeUndefined(); // it's a plain property, not a custom property
-    expect(CSS).toMatch(/color-scheme:\s*light;/);
+    expect(CSS).toMatch(/^\s*color-scheme:\s*light;/m);
+  });
+
+  it("Phase 1b: declares a dark override block, selected only by [data-theme=\"dark\"]", () => {
+    expect(DARK_BLOCK.length, "expected a :root[data-theme=\"dark\"] block to exist").toBeGreaterThan(0);
+  });
+
+  it("Phase 1b: every token the app actually consumes has a dark value, under the identical semantic name", () => {
+    const required = [
+      "background",
+      "foreground",
+      "accent",
+      "accent-hover",
+      "accent-active",
+      "accent-subtle",
+      "accent-foreground",
+      "surface",
+      "surface-recessed",
+      "surface-elevated",
+      "surface-muted",
+      "text-primary",
+      "text-secondary",
+      "text-muted",
+      "text-inverse",
+      "border-subtle",
+      "border-default",
+      "border-strong",
+      "focus-ring",
+      "success",
+      "success-subtle",
+      "warning",
+      "warning-subtle",
+      "danger",
+      "danger-subtle",
+      "info",
+      "info-subtle",
+      "selected",
+      "hover",
+      "disabled",
+    ];
+    for (const name of required) {
+      expect(
+        declaredValueInDarkBlock(name),
+        `expected --${name} to have a dark value`,
+      ).toBeDefined();
+    }
+  });
+
+  it("Phase 1b: introduces no theme-specific variable names (no --success-dark, --surface-light, etc.) — every dark declaration reuses a name Light already has", () => {
+    const darkNames = [...DARK_BLOCK.matchAll(/--([a-z0-9-]+)\s*:/g)].map((m) => m[1]);
+    expect(darkNames.length).toBeGreaterThan(0);
+    for (const name of darkNames) {
+      expect(
+        LIGHT_TOKEN_NAMES.has(name),
+        `--${name} appears in the dark block but not in Light — theme must never be encoded into the token name`,
+      ).toBe(true);
+      expect(name).not.toMatch(/-(dark|light)$/);
+    }
+  });
+
+  it("Phase 1b: dark values are genuinely adapted, not the Light pastel/deep values reused verbatim", () => {
+    expect(declaredValueInDarkBlock("background")).not.toBe(declaredValue("background"));
+    expect(declaredValueInDarkBlock("accent")).not.toBe(declaredValue("accent"));
+    expect(declaredValueInDarkBlock("success-subtle")).not.toBe(declaredValue("success-subtle"));
+    expect(declaredValueInDarkBlock("focus-ring")).not.toBe(declaredValue("focus-ring"));
+  });
+
+  it("Phase 1b: dark --disabled is dimmer than dark --text-muted (a disabled control must never read as ordinary muted text)", () => {
+    // Both are plain hex here (no rgba), so a lexical comparison of the
+    // hex digits is a valid, simple stand-in for "darker/dimmer" without
+    // pulling in a color-math dependency for one assertion.
+    const disabled = declaredValueInDarkBlock("disabled");
+    const muted = declaredValueInDarkBlock("text-muted");
+    expect(disabled).toBeDefined();
+    expect(muted).toBeDefined();
+    expect(disabled!.toLowerCase() < muted!.toLowerCase()).toBe(true);
+  });
+
+  it("Phase 1b: sets color-scheme: dark, scoped only inside the dark block", () => {
+    expect(DARK_BLOCK).toMatch(/color-scheme:\s*dark;/);
+  });
+
+  it("Phase 1b: still never redeclares Tailwind's reserved --radius-*/--shadow-*/--spacing keys, even inside the dark block", () => {
+    for (const reserved of ["radius-sm", "radius-md", "radius-lg", "radius-xl", "shadow-sm", "shadow-md", "shadow-lg", "shadow-xl", "spacing"]) {
+      expect(
+        declaredValueInDarkBlock(reserved),
+        `--${reserved} must not be redeclared in the dark block either`,
+      ).toBeUndefined();
+    }
+    expect(DARK_BLOCK).toMatch(/--aqenra-shadow-sm\s*:/);
+    expect(DARK_BLOCK).toMatch(/--aqenra-shadow-md\s*:/);
+    expect(DARK_BLOCK).toMatch(/--aqenra-shadow-lg\s*:/);
+  });
+
+  it("Phase 1b: the dark block introduces no radius or typography override — shape/scale don't change by theme", () => {
+    for (const shapeToken of ["aqenra-radius-sm", "aqenra-radius-md", "aqenra-radius-lg", "aqenra-radius-full", "aqenra-fs-body", "aqenra-fw-body"]) {
+      expect(
+        declaredValueInDarkBlock(shapeToken),
+        `--${shapeToken} should not be overridden in the dark block — it's a shape/scale token, not a color`,
+      ).toBeUndefined();
+    }
+  });
+
+  it("Phase 1b: no mechanism anywhere in the app sets data-theme yet — this PR must stay inert", () => {
+    expect(ROOT_LAYOUT).not.toMatch(/data-theme/);
   });
 });
