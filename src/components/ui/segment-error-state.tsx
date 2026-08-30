@@ -63,7 +63,9 @@ export function SegmentErrorState({
     <div
       role="alert"
       aria-labelledby={headingId}
-      className="border-border-strong flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center"
+      // bg-surface added — see EmptyState's own comment on this exact
+      // issue (same shared "dashed border, no fill" shape, same fix).
+      className="border-border-strong bg-surface flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center"
     >
       <h2 id={headingId} className="text-text-primary text-lg font-semibold">
         Something went wrong

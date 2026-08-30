@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { AutoSubmitSelect } from "@/components/list/auto-submit-select";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
 
 type SelectOption = { value: string; label: string };
 
@@ -32,10 +33,10 @@ export function SearchFilterBar({
     <form
       method="GET"
       action={basePath}
-      className="mt-6 flex flex-wrap items-end gap-4 rounded-lg border border-gray-200 bg-white p-4"
+      className="border-border-default bg-surface mt-6 flex flex-wrap items-end gap-4 rounded-lg border p-4"
     >
       <div className="min-w-48 flex-1">
-        <label htmlFor="q" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="q" className="text-text-secondary block text-sm font-medium">
           Search
         </label>
         <Input
@@ -51,7 +52,7 @@ export function SearchFilterBar({
         <div key={filter.name} className="w-40">
           <label
             htmlFor={filter.name}
-            className="block text-sm font-medium text-gray-700"
+            className="text-text-secondary block text-sm font-medium"
           >
             {filter.label}
           </label>
@@ -67,7 +68,7 @@ export function SearchFilterBar({
 
       {sort && (
         <div className="w-44">
-          <label htmlFor="sort" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="sort" className="text-text-secondary block text-sm font-medium">
             Sort by
           </label>
           <AutoSubmitSelect id="sort" name="sort" defaultValue={sort.value}>
@@ -85,7 +86,7 @@ export function SearchFilterBar({
         {hasActiveParams && (
           <Link
             href={basePath}
-            className="rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+            className={ACTION_LINK_CLASSES}
           >
             Clear
           </Link>

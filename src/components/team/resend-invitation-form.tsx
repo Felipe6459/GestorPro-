@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { CopyLinkButton } from "./copy-link-button";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
 import type { InvitationFormState } from "@/types";
 
 const initialState: InvitationFormState = { error: null };
@@ -29,21 +30,21 @@ export function ResendInvitationForm({
           <button
             type="submit"
             disabled={pending}
-            className="rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            className={`${ACTION_LINK_CLASSES} disabled:cursor-not-allowed disabled:opacity-60`}
           >
             {pending ? "Resending…" : "Resend"}
           </button>
         </form>
       </div>
       {state.error && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-danger text-xs">
           {state.error}
         </p>
       )}
       {state.message && !state.error && (
         <p
           role="status"
-          className={`text-xs ${state.emailFailed ? "text-amber-700" : "text-green-700"}`}
+          className={`text-xs ${state.emailFailed ? "text-warning" : "text-success"}`}
         >
           {state.message}
         </p>

@@ -11,7 +11,17 @@ function buildHref(
 }
 
 const NAV_BUTTON_CLASS =
-  "rounded-md border px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2";
+  "focus-visible:ring-focus-ring rounded-md border px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
+
+// This component renders directly on the caller's page background — every
+// page-level caller (Clients/Invoices/Projects/Tasks) places it as a
+// sibling of Table/RecordCard, not inside any card — so unlike
+// SearchFilterBar (its own opaque bg-surface form), there is no opaque
+// ancestor here yet. (dashboard)/layout.tsx's own page-shell background
+// is still raw bg-gray-50 (out of this batch's scope, shared across every
+// staff route), so a theme-aware light-in-dark text color here would
+// produce light-on-light. The literal grays below are deliberately kept
+// invariant until that shell itself is migrated.
 
 export function Pagination({
   basePath,

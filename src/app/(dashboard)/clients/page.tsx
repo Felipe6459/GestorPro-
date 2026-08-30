@@ -32,6 +32,14 @@ import {
   buildClientOrderBy,
 } from "./query";
 
+// Page-owned primary call-to-action link (navigates, so a real <Link> —
+// not the shared <Button>, which renders a <button>). Matches Button's own
+// primary variant tokens (bg-accent/hover:bg-accent-hover/focus-ring) so
+// this reads as the same "primary action" identity everywhere else in the
+// app already does.
+const PRIMARY_LINK_CLASSES =
+  "focus-visible:ring-focus-ring rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
+
 const SORT_OPTIONS = [
   { value: "createdAt:desc", label: "Newest first" },
   { value: "createdAt:asc", label: "Oldest first" },
@@ -67,6 +75,7 @@ export default async function ClientsPage({
   return (
     <div>
       <div className="flex items-center justify-between">
+        {/* text-gray-900/text-gray-600 kept literal: this heading sits directly on (dashboard)/layout.tsx's still-raw bg-gray-50 page-shell background (out of this batch's scope — shared across every staff route). Everything below (SearchFilterBar, Table, RecordCard, EmptyState) sits inside its own opaque migrated card and is unaffected. */}
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
             Clients
@@ -77,7 +86,7 @@ export default async function ClientsPage({
         </div>
         <Link
           href="/clients/new"
-          className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+          className={PRIMARY_LINK_CLASSES}
         >
           Add client
         </Link>
@@ -113,7 +122,7 @@ export default async function ClientsPage({
             action={
               <Link
                 href="/clients"
-                className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                className={PRIMARY_LINK_CLASSES}
               >
                 Clear filters
               </Link>
@@ -126,7 +135,7 @@ export default async function ClientsPage({
             action={
               <Link
                 href="/clients/new"
-                className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                className={PRIMARY_LINK_CLASSES}
               >
                 Create your first client
               </Link>

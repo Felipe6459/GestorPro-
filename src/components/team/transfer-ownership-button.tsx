@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { ConfirmDialog, type ConfirmDialogHandle } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/toast/toast-provider";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
 
 export function TransferOwnershipButton({
   memberName,
@@ -38,7 +39,7 @@ export function TransferOwnershipButton({
         type="button"
         disabled={pending}
         onClick={() => dialogRef.current?.open()}
-        className="rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+        className={`${ACTION_LINK_CLASSES} disabled:cursor-not-allowed disabled:opacity-60`}
       >
         Make owner
       </button>

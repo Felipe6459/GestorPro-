@@ -9,13 +9,14 @@ import { DASHBOARD_PERIOD_OPTIONS, type DashboardPeriod } from "@/lib/dashboard/
 export function PeriodSelector({ period }: { period: DashboardPeriod }) {
   return (
     <div>
+      {/* text-gray-500 kept literal: this label sits directly on the caller's unmigrated page-shell background, not a card — see DashboardPage's own heading comment. The pill group below IS its own opaque bg-surface card, so its contents are unaffected. */}
       <span id="dashboard-period-label" className="block text-xs font-medium text-gray-500">
         Period
       </span>
       <div
         role="group"
         aria-labelledby="dashboard-period-label"
-        className="mt-1 flex flex-wrap gap-1 rounded-lg border border-gray-200 bg-white p-1"
+        className="border-border-default bg-surface mt-1 flex flex-wrap gap-1 rounded-lg border p-1"
       >
         {DASHBOARD_PERIOD_OPTIONS.map((option) => {
           const isActive = option.value === period;
@@ -24,8 +25,8 @@ export function PeriodSelector({ period }: { period: DashboardPeriod }) {
               key={option.value}
               href={option.value === "30d" ? "/dashboard" : `/dashboard?period=${option.value}`}
               aria-current={isActive ? "true" : undefined}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 ${
-                isActive ? "bg-black text-white" : "text-gray-600 hover:bg-gray-100"
+              className={`focus-visible:ring-focus-ring rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                isActive ? "bg-accent text-white" : "text-text-secondary hover:bg-[var(--hover)]"
               }`}
             >
               {option.label}
