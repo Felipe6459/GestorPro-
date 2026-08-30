@@ -18,7 +18,7 @@ export function Header({
   const activeOrganizationId = organizations.find((org) => org.isActive)?.organizationId;
 
   return (
-    <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-6 py-4">
+    <header className="border-border-default bg-surface flex flex-wrap items-center justify-between gap-3 border-b px-6 py-4">
       <OrganizationSwitcher organizations={organizations} action={switchOrganizationAction} />
       {/*
         min-w-0 lets this group actually shrink below its content's
@@ -49,13 +49,13 @@ export function Header({
           (screen readers get it unabridged) and in `title` (hover for
           sighted mouse users) — only the visual line is ever shortened.
         */}
-        <span className="min-w-0 max-w-[7rem] truncate text-sm text-gray-600 sm:max-w-[16rem]" title={email}>
+        <span className="text-text-secondary min-w-0 max-w-[7rem] truncate text-sm sm:max-w-[16rem]" title={email}>
           {email}
         </span>
         <form action={signOut} className="shrink-0">
           <button
             type="submit"
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+            className="border-border-strong text-text-secondary focus-visible:ring-focus-ring rounded-md border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-[var(--hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
           >
             Sign out
           </button>

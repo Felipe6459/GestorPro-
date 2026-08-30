@@ -8,6 +8,7 @@ import {
   type OrganizationLifecycleStatus,
 } from "@/lib/platform-admin/queries/organizations";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { SearchFilterBar } from "@/components/list/search-filter-bar";
 import { Pagination } from "@/components/list/pagination";
@@ -193,7 +194,7 @@ export default async function PlatformAdminOrganizationsPage({
                   <TableCell align="right">
                     <Link
                       href={`${BASE_PATH}/${org.id}`}
-                      className="rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                      className={ACTION_LINK_CLASSES}
                     >
                       View<span className="sr-only"> {org.name}</span>
                     </Link>

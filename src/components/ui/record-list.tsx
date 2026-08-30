@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 /**
  * Product UI/UX PR 3 — the shared mobile stacked-card presentation for a
@@ -42,7 +43,7 @@ export function RecordCardList({ children }: { children: ReactNode }) {
 
 export function RecordCard({ children }: { children: ReactNode }) {
   return (
-    <li className="rounded-lg border border-gray-200 bg-white p-4 text-sm">
+    <li className={`p-4 text-sm ${CARD_SURFACE_CLASSES}`}>
       {children}
     </li>
   );
@@ -67,11 +68,11 @@ export function RecordCardField({
   emphasis?: boolean;
 }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-gray-100 py-1.5 last:border-b-0">
-      <span className="shrink-0 text-xs font-medium text-gray-500">{label}</span>
+    <div className="border-border-subtle flex items-baseline justify-between gap-3 border-b py-1.5 last:border-b-0">
+      <span className="text-text-muted shrink-0 text-xs font-medium">{label}</span>
       <span
         className={`min-w-0 max-w-[70%] text-right break-words ${
-          emphasis ? "text-sm font-medium text-gray-900" : "text-sm text-gray-700"
+          emphasis ? "text-text-primary text-sm font-medium" : "text-text-secondary text-sm"
         }`}
       >
         {value}
@@ -82,7 +83,7 @@ export function RecordCardField({
 
 export function RecordCardActions({ children }: { children: ReactNode }) {
   return (
-    <div className="mt-3 flex items-center justify-end gap-4 border-t border-gray-100 pt-3">
+    <div className="border-border-subtle mt-3 flex items-center justify-end gap-4 border-t pt-3">
       {children}
     </div>
   );

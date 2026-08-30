@@ -15,26 +15,34 @@ import { Select } from "@/components/ui/select";
  */
 
 describe("Select — real render, invalid-state visual contract", () => {
-  it("renders the red border/focus classes when aria-invalid is true", () => {
+  // Design System Phase 2 — the raw border-red-400/focus:ring-red-500 and
+  // border-gray-300/focus:ring-black classes are replaced with the
+  // semantic --danger and --border-strong/--accent tokens (via the
+  // shared formControlClasses helper — see its own doc comment), so
+  // Select renders correctly on Dark's own surface.
+  it("renders the danger border/focus classes when aria-invalid is true", () => {
     const html = renderToStaticMarkup(
       <Select aria-invalid={true} name="currency" id="currency">
         <option value="USD">USD</option>
       </Select>,
     );
-    expect(html).toMatch(/\bborder-red-400\b/);
-    expect(html).toMatch(/\bfocus:ring-red-500\b/);
-    expect(html).not.toMatch(/\bborder-gray-300\b/);
+    expect(html).toMatch(/\bborder-danger\b/);
+    expect(html).toMatch(/\bfocus:ring-danger\b/);
+    expect(html).not.toMatch(/\bborder-border-strong\b/);
+    expect(html).not.toMatch(/\bborder-red-400\b/);
   });
 
-  it("renders the ordinary black border/focus classes when aria-invalid is false or absent", () => {
+  it("renders the ordinary border-strong/accent focus classes when aria-invalid is false or absent", () => {
     const html = renderToStaticMarkup(
       <Select aria-invalid={false} name="currency" id="currency">
         <option value="USD">USD</option>
       </Select>,
     );
-    expect(html).toMatch(/\bborder-gray-300\b/);
-    expect(html).toMatch(/\bfocus:ring-black\b/);
-    expect(html).not.toMatch(/\bborder-red-400\b/);
+    expect(html).toMatch(/\bborder-border-strong\b/);
+    expect(html).toMatch(/\bfocus:ring-accent\b/);
+    expect(html).not.toMatch(/\bborder-danger\b/);
+    expect(html).not.toMatch(/\bborder-gray-300\b/);
+    expect(html).not.toMatch(/\bfocus:ring-black\b/);
   });
 
   it("forwards standard select attributes unchanged (id, name, defaultValue, required, disabled)", () => {

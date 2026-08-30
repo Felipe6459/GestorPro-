@@ -36,8 +36,8 @@ export function DefinitionList({ children }: { children: ReactNode }) {
 export function DefinitionItem({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
-      <dt className="text-xs font-medium text-gray-500">{label}</dt>
-      <dd className="mt-0.5 wrap-anywhere text-sm text-gray-900">{value}</dd>
+      <dt className="text-text-muted text-xs font-medium">{label}</dt>
+      <dd className="text-text-primary mt-0.5 wrap-anywhere text-sm">{value}</dd>
     </div>
   );
 }

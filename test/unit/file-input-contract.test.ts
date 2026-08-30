@@ -98,7 +98,11 @@ describe("FileInput — reusable accessible file-picker component (source contra
     const source = readComponentSource();
     expect(source).toMatch(/\bpeer\b/);
     expect(source).toMatch(/peer-focus-visible:ring-2/);
-    expect(source).toMatch(/peer-focus-visible:ring-black/);
+    // Design System Phase 2 — the semantic --focus-ring token (matching
+    // Button/Input's own focus treatment), not the old literal black,
+    // which is illegible on a Dark surface.
+    expect(source).toMatch(/peer-focus-visible:ring-focus-ring/);
+    expect(source).not.toMatch(/peer-focus-visible:ring-black\b/);
     expect(source).not.toMatch(/onFocus=/);
   });
 

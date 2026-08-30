@@ -56,19 +56,19 @@ export function ConfirmDialog({
           dialogRef.current?.close();
         }
       }}
-      className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow-xl backdrop:bg-black/40"
+      className="border-border-default bg-surface w-full max-w-sm rounded-lg border p-6 shadow-xl backdrop:bg-black/40"
     >
-      <h2 id={titleId} className="text-base font-semibold text-gray-900">
+      <h2 id={titleId} className="text-text-primary text-base font-semibold">
         {title}
       </h2>
-      <p id={descriptionId} className="mt-2 text-sm text-gray-600">
+      <p id={descriptionId} className="text-text-secondary mt-2 text-sm">
         {description}
       </p>
       <div className="mt-6 flex justify-end gap-3">
         <button
           type="button"
           onClick={() => dialogRef.current?.close()}
-          className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+          className="border-border-strong text-text-secondary focus-visible:ring-focus-ring rounded-md border px-4 py-2 text-sm font-medium transition-colors hover:bg-[var(--hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
         >
           {cancelLabel}
         </button>
@@ -78,10 +78,18 @@ export function ConfirmDialog({
             dialogRef.current?.close();
             onConfirm();
           }}
+          // The destructive fill is a literal, deliberately theme-invariant
+          // red — NOT the --danger token, which is calibrated as a text/
+          // border color (legible on both Light and Dark surfaces), not a
+          // solid white-on-fill button background (Dark's --danger is a
+          // light coral; white text on it fails contrast — see this PR's
+          // own audit notes). bg-red-600 already renders identically, and
+          // legibly, regardless of the surrounding page's theme, so it
+          // needs no token migration here.
           className={`rounded-md px-4 py-2 text-sm font-medium text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
             destructive
               ? "bg-red-600 hover:bg-red-700 focus-visible:ring-red-600"
-              : "bg-black hover:bg-gray-800 focus-visible:ring-black"
+              : "bg-accent hover:bg-accent-hover focus-visible:ring-focus-ring"
           }`}
         >
           {confirmLabel}

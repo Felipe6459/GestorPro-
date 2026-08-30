@@ -27,9 +27,13 @@ export function Sidebar({ disablePrefetch = false }: { disablePrefetch?: boolean
   return (
     <nav
       aria-label="Primary"
-      className="flex shrink-0 gap-1 overflow-x-auto border-b border-gray-200 bg-white p-3 md:w-56 md:flex-col md:gap-1.5 md:border-r md:border-b-0 md:p-4"
+      // Design System Phase 2 — bg-surface-recessed: globals.css's own
+      // token comment names "sidebar" as one of surface-recessed's
+      // intended consumers (the Round 3 "quiet, recessed chrome" tier,
+      // one step back from the main bg-background content area).
+      className="border-border-default bg-surface-recessed flex shrink-0 gap-1 overflow-x-auto border-b p-3 md:w-56 md:flex-col md:gap-1.5 md:border-r md:border-b-0 md:p-4"
     >
-      <span className="hidden px-2 pb-4 text-lg font-semibold tracking-tight text-gray-900 md:block">
+      <span className="text-text-primary hidden px-2 pb-4 text-lg font-semibold tracking-tight md:block">
         {siteConfig.name}
       </span>
       {links.map((link) => {
@@ -50,11 +54,14 @@ export function Sidebar({ disablePrefetch = false }: { disablePrefetch?: boolean
             // class of intermittent E2E hangs.
             prefetch={disablePrefetch ? false : undefined}
             // Aqenra brand PR 2 — active-state bg-black replaced with the
-            // approved Aqenra Indigo accent token (globals.css). The
-            // shared focus-visible ring below is unchanged (a separately
-            // scoped, deliberately deferred normalization).
-            className={`whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 ${
-              active ? "bg-accent text-white" : "text-gray-700 hover:bg-gray-100"
+            // approved Aqenra Indigo accent token (globals.css).
+            // Design System Phase 2 — the focus ring and inactive-link
+            // colors below (previously ring-black/text-gray-700/
+            // hover:bg-gray-100, the "deliberately deferred normalization"
+            // this PR's own audit picked up) now use the same semantic
+            // tokens the active state already did.
+            className={`whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 ${
+              active ? "bg-accent text-white" : "text-text-secondary hover:bg-[var(--hover)]"
             }`}
           >
             {link.label}

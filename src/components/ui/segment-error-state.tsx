@@ -63,12 +63,12 @@ export function SegmentErrorState({
     <div
       role="alert"
       aria-labelledby={headingId}
-      className="flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 py-16 text-center"
+      className="border-border-strong flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center"
     >
-      <h2 id={headingId} className="text-lg font-semibold text-gray-900">
+      <h2 id={headingId} className="text-text-primary text-lg font-semibold">
         Something went wrong
       </h2>
-      <p className="mt-2 max-w-sm text-sm text-gray-600">{description}</p>
+      <p className="text-text-secondary mt-2 max-w-sm text-sm">{description}</p>
       <Button type="button" onClick={() => reset()} className="mt-4">
         Try again
       </Button>

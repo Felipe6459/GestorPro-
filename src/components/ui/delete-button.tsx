@@ -51,7 +51,15 @@ export function DeleteButton({
         type="button"
         disabled={pending}
         onClick={() => dialogRef.current?.open()}
-        className="inline-flex items-center gap-1 rounded text-sm font-medium text-red-600 transition-colors hover:text-red-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+        // text-danger, not a literal red: a TEXT color, calibrated to stay
+        // legible on both Light and Dark surfaces (see globals.css's Dark
+        // SEMANTIC comment) — unlike a solid white-on-fill button
+        // background, which --danger is NOT designed for (see Button's own
+        // dangerOutline/Design System Phase 2 notes). hover relies on the
+        // existing hover:underline for feedback rather than a second
+        // darker-red shade (none exists as a token), keeping this a
+        // single-color, theme-safe treatment.
+        className="text-danger focus-visible:ring-danger inline-flex items-center gap-1 rounded text-sm font-medium transition-colors hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <TrashIcon className="h-3.5 w-3.5" />
         Delete

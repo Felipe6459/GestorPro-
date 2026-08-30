@@ -14,16 +14,16 @@ export function Footer() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="border-t border-gray-200 bg-white">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-4 text-xs text-gray-500 sm:px-6">
+    <footer className="border-border-default bg-surface border-t">
+      <div className="text-text-muted mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-4 text-xs sm:px-6">
         <p>
           © {year} {config.legalName}
         </p>
         <nav className="flex gap-4">
-          <Link href="/privacy" className="rounded hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2">
+          <Link href="/privacy" className="focus-visible:ring-focus-ring hover:text-text-primary rounded hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2">
             Privacy Policy
           </Link>
-          <Link href="/terms" className="rounded hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2">
+          <Link href="/terms" className="focus-visible:ring-focus-ring hover:text-text-primary rounded hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2">
             Terms of Service
           </Link>
         </nav>

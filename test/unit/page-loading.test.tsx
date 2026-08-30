@@ -70,7 +70,14 @@ describe("PageHeadingSkeleton — the stacked title/subtitle header shape shared
 describe("FormCardSkeleton — the bordered form/detail card shared by edit pages, Settings forms, and Portal Profile sections", () => {
   it("renders the bordered card wrapper and exactly `fields` field-row placeholders (label+input pair each)", () => {
     const html = renderToStaticMarkup(<FormCardSkeleton fields={5} />);
-    expect(html).toMatch(/rounded-lg[^"]*border[^"]*bg-white/);
+    // Design System Phase 2 — the bordered card wrapper now uses the
+    // shared CARD_SURFACE_CLASSES semantic tokens (border-border-default/
+    // bg-surface/rounded-lg), not the old raw border-gray-200/bg-white.
+    expect(html).toMatch(/\brounded-lg\b/);
+    expect(html).toMatch(/\bborder-border-default\b/);
+    expect(html).toMatch(/\bbg-surface\b/);
+    expect(html).not.toMatch(/\bbg-white\b/);
+    expect(html).not.toMatch(/\bborder-gray-\d+\b/);
     // Each field is a label bar + an input bar => 2 decorative elements,
     // plus the trailing submit-button bar (withButton defaults to true).
     const barCount = (html.match(/aria-hidden="true"/g) ?? []).length;

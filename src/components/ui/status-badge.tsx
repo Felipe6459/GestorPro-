@@ -2,13 +2,24 @@ import { formatStatusLabel } from "@/lib/format";
 
 export type StatusTone = "neutral" | "info" | "warning" | "success" | "danger" | "muted";
 
+// Design System Phase 2 — the raw Tailwind palette colors above are
+// replaced with the existing semantic success/warning/danger/info tokens
+// (globals.css), each already paired as a "-subtle" background + its own
+// readable foreground for both Light and Dark. neutral/muted have no
+// dedicated brand-color pair (they represent "no particular status", not
+// a semantic state) so they use the existing surface/text scale instead —
+// neutral a shade more prominent than muted, preserving their existing
+// relative ordering (bg-gray-100/text-gray-700 read stronger than
+// bg-gray-200/text-gray-500 did not; the two were already close — muted
+// is kept the quieter of the two via surface-recessed + text-muted vs.
+// neutral's surface-muted + text-secondary).
 const TONE_CLASSES: Record<StatusTone, string> = {
-  neutral: "bg-gray-100 text-gray-700",
-  info: "bg-blue-100 text-blue-700",
-  warning: "bg-amber-100 text-amber-800",
-  success: "bg-green-100 text-green-800",
-  danger: "bg-red-100 text-red-700",
-  muted: "bg-gray-200 text-gray-500",
+  neutral: "bg-surface-muted text-text-secondary",
+  info: "bg-info-subtle text-info",
+  warning: "bg-warning-subtle text-warning",
+  success: "bg-success-subtle text-success",
+  danger: "bg-danger-subtle text-danger",
+  muted: "bg-surface-recessed text-text-muted",
 };
 
 // Shared across ClientStatus, ProjectStatus, TaskStatus, TaskPriority,

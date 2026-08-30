@@ -19,13 +19,20 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/**
+ * Design System Phase 2 — migrated in lockstep with
+ * src/components/settings/settings-nav.tsx (which mirrors this
+ * component's shape exactly): the Aqenra Indigo accent sweep PR #139
+ * deliberately deferred for both of these secondary navs is completed
+ * here, using the same semantic tokens both now share.
+ */
 export function PortalNav() {
   const pathname = usePathname();
 
   return (
     <nav
       aria-label="Client Portal"
-      className="flex gap-1 overflow-x-auto border-t border-gray-100 px-4 py-2 sm:px-6"
+      className="border-border-subtle flex gap-1 overflow-x-auto border-t px-4 py-2 sm:px-6"
     >
       {LINKS.map((link) => {
         const active = isActive(pathname, link.href);
@@ -34,8 +41,8 @@ export function PortalNav() {
             key={link.href}
             href={link.href}
             aria-current={active ? "page" : undefined}
-            className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 ${
-              active ? "bg-black text-white" : "text-gray-700 hover:bg-gray-100"
+            className={`focus-visible:ring-focus-ring whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+              active ? "bg-accent text-white" : "text-text-secondary hover:bg-[var(--hover)]"
             }`}
           >
             {link.label}

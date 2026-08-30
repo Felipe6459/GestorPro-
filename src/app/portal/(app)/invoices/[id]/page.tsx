@@ -5,6 +5,7 @@ import { getPortalInvoice } from "@/lib/client-portal/queries";
 import { getPortalInvoiceAttachments } from "@/lib/client-portal/attachments";
 import { formatCurrency } from "@/lib/format";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
 import { PortalAttachmentsList } from "@/components/client-portal/portal-attachments-list";
 
 export default async function PortalInvoiceDetailPage({
@@ -97,7 +98,7 @@ export default async function PortalInvoiceDetailPage({
           <div className="mt-6">
             <a
               href={`/api/portal/invoices/${invoice.id}/pdf`}
-              className="rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+              className={ACTION_LINK_CLASSES}
             >
               Download PDF
             </a>
