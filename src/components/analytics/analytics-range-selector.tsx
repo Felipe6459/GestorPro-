@@ -22,8 +22,8 @@ export function AnalyticsRangeSelector({ selected }: { selected: TimeRange }) {
             key={range}
             href={`/analytics?range=${range}`}
             aria-current={isSelected ? "true" : undefined}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 ${
-              isSelected ? "bg-black text-white" : "text-gray-700 hover:bg-gray-100"
+            className={`focus-visible:ring-focus-ring rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+              isSelected ? "bg-accent text-white" : "text-text-secondary hover:bg-[var(--hover)]"
             }`}
           >
             {TIME_RANGE_LABELS[range]}

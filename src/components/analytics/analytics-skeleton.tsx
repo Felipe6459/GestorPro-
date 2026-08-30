@@ -1,13 +1,14 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 /** One section's worth of card skeletons — matches AnalyticsGrid's own 2/3/4-column responsive breakpoints. */
 function SectionSkeleton({ cardCount }: { cardCount: number }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
+    <div className={`p-5 ${CARD_SURFACE_CLASSES}`}>
       <Skeleton className="h-5 w-24" />
       <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {Array.from({ length: cardCount }, (_, i) => (
-          <div key={i} className="rounded-lg border border-gray-200 p-4">
+          <div key={i} className={`p-4 ${CARD_SURFACE_CLASSES}`}>
             <Skeleton className="h-4 w-16" />
             <Skeleton className="mt-2 h-7 w-12" />
           </div>

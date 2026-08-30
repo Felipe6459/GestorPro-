@@ -12,7 +12,7 @@ import type { GrowthMetric } from "@/lib/analytics/types";
 export function GrowthIndicator({ metric, label }: { metric: GrowthMetric; label: string }) {
   if (metric.changePercent === null) {
     return (
-      <span className="text-xs text-gray-400" aria-label={`${label}: no prior-period data`}>
+      <span className="text-text-muted text-xs" aria-label={`${label}: no prior-period data`}>
         No prior data
       </span>
     );
@@ -20,7 +20,7 @@ export function GrowthIndicator({ metric, label }: { metric: GrowthMetric; label
 
   const isPositive = metric.changePercent > 0;
   const isNegative = metric.changePercent < 0;
-  const tone = isPositive ? "text-green-700" : isNegative ? "text-red-700" : "text-gray-500";
+  const tone = isPositive ? "text-success" : isNegative ? "text-danger" : "text-text-muted";
   const glyph = isPositive ? "+" : isNegative ? "−" : "±";
   const magnitude = Math.abs(metric.changePercent);
   const direction = isPositive ? "up" : isNegative ? "down" : "unchanged";

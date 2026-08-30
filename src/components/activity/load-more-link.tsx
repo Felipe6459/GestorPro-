@@ -1,5 +1,18 @@
 import Link from "next/link";
 
+// Design System Batch 4 — this component is shared by 3 consumers:
+// Activity's own list (this batch's scope), the Comments family's "Load
+// earlier comments" (already migrated, Batch 3), and Notifications'
+// inbox (still raw-light, out of this batch's scope). This is the same
+// narrow, self-contained, single-className-string fix as Batch 1/2's
+// EmptyState/SegmentErrorState — safe for every consumer regardless of
+// its own page's migration status, so it's fixed here rather than left
+// as a genuine cross-cutting regression for Activity. Passive effect on
+// Notifications' still-unmigrated page is disclosed in the Batch 4 PR
+// description, not silently expanded scope.
+const LOAD_MORE_LINK_CLASSES =
+  "border-border-strong bg-surface text-text-primary focus-visible:ring-focus-ring rounded-md border px-4 py-2 text-sm font-medium transition-colors hover:bg-[var(--hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
+
 /**
  * Pure — no I/O, no React — so the query-param merging logic (does the
  * next-page cursor get added without disturbing whatever else is already
@@ -47,7 +60,7 @@ export function LoadMoreLink({
   return (
     <Link
       href={buildLoadMoreHref(basePath, params, cursor, cursorParam)}
-      className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+      className={LOAD_MORE_LINK_CLASSES}
     >
       {label}
     </Link>

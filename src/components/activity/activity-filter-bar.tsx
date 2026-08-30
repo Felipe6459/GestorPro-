@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { AutoSubmitSelect } from "@/components/list/auto-submit-select";
 import { formatStatusLabel } from "@/lib/format";
 import { ACTIVITY_ENTITY_TYPES } from "@/app/(dashboard)/activity/query";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 type Member = { id: string; name: string; email: string };
 
@@ -34,10 +36,10 @@ export function ActivityFilterBar({
     <form
       method="GET"
       action="/activity"
-      className="mt-6 flex flex-wrap items-end gap-4 rounded-lg border border-gray-200 bg-white p-4"
+      className={`mt-6 flex flex-wrap items-end gap-4 p-4 ${CARD_SURFACE_CLASSES}`}
     >
       <div className="w-40">
-        <label htmlFor="entityType" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="entityType" className="text-text-secondary block text-sm font-medium">
           Entity
         </label>
         <AutoSubmitSelect id="entityType" name="entityType" defaultValue={entityType}>
@@ -51,7 +53,7 @@ export function ActivityFilterBar({
       </div>
 
       <div className="w-40">
-        <label htmlFor="actionGroup" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="actionGroup" className="text-text-secondary block text-sm font-medium">
           Category
         </label>
         <AutoSubmitSelect id="actionGroup" name="actionGroup" defaultValue={actionGroup}>
@@ -65,7 +67,7 @@ export function ActivityFilterBar({
       </div>
 
       <div className="w-52">
-        <label htmlFor="actorId" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="actorId" className="text-text-secondary block text-sm font-medium">
           Member
         </label>
         <AutoSubmitSelect id="actorId" name="actorId" defaultValue={actorId}>
@@ -79,14 +81,14 @@ export function ActivityFilterBar({
       </div>
 
       <div className="w-40">
-        <label htmlFor="dateFrom" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="dateFrom" className="text-text-secondary block text-sm font-medium">
           From
         </label>
         <Input id="dateFrom" name="dateFrom" type="date" defaultValue={dateFrom} />
       </div>
 
       <div className="w-40">
-        <label htmlFor="dateTo" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="dateTo" className="text-text-secondary block text-sm font-medium">
           To
         </label>
         <Input id="dateTo" name="dateTo" type="date" defaultValue={dateTo} />
@@ -95,10 +97,7 @@ export function ActivityFilterBar({
       <div className="flex items-center gap-3">
         <Button type="submit">Filter</Button>
         {hasActiveFilters && (
-          <Link
-            href="/activity"
-            className="rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
+          <Link href="/activity" className={ACTION_LINK_CLASSES}>
             Clear
           </Link>
         )}

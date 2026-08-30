@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { AnalyticsCard } from "./analytics-card";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 export type AnalyticsGridMetric = { label: string; value: ReactNode; indicator?: ReactNode; sparkline?: ReactNode };
 
@@ -19,8 +20,8 @@ export function AnalyticsGrid({
   metrics: AnalyticsGridMetric[];
 }) {
   return (
-    <section aria-labelledby={`${id}-heading`} className="rounded-lg border border-gray-200 bg-white p-5">
-      <h2 id={`${id}-heading`} className="text-base font-semibold text-gray-900">
+    <section aria-labelledby={`${id}-heading`} className={`p-5 ${CARD_SURFACE_CLASSES}`}>
+      <h2 id={`${id}-heading`} className="text-text-primary text-base font-semibold">
         {title}
       </h2>
       <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">

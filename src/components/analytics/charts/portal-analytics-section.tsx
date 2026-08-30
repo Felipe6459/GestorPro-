@@ -7,6 +7,7 @@ import { GrowthLineChart } from "./growth-line-chart";
 import { ActivityStackedBarChart } from "./activity-stacked-bar-chart";
 import { ComparisonBarChart } from "./comparison-bar-chart";
 import { ChartsSection, ChartPanel } from "./charts-section";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 /**
  * Analytics Stage 4 (docs/analytics-architecture.md §13/§14), extended by
@@ -51,8 +52,8 @@ export function PortalAnalyticsSection({
     portal.documentDownloadRequests === 0;
 
   return (
-    <section aria-labelledby="analytics-portal-heading" className="rounded-lg border border-gray-200 bg-white p-5">
-      <h2 id="analytics-portal-heading" className="text-base font-semibold text-gray-900">
+    <section aria-labelledby="analytics-portal-heading" className={`p-5 ${CARD_SURFACE_CLASSES}`}>
+      <h2 id="analytics-portal-heading" className="text-text-primary text-base font-semibold">
         Portal
       </h2>
 

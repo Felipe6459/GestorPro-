@@ -21,17 +21,26 @@ export function ComparisonBarChart({ label, metric }: { label: string; metric: G
   return (
     <div>
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-gray-900">{label}</p>
+        <p className="text-text-primary text-sm font-medium">{label}</p>
         <GrowthIndicator metric={metric} label={label} />
       </div>
       <div role="img" aria-label={`${label}: ${metric.previousPeriodCount} previous period, ${metric.currentPeriodCount} current period`} className="mt-2 h-32 w-full">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} layout="vertical" accessibilityLayer margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" horizontal={false} />
-            <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={{ stroke: "#e5e7eb" }} />
-            <YAxis type="category" dataKey="period" tick={{ fontSize: 11, fill: "#6b7280" }} tickLine={false} axisLine={false} width={90} />
-            <Tooltip cursor={{ fill: "#f9fafb" }} contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }} />
-            <Bar dataKey="count" name={label} fill="#111827" radius={[0, 4, 4, 0]} />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" horizontal={false} />
+            <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: "var(--text-muted)" }} tickLine={false} axisLine={{ stroke: "var(--border-default)" }} />
+            <YAxis type="category" dataKey="period" tick={{ fontSize: 11, fill: "var(--text-muted)" }} tickLine={false} axisLine={false} width={90} />
+            <Tooltip
+              cursor={{ fill: "var(--surface-muted)" }}
+              contentStyle={{
+                fontSize: 12,
+                borderRadius: 8,
+                border: "1px solid var(--border-default)",
+                backgroundColor: "var(--surface)",
+                color: "var(--text-primary)",
+              }}
+            />
+            <Bar dataKey="count" name={label} fill="var(--accent)" radius={[0, 4, 4, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
