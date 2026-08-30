@@ -10,6 +10,7 @@ import { deliverNotificationEmails } from "@/lib/notifications/email/deliver-not
 import { buildPortalInvitationAcceptedMetadata } from "@/lib/activity/portal-metadata";
 import { checkRateLimit, getRequestIp, ACCEPT_PORTAL_INVITE_LIMIT } from "@/lib/rate-limit";
 import { isOrganizationSuspended } from "@/lib/organization-access";
+import { seedThemeModeFromRequestCookie } from "@/lib/theme/request-cookie-seed";
 import type { InviteAcceptState } from "@/types";
 
 const GENERIC_UNAVAILABLE_ERROR = "This invitation is no longer available.";
@@ -142,6 +143,12 @@ export async function acceptClientInvitationAction(token: string): Promise<Invit
   // happened," not two slightly different ones.
   const acceptedAt = new Date();
 
+  // Aqenra Theme Persistence Phase C2. Computed here, once, before the
+  // transaction — reused ONLY in the upsert's create branch below (see
+  // that branch's own comment). Never overwrites an existing PortalUser's
+  // stored preference: the update branch never references this value.
+  const seededThemeMode = await seedThemeModeFromRequestCookie();
+
   let notificationIds: string[];
   try {
     notificationIds = await prisma.$transaction(async (tx) => {
@@ -208,6 +215,7 @@ export async function acceptClientInvitationAction(token: string): Promise<Invit
           email: normalizedUserEmail,
           name: portalUserName,
           lastLoginAt: acceptedAt,
+          themeMode: seededThemeMode,
         },
         update: {
           lastLoginAt: acceptedAt,

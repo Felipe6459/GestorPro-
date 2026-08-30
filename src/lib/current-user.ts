@@ -6,6 +6,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { Role } from "@/generated/prisma/enums";
 import { createTrialSubscription } from "@/lib/billing/provisioning";
 import { isOrganizationSuspended, ORGANIZATION_UNAVAILABLE_PATH } from "@/lib/organization-access";
+import { seedThemeModeFromRequestCookie } from "@/lib/theme/request-cookie-seed";
 
 const ACTIVE_ORG_COOKIE = "active_organization_id";
 const ACTIVE_ORG_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
@@ -56,6 +57,13 @@ export async function getOrCreateUser() {
     redirect("/portal");
   }
 
+  // Aqenra Theme Persistence Phase C2. Read ONLY on this "no User row
+  // exists yet" path, right before the one place a brand-new User is
+  // ever created — an existing identity's own stored preference (read
+  // above via `existing`, which already returned) must never be
+  // overwritten by whatever this device's cookie currently says.
+  const seededThemeMode = await seedThemeModeFromRequestCookie();
+
   try {
     return await prisma.user.upsert({
       where: { id: authUser.id },
@@ -64,6 +72,7 @@ export async function getOrCreateUser() {
         id: authUser.id,
         email: authUser.email!,
         name: authUser.user_metadata?.name ?? authUser.email!.split("@")[0],
+        themeMode: seededThemeMode,
       },
     });
   } catch (err) {

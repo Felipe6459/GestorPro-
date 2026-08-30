@@ -37,7 +37,17 @@ import {
  * server round-trip. It must never be reused to carry auth/session data.
  */
 
-function isThemeMode(value: string): value is ThemeMode {
+/**
+ * Exported (Phase C2) so the staff/Portal theme-persistence Server
+ * Actions can reject a forged/invalid mode string outright, rather than
+ * silently coercing it — the fail-CLOSED-to-default behavior
+ * parseThemeMode() below provides is correct for a device cookie (where
+ * "malformed" and "absent" both just mean "use the default"), but wrong
+ * for an authenticated write: an invalid value there is a client error
+ * that must be rejected, never quietly turned into a successful write of
+ * something the caller didn't ask for.
+ */
+export function isThemeMode(value: string): value is ThemeMode {
   return (THEME_MODES as readonly string[]).includes(value);
 }
 

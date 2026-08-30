@@ -5,6 +5,8 @@ import { getOptionalPortalUser } from "@/lib/current-portal-user";
 import { isOrganizationSuspended, ORGANIZATION_UNAVAILABLE_PATH } from "@/lib/organization-access";
 import { PortalNav } from "@/components/client-portal/portal-nav";
 import { portalSignOut } from "./actions";
+import { ThemePreferenceReconciler } from "@/components/theme/theme-preference-reconciler";
+import { dbThemeModeToRuntimeMode } from "@/lib/theme/db-mode";
 
 // This layout only wraps /portal itself (this route sits in the (app)
 // route group nested inside app/portal/ specifically so that /portal/login
@@ -64,6 +66,14 @@ export default async function PortalAppLayout({
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/*
+        Aqenra Theme Persistence Phase C2 — same reconciliation as the
+        staff (dashboard) layout, using identity.portalUser.themeMode.
+        getOptionalPortalUser() -> resolvePortalIdentity() already
+        returns the full PortalUser row (no `select`), so this is zero
+        extra queries.
+      */}
+      <ThemePreferenceReconciler mode={dbThemeModeToRuntimeMode(identity.portalUser.themeMode)} />
       <header className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
           <div>
