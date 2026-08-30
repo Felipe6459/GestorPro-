@@ -9,6 +9,8 @@ import type { NotificationBellItem } from "@/components/notifications/notificati
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { TEST_MODE } from "@/lib/test-mode";
+import { ThemePreferenceReconciler } from "@/components/theme/theme-preference-reconciler";
+import { dbThemeModeToRuntimeMode } from "@/lib/theme/db-mode";
 
 const RECENT_NOTIFICATIONS_LIMIT = 10;
 
@@ -89,6 +91,16 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50 md:flex-row">
+      {/*
+        Aqenra Theme Persistence Phase C2 — authenticated DB -> cookie/
+        runtime reconciliation. currentUser already carries themeMode as
+        a plain scalar column (getOrCreateUser()'s own no-`select`
+        findUnique/upsert already returns every column), so this is zero
+        extra queries, not a new one. Organization switching never
+        touches this: themeMode lives on User, not Membership/
+        Organization, and this component only ever reads the prop below.
+      */}
+      <ThemePreferenceReconciler mode={dbThemeModeToRuntimeMode(currentUser.themeMode)} />
       <Sidebar disablePrefetch={TEST_MODE} />
       {/*
         min-w-0: at the md breakpoint this becomes a flex row item next to

@@ -54,6 +54,21 @@ export function resetMockCookies(): void {
 // auto-provisioned for them instead of resolving to the fixture org.
 const ACTIVE_ORG_COOKIE = "active_organization_id";
 
+/**
+ * Aqenra Theme Persistence Phase C2. Matches
+ * src/lib/theme/types.ts's THEME_COOKIE_NAME exactly — lets an
+ * integration test set the "device cookie" a brand-new User/PortalUser
+ * row should be seeded from, via getOrCreateUser()/
+ * acceptClientInvitationAction's calls to seedThemeModeFromRequestCookie()
+ * (src/lib/theme/request-cookie-seed.ts), the same real, unmocked code
+ * every real request runs.
+ */
+const THEME_COOKIE_NAME = "aqenra_theme";
+
+export function setMockThemeCookie(value: string): void {
+  cookieStore.set(THEME_COOKIE_NAME, value);
+}
+
 export function setMockActiveOrganization(organizationId: string): void {
   cookieStore.set(ACTIVE_ORG_COOKIE, organizationId);
 }
