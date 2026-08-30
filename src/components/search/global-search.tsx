@@ -54,11 +54,11 @@ export function GlobalSearch() {
         type="button"
         aria-label="Search (Cmd+K)"
         onClick={() => dialogHandleRef.current?.open()}
-        className="flex items-center gap-2 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-500 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+        className="border-border-strong text-text-secondary focus-visible:ring-focus-ring flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm transition-colors hover:bg-[var(--hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
       >
         <SearchIcon className="h-4 w-4 shrink-0" />
         <span className="hidden sm:inline">Search…</span>
-        <kbd className="hidden shrink-0 rounded border border-gray-300 bg-gray-50 px-1.5 py-0.5 font-sans text-xs text-gray-400 sm:inline">
+        <kbd className="border-border-default bg-surface-muted text-text-muted hidden shrink-0 rounded border px-1.5 py-0.5 font-sans text-xs sm:inline">
           ⌘K
         </kbd>
       </button>
