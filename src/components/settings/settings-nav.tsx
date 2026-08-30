@@ -8,11 +8,10 @@ import { usePathname } from "next/navigation";
  * every /settings/* page. Mirrors src/components/client-portal/portal-nav.tsx's
  * shape exactly (a secondary, in-section nav distinct from the primary
  * app Sidebar): same overflow-x-auto horizontal-scroll mobile behavior,
- * same aria-current="page" + focus-visible pattern, same bg-black active
- * state (the Aqenra Indigo accent swap in PR #139 was deliberately scoped
- * to the primary Sidebar/Button only — this secondary nav intentionally
- * stays unswept, exactly like PortalNav already does, per that PR's own
- * "repository-wide sweep deferred" scope note).
+ * same aria-current="page" + focus-visible pattern. Design System Phase 2
+ * completes the Indigo accent sweep PR #139 deliberately deferred here
+ * (and in PortalNav, migrated identically, in lockstep, in the same PR) —
+ * active state is now bg-accent, matching the primary Sidebar/Button.
  *
  * `canAccessPayment` is the only visibility gate here — server-resolved by
  * the layout via the existing canonical
@@ -53,7 +52,7 @@ export function SettingsNav({ canAccessPayment }: { canAccessPayment: boolean })
   return (
     <nav
       aria-label="Settings"
-      className="mb-6 flex gap-1 overflow-x-auto border-b border-gray-200 pb-3"
+      className="border-border-default mb-6 flex gap-1 overflow-x-auto border-b pb-3"
     >
       {links.map((link) => {
         const active = isActive(pathname, link.href);
@@ -62,8 +61,8 @@ export function SettingsNav({ canAccessPayment }: { canAccessPayment: boolean })
             key={link.href}
             href={link.href}
             aria-current={active ? "page" : undefined}
-            className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 ${
-              active ? "bg-black text-white" : "text-gray-700 hover:bg-gray-100"
+            className={`focus-visible:ring-focus-ring whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+              active ? "bg-accent text-white" : "text-text-secondary hover:bg-[var(--hover)]"
             }`}
           >
             {link.label}

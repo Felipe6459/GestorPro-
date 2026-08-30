@@ -1,4 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 /**
  * Product UI/UX PR 4 — the shared building blocks every new route
@@ -62,12 +63,18 @@ function FieldSkeleton() {
 }
 
 /**
- * The bordered white card (`rounded-lg border border-gray-200 bg-white
- * p-6`) every edit form, Settings form, and Portal Profile section
- * renders as — optionally with its own in-card heading (Portal Profile's
- * three sections each have one; the four `[id]/edit` pages don't), N
- * field placeholders, and an optional trailing submit-button bar (Portal
- * Profile's read-only sections have no submit control).
+ * The bordered card (CARD_SURFACE_CLASSES, `p-6`) every edit form,
+ * Settings form, and Portal Profile section renders as — optionally with
+ * its own in-card heading (Portal Profile's three sections each have
+ * one; the four `[id]/edit` pages don't), N field placeholders, and an
+ * optional trailing submit-button bar (Portal Profile's read-only
+ * sections have no submit control). The real pages this mimics still
+ * render their own literal `rounded-lg border border-gray-200 bg-white`
+ * (Design System Phase 2 migrates shared primitives only, not yet these
+ * page-level call sites — see surface.ts's own doc comment) — this
+ * skeleton keeps pace with `Table`/`RecordCard`'s already-migrated look
+ * rather than the still-raw pages it mimics, since it is a shared
+ * primitive itself.
  */
 export function FormCardSkeleton({
   fields = 4,
@@ -79,7 +86,7 @@ export function FormCardSkeleton({
   withButton?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
+    <div className={`p-6 ${CARD_SURFACE_CLASSES}`}>
       {heading && <Skeleton className="h-4 w-24" />}
       <div className={heading ? "mt-4 space-y-4" : "space-y-4"}>
         {Array.from({ length: fields }, (_, i) => (
@@ -102,10 +109,10 @@ export function FormCardSkeleton({
  */
 export function TableRowsSkeleton({ columns, rows = 4 }: { columns: number; rows?: number }) {
   return (
-    <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
-      <div className="h-10 border-b border-gray-200 bg-gray-50" />
+    <div className={`mt-4 overflow-hidden ${CARD_SURFACE_CLASSES}`}>
+      <div className="border-border-default bg-surface-recessed h-10 border-b" />
       {Array.from({ length: rows }, (_, rowIndex) => (
-        <div key={rowIndex} className="flex items-center gap-6 border-b border-gray-100 px-4 py-4 last:border-0">
+        <div key={rowIndex} className="border-border-subtle flex items-center gap-6 border-b px-4 py-4 last:border-0">
           {Array.from({ length: columns }, (_, colIndex) => (
             <Skeleton key={colIndex} className="h-4 w-full max-w-24" />
           ))}

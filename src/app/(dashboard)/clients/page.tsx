@@ -8,6 +8,7 @@ import { deleteClientAction } from "./actions";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PencilIcon } from "@/components/ui/icons";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
 import { SearchFilterBar } from "@/components/list/search-filter-bar";
 import { Pagination } from "@/components/list/pagination";
 import {
@@ -162,7 +163,7 @@ export default async function ClientsPage({
                       <div className="flex items-center justify-end gap-4">
                         <Link
                           href={`/clients/${client.id}/edit`}
-                          className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                          className={`inline-flex items-center gap-1 ${ACTION_LINK_CLASSES}`}
                         >
                           <PencilIcon className="h-3.5 w-3.5" />
                           Edit
@@ -194,7 +195,7 @@ export default async function ClientsPage({
                 <RecordCardActions>
                   <Link
                     href={`/clients/${client.id}/edit`}
-                    className="inline-flex items-center gap-1 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                    className={`inline-flex items-center gap-1 ${ACTION_LINK_CLASSES}`}
                   >
                     <PencilIcon className="h-3.5 w-3.5" />
                     Edit

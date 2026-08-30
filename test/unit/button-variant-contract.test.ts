@@ -38,13 +38,19 @@ function extractClassValue(variant: Variant): string {
 // bg-gray-900, text-red-500, ...) — deliberately excludes non-color
 // text-* utilities that share the same prefix (text-sm, text-center,
 // text-left, ...), which are sizing/alignment, not color, and must never
-// be flagged as a same-property conflict. "accent" is the Aqenra brand
-// PR 2 custom Tailwind v4 theme color (globals.css's --color-accent) —
-// without it here, bg-accent would silently stop being recognized as a
-// color utility at all, quietly disabling this test's own "background
-// and foreground utilities must never be the same color" check for
-// exactly the variant (primary) this same historical bug originally hit.
-const COLOR_UTILITY_PATTERN = /^(bg|text)-(black|white|transparent|current|inherit|accent|[a-z]+-\d{2,3})$/;
+// be flagged as a same-property conflict. "accent"/"surface"/"danger" are
+// Aqenra custom Tailwind v4 theme colors (globals.css's --color-accent /
+// --color-surface / --color-danger) — without them here, bg-accent/
+// bg-surface would silently stop being recognized as color utilities at
+// all, quietly disabling this test's own "background and foreground
+// utilities must never be the same color" check for exactly the variants
+// (primary, then secondary/dangerOutline via Design System Phase 2) this
+// same historical bug originally hit. "text-text-primary"/
+// "text-text-secondary" (etc.) are matched via the trailing
+// `(-[a-z]+)?` group — Tailwind's own semantic-category-echoes-prefix
+// naming quirk (see globals.css's own comment on this), not a mistake.
+const COLOR_UTILITY_PATTERN =
+  /^(bg|text)-(black|white|transparent|current|inherit|accent|surface|danger(-subtle)?|text-(primary|secondary|muted|inverse)|[a-z]+-\d{2,3})$/;
 
 function tailwindColorUtilities(classString: string): string[] {
   return classString.split(/\s+/).filter((cls) => COLOR_UTILITY_PATTERN.test(cls));
@@ -102,5 +108,37 @@ describe("Button — variant classes never overlap on the same color utility (co
     expect(primary).not.toMatch(/hover:bg-gray-800\b/);
     // White foreground is unchanged by this brand correction.
     expect(primary).toContain("text-white");
+  });
+
+  // Design System Phase 2 — secondary/dangerOutline's raw
+  // border-gray-300/bg-white/text-gray-900/text-red-600 are replaced with
+  // semantic tokens so both variants render correctly on Dark's own
+  // surface. text-danger (not a literal red) is deliberate: it's a text
+  // color, never a solid white-on-fill button background — see this
+  // variant's own doc comment in button.tsx for why --danger specifically
+  // must not be used that way.
+  it("secondary and dangerOutline use semantic surface/border/text tokens, never the old raw grays", () => {
+    for (const variant of ["secondary", "dangerOutline"] as const) {
+      const classes = extractClassValue(variant);
+      expect(classes).toContain("bg-surface");
+      expect(classes).toContain("border-border-strong");
+      expect(classes).not.toMatch(/\bbg-white\b/);
+      expect(classes).not.toMatch(/\btext-gray-\d+\b/);
+      expect(classes).not.toMatch(/\bborder-gray-\d+\b/);
+      expect(classes).not.toMatch(/hover:bg-gray-\d+\b/);
+    }
+    expect(extractClassValue("secondary")).toContain("text-text-primary");
+    expect(extractClassValue("dangerOutline")).toContain("text-danger");
+    expect(extractClassValue("dangerOutline")).not.toMatch(/\btext-red-\d+\b/);
+  });
+
+  // The shared focus-visible ring (rendered outside VARIANT_CLASSES, in
+  // the button's own base classes) must use the semantic --focus-ring
+  // token, not the old literal black — illegible on a Dark surface.
+  it("the shared focus-visible ring uses the semantic focus-ring token, not the old literal black", () => {
+    const renderedTemplate = source.match(/className=\{`([^`]*)`\}/);
+    expect(renderedTemplate).not.toBeNull();
+    expect(renderedTemplate![1]).toContain("focus-visible:ring-focus-ring");
+    expect(renderedTemplate![1]).not.toMatch(/focus-visible:ring-black\b/);
   });
 });

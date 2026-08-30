@@ -1,17 +1,21 @@
 import { ReactNode } from "react";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 export function Table({ children }: { children: ReactNode }) {
   return (
-    <div className="mt-6 overflow-x-auto rounded-lg border border-gray-200 bg-white">
-      <table className="min-w-full divide-y divide-gray-200 text-sm">
+    <div className={`mt-6 overflow-x-auto ${CARD_SURFACE_CLASSES}`}>
+      <table className="divide-border-default min-w-full divide-y text-sm">
         {children}
       </table>
     </div>
   );
 }
 
+// Design System Phase 2 — surface-recessed (not bg-gray-50): globals.css's
+// own token comment names "table header" as one of surface-recessed's
+// intended consumers, matching the Round 3 "quiet/recessed header" target.
 export function TableHead({ children }: { children: ReactNode }) {
-  return <thead className="bg-gray-50">{children}</thead>;
+  return <thead className="bg-surface-recessed">{children}</thead>;
 }
 
 export function TableHeaderCell({
@@ -34,7 +38,7 @@ export function TableHeaderCell({
   return (
     <th
       scope="col"
-      className={`px-4 py-3 font-medium text-gray-500 ${
+      className={`text-text-muted px-4 py-3 font-medium ${
         align === "right" ? "text-right" : "text-left"
       } ${className}`}
     >
@@ -44,11 +48,11 @@ export function TableHeaderCell({
 }
 
 export function TableBody({ children }: { children: ReactNode }) {
-  return <tbody className="divide-y divide-gray-200">{children}</tbody>;
+  return <tbody className="divide-border-default divide-y">{children}</tbody>;
 }
 
 export function TableRow({ children }: { children: ReactNode }) {
-  return <tr className="transition-colors hover:bg-gray-50">{children}</tr>;
+  return <tr className="transition-colors hover:bg-[var(--hover)]">{children}</tr>;
 }
 
 export function TableCell({
@@ -67,7 +71,7 @@ export function TableCell({
     <td
       className={`px-4 py-3 align-middle ${
         align === "right" ? "text-right" : "text-left"
-      } ${emphasis ? "font-medium text-gray-900" : "text-gray-600"} ${className}`}
+      } ${emphasis ? "text-text-primary font-medium" : "text-text-secondary"} ${className}`}
     >
       {children}
     </td>

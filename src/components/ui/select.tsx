@@ -1,4 +1,5 @@
 import { SelectHTMLAttributes } from "react";
+import { formControlClasses } from "@/components/ui/form-control-classes";
 
 export function Select({
   className = "",
@@ -9,11 +10,7 @@ export function Select({
   return (
     <select
       aria-invalid={ariaInvalid}
-      className={`mt-1 block w-full rounded-md border bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-1 disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-500 ${
-        invalid
-          ? "border-red-400 focus:border-red-500 focus:ring-red-500"
-          : "border-gray-300 focus:border-black focus:ring-black"
-      } ${className}`}
+      className={`${formControlClasses(invalid)} ${className}`}
       {...props}
     />
   );

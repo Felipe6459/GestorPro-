@@ -25,8 +25,21 @@ const VARIANT_CLASSES = {
   // about this variant (white text, sizing, disabled/loading behavior,
   // the shared focus-visible ring below) is unchanged.
   primary: "bg-accent text-white hover:bg-accent-hover",
-  secondary: "border border-gray-300 bg-white text-gray-900 hover:bg-gray-50",
-  dangerOutline: "border border-gray-300 bg-white text-red-600 hover:bg-red-50",
+  // Design System Phase 2 — border-gray-300/bg-white/text-gray-900 replaced
+  // with semantic tokens so this variant renders correctly on Dark's own
+  // surface (border-strong/bg-surface preserve the exact same relative
+  // weight border-gray-300/bg-white had in Light). hover:bg-[var(--hover)]
+  // — not a Tailwind bg-hover utility — matches the established
+  // Appearance selector convention (--hover is deliberately not mirrored
+  // into @theme inline; see globals.css).
+  secondary: "border border-border-strong bg-surface text-text-primary hover:bg-[var(--hover)]",
+  // text-danger (not a literal red) is safe here: it's a TEXT color, not
+  // a solid white-on-fill button background — --danger is specifically
+  // calibrated to stay legible as text/an outline on both Light and Dark
+  // surfaces (see globals.css's own Dark SEMANTIC comment). hover uses
+  // danger-subtle, the token's own designed "wash over an opaque surface"
+  // pairing (the same pattern StatusBadge already relies on).
+  dangerOutline: "border border-border-strong bg-surface text-danger hover:bg-danger-subtle",
 } as const;
 
 export type ButtonVariant = keyof typeof VARIANT_CLASSES;
@@ -41,7 +54,7 @@ export function Button({
 }: ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean; variant?: ButtonVariant }) {
   return (
     <button
-      className={`inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${VARIANT_CLASSES[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 ${VARIANT_CLASSES[variant]} ${className}`}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       {...props}

@@ -11,10 +11,10 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="mt-10 flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 py-16 text-center">
-      <InboxIcon className="h-10 w-10 text-gray-300" />
-      <p className="mt-4 text-sm font-medium text-gray-900">{title}</p>
-      <p className="mt-1 text-sm text-gray-500">{description}</p>
+    <div className="border-border-strong mt-10 flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
+      <InboxIcon className="text-text-muted h-10 w-10" />
+      <p className="text-text-primary mt-4 text-sm font-medium">{title}</p>
+      <p className="text-text-muted mt-1 text-sm">{description}</p>
       {action && <div className="mt-4">{action}</div>}
     </div>
   );

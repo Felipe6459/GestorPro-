@@ -10,10 +10,10 @@ export function FormLabel({
   required?: boolean;
 }) {
   return (
-    <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700">
+    <label htmlFor={htmlFor} className="text-text-secondary block text-sm font-medium">
       {children}
       {required && (
-        <span className="ml-0.5 text-red-500" aria-hidden="true">
+        <span className="text-danger ml-0.5" aria-hidden="true">
           *
         </span>
       )}
@@ -44,7 +44,7 @@ export function FormField({
         <p
           id={`${htmlFor}-error`}
           role="alert"
-          className="mt-1 text-sm text-red-600"
+          className="text-danger mt-1 text-sm"
         >
           {error}
         </p>

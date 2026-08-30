@@ -104,13 +104,13 @@ export function FileInput({
       />
       <label
         htmlFor={id}
-        className={`inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-black peer-focus-visible:ring-offset-2 ${
-          disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-gray-50"
+        className={`border-border-strong bg-surface text-text-secondary peer-focus-visible:ring-focus-ring inline-flex items-center rounded-md border px-3 py-1.5 text-sm font-medium transition-colors peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-offset-2 ${
+          disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-[var(--hover)]"
         }`}
       >
         {triggerLabel}
       </label>
-      <span aria-live="polite" className="text-sm text-gray-600">
+      <span aria-live="polite" className="text-text-secondary text-sm">
         {fileName ?? emptyLabel}
       </span>
     </div>
