@@ -37,7 +37,7 @@ export function DismissOnboardingButton({ returnFocusId }: { returnFocusId: stri
       type="button"
       disabled={isPending}
       onClick={handleClick}
-      className="shrink-0 rounded text-sm font-medium text-gray-500 transition-colors hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+      className="text-text-muted hover:text-text-secondary focus-visible:ring-focus-ring shrink-0 rounded text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
     >
       {isPending ? "Hiding…" : "Dismiss onboarding"}
     </button>

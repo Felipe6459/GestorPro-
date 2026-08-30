@@ -23,7 +23,7 @@ export function WorkspaceCompletionSummary({ summary }: { summary: WorkspaceComp
   }
 
   return (
-    <div className="mt-3 space-y-1 text-sm text-gray-600">
+    <div className="text-text-secondary mt-3 space-y-1 text-sm">
       {completedSteps.length > 0 && (
         <p>{`Completed so far: ${completedSteps.map((step) => step.label).join(", ")}.`}</p>
       )}

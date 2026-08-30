@@ -24,23 +24,26 @@ export function NotificationListItem({ item }: { item: NotificationBellItem }) {
 
   const body = (
     <>
-      <p className={`text-sm ${item.isUnread ? "font-semibold text-gray-900" : "text-gray-700"}`}>
+      <p className={`text-sm ${item.isUnread ? "text-text-primary font-semibold" : "text-text-secondary"}`}>
         {item.title}
         {item.isUnread && (
           <>
+            {/* bg-accent (not a literal blue) — matches the dropdown's own
+                NotificationItem exactly, same restrained-Indigo emphasis
+                paired with this row's own bg-accent-subtle wash. */}
             <span
               aria-hidden="true"
-              className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-blue-600 align-middle"
+              className="bg-accent ml-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle"
             />
             <span className="sr-only"> (unread)</span>
           </>
         )}
       </p>
-      {item.detail && <p className="mt-0.5 text-sm text-gray-500">{item.detail}</p>}
+      {item.detail && <p className="text-text-muted mt-0.5 text-sm">{item.detail}</p>}
       <time
         dateTime={item.timestamp.toISOString()}
         title={item.timestamp.toLocaleString()}
-        className="mt-1 block text-xs text-gray-400"
+        className="text-text-muted mt-1 block text-xs"
       >
         {relativeTime(item.timestamp)}
       </time>
@@ -53,13 +56,13 @@ export function NotificationListItem({ item }: { item: NotificationBellItem }) {
   // never a guessed URL.
   if (item.link) {
     return (
-      <li className={item.isUnread ? "bg-blue-50/60" : ""}>
+      <li className={item.isUnread ? "bg-accent-subtle" : ""}>
         <Link
           href={item.link}
           onClick={() => {
             if (item.isUnread) handleMarkRead();
           }}
-          className="block p-4 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-black"
+          className="focus-visible:ring-focus-ring block p-4 transition-colors hover:bg-[var(--hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset"
         >
           {body}
         </Link>
@@ -68,14 +71,14 @@ export function NotificationListItem({ item }: { item: NotificationBellItem }) {
   }
 
   return (
-    <li className={`p-4 ${item.isUnread ? "bg-blue-50/60" : ""}`}>
+    <li className={`p-4 ${item.isUnread ? "bg-accent-subtle" : ""}`}>
       {body}
       {item.isUnread && (
         <button
           type="button"
           disabled={isPending}
           onClick={handleMarkRead}
-          className="mt-2 rounded text-xs font-medium text-gray-600 transition-colors hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          className="text-text-secondary hover:text-text-primary focus-visible:ring-focus-ring mt-2 rounded text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
         >
           Mark as read
         </button>

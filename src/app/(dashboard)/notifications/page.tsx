@@ -9,7 +9,15 @@ import { NotificationListItem } from "@/components/notifications/notification-li
 import type { NotificationBellItem } from "@/components/notifications/notification-bell";
 import { LoadMoreLink } from "@/components/activity/load-more-link";
 import { EmptyState } from "@/components/ui/empty-state";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import type { RawSearchParams } from "@/lib/list-params";
+
+// Matches Button's own secondary variant tokens exactly — a real <button>
+// submitting a form (not the shared <Button>, since this is a plain
+// non-disabled/non-loading submit control) — same compact px-3 py-1.5
+// size the onboarding "Go to"/"Skip" row actions already use.
+const SECONDARY_BUTTON_CLASSES =
+  "border-border-strong bg-surface text-text-primary focus-visible:ring-focus-ring rounded-md border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-[var(--hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
 
 function FilterTab({
   href,
@@ -24,8 +32,8 @@ function FilterTab({
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 ${
-        active ? "bg-black text-white" : "text-gray-700 hover:bg-gray-100"
+      className={`focus-visible:ring-focus-ring rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+        active ? "bg-accent text-white" : "text-text-secondary hover:bg-[var(--hover)]"
       }`}
     >
       {label}
@@ -68,8 +76,8 @@ export default async function NotificationsPage({
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Notifications</h1>
-      <p className="mt-1 text-sm text-gray-600">Things that affect you across your organization.</p>
+      <h1 className="text-text-primary text-2xl font-semibold tracking-tight">Notifications</h1>
+      <p className="text-text-secondary mt-1 text-sm">Things that affect you across your organization.</p>
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <nav aria-label="Notification filter" className="flex gap-1">
@@ -82,10 +90,7 @@ export default async function NotificationsPage({
         </nav>
         {unreadCount > 0 && (
           <form action={markAllNotificationsReadAction}>
-            <button
-              type="submit"
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-            >
+            <button type="submit" className={SECONDARY_BUTTON_CLASSES}>
               Mark all as read
             </button>
           </form>
@@ -93,7 +98,7 @@ export default async function NotificationsPage({
       </div>
 
       {listParams.cursorInvalid && (
-        <p role="alert" className="mt-4 text-sm text-amber-700">
+        <p role="alert" className="text-warning mt-4 text-sm">
           Your previous page link expired — showing the latest notifications instead.
         </p>
       )}
@@ -108,7 +113,7 @@ export default async function NotificationsPage({
           }
         />
       ) : (
-        <ul className="mt-6 divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+        <ul className={`divide-border-subtle mt-6 divide-y ${CARD_SURFACE_CLASSES}`}>
           {items.map((item) => (
             <NotificationListItem key={item.id} item={item} />
           ))}

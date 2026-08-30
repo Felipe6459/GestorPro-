@@ -5,6 +5,12 @@ import { SkipStepButton } from "./skip-step-button";
 import { getOnboardingStepRowActions } from "./step-row-actions";
 import type { OnboardingStepResult } from "@/lib/onboarding/progress";
 
+// Matches Button's own secondary variant tokens exactly — a real <Link>
+// (navigates), not the shared <Button> (which renders a <button>), same
+// reasoning as every PRIMARY_LINK_CLASSES constant elsewhere in this app.
+const SECONDARY_LINK_CLASSES =
+  "border-border-strong bg-surface text-text-primary focus-visible:ring-focus-ring rounded-md border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-[var(--hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
+
 /**
  * Stage 3 task §6/§9. Action rules, derived directly from the Stage 2
  * contract (src/lib/onboarding/progress.ts), never invented separately:
@@ -62,21 +68,17 @@ export function OnboardingStepRow({ step }: { step: OnboardingStepResult }) {
           <p
             id={labelId}
             tabIndex={-1}
-            className="rounded text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+            className="text-text-primary focus:ring-focus-ring rounded text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2"
           >
             {step.label}
           </p>
-          <p className="mt-0.5 text-sm text-gray-500">{description}</p>
+          <p className="text-text-muted mt-0.5 text-sm">{description}</p>
         </div>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2 sm:pl-3">
         <StatusBadge status={step.status} />
         {showGoTo && step.targetHref && (
-          <Link
-            href={step.targetHref}
-            aria-label={`Go to: ${step.label}`}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
+          <Link href={step.targetHref} aria-label={`Go to: ${step.label}`} className={SECONDARY_LINK_CLASSES}>
             Go to
           </Link>
         )}
