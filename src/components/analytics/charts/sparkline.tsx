@@ -15,7 +15,16 @@ import type { ChartSeries } from "@/lib/analytics/types";
  * information from the KPI card's own numeric value and, for Growth
  * cards, from GrowthIndicator's own `aria-label`.
  */
-export function Sparkline({ series, color = "#111827" }: { series: ChartSeries; color?: string }) {
+// Design System Batch 4 — literal hex replaced with a live CSS custom-
+// property reference. Recharts renders `stroke`/`fill` as raw SVG
+// presentation attributes, and SVG accepts `var(--token)` there exactly
+// like any other CSS color value — so this stays reactive to the
+// resolved `data-theme` with no client-side theme-watching logic at all.
+// `--accent` (not a literal graphite ink) — the app's own restrained
+// Indigo, consistent with every other single-series "the org's own
+// metric" chart on this page (see growth-line-chart.tsx/activity-
+// stacked-bar-chart.tsx/comparison-bar-chart.tsx, same default).
+export function Sparkline({ series, color = "var(--accent)" }: { series: ChartSeries; color?: string }) {
   const data = series.points.map((p) => ({ count: p.count }));
   const hasActivity = series.points.some((p) => p.count > 0);
 

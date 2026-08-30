@@ -51,13 +51,27 @@ export function ActivityStackedBarChart({
     <div role="img" aria-label={`${label}: ${totalCreated} ${createdWord}, ${totalCompleted} ${completedLabel.toLowerCase()}`} className="h-48 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} accessibilityLayer margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 12, fill: "#6b7280" }} tickLine={false} axisLine={{ stroke: "#e5e7eb" }} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#6b7280" }} tickLine={false} axisLine={false} width={28} />
-          <Tooltip cursor={{ fill: "#f9fafb" }} contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }} />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Bar dataKey="completed" name={completedLabel} stackId="activity" fill="#111827" radius={[0, 0, 0, 0]} />
-          <Bar dataKey="open" name={openLabel} stackId="activity" fill="#d1d5db" radius={[4, 4, 0, 0]} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" vertical={false} />
+          <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--text-muted)" }} tickLine={false} axisLine={{ stroke: "var(--border-default)" }} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "var(--text-muted)" }} tickLine={false} axisLine={false} width={28} />
+          <Tooltip
+            cursor={{ fill: "var(--surface-muted)" }}
+            contentStyle={{
+              fontSize: 12,
+              borderRadius: 8,
+              border: "1px solid var(--border-default)",
+              backgroundColor: "var(--surface)",
+              color: "var(--text-primary)",
+            }}
+          />
+          <Legend wrapperStyle={{ fontSize: 12, color: "var(--text-secondary)" }} />
+          {/* completed (stronger/emphasized segment) -> --accent; open/
+              remaining (weaker/neutral segment) -> --border-strong — the
+              same "strong emphasis vs. quiet neutral" relationship the
+              original #111827/#d1d5db pair already encoded, translated to
+              semantic tokens rather than recolored to a new meaning. */}
+          <Bar dataKey="completed" name={completedLabel} stackId="activity" fill="var(--accent)" radius={[0, 0, 0, 0]} />
+          <Bar dataKey="open" name={openLabel} stackId="activity" fill="var(--border-strong)" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

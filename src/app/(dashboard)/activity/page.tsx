@@ -13,6 +13,13 @@ import {
   dateInputValue,
 } from "./query";
 import type { RawSearchParams } from "@/lib/list-params";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
+
+// Matches Button's own primary variant tokens — same constant the other
+// migrated list pages (Clients/Invoices/Projects/Tasks) already use for
+// their own primary/clear-filters action link.
+const PRIMARY_LINK_CLASSES =
+  "focus-visible:ring-focus-ring rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
 
 export default async function ActivityPage({
   searchParams,
@@ -94,11 +101,11 @@ export default async function ActivityPage({
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Activity</h1>
-      <p className="mt-1 text-sm text-gray-600">
+      <h1 className="text-text-primary text-2xl font-semibold tracking-tight">Activity</h1>
+      <p className="text-text-secondary mt-1 text-sm">
         A record of changes across your organization.
       </p>
-      <p className="mt-1 text-xs text-gray-500">
+      <p className="text-text-muted mt-1 text-xs">
         Activity is recorded from the moment this feature was enabled. Earlier changes are
         not available.
       </p>
@@ -114,7 +121,7 @@ export default async function ActivityPage({
       />
 
       {listParams.cursorInvalid && (
-        <p role="alert" className="mt-4 text-sm text-amber-700">
+        <p role="alert" className="text-warning mt-4 text-sm">
           Your previous page link expired — showing the latest activity instead.
         </p>
       )}
@@ -129,10 +136,7 @@ export default async function ActivityPage({
           }
           action={
             hasActiveFilters ? (
-              <Link
-                href="/activity"
-                className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-              >
+              <Link href="/activity" className={PRIMARY_LINK_CLASSES}>
                 Clear filters
               </Link>
             ) : undefined
@@ -142,23 +146,23 @@ export default async function ActivityPage({
         <div className="mt-6 space-y-8">
           {groups.map((group) => (
             <section key={group.label}>
-              <h2 className="text-sm font-semibold text-gray-500">{group.label}</h2>
-              <ul className="mt-2 divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+              <h2 className="text-text-muted text-sm font-semibold">{group.label}</h2>
+              <ul className={`divide-border-subtle mt-2 divide-y ${CARD_SURFACE_CLASSES}`}>
                 {group.items.map((item) => (
                   <li key={item.id} className="p-4">
                     <div className="flex items-start justify-between gap-4">
-                      <p className="text-sm text-gray-900">
+                      <p className="text-text-primary text-sm">
                         <span className="font-medium">{item.display.actorLabel}</span>{" "}
                         {item.display.actionLabel}
                         {item.display.isDeleted && (
-                          <span className="ml-2 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+                          <span className="bg-surface-muted text-text-muted ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium">
                             Deleted
                           </span>
                         )}
                       </p>
                       <time
                         dateTime={item.display.timestamp.toISOString()}
-                        className="shrink-0 text-xs text-gray-400"
+                        className="text-text-muted shrink-0 text-xs"
                       >
                         {item.display.timestamp.toLocaleTimeString(undefined, {
                           hour: "2-digit",
@@ -167,7 +171,7 @@ export default async function ActivityPage({
                       </time>
                     </div>
                     {item.display.detailLines.map((line, index) => (
-                      <p key={index} className="mt-1 text-xs text-gray-500">
+                      <p key={index} className="text-text-muted mt-1 text-xs">
                         {line}
                       </p>
                     ))}

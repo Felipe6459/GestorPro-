@@ -16,6 +16,7 @@ import { ComparisonBarChart } from "@/components/analytics/charts/comparison-bar
 import { ChartsSection, ChartPanel } from "@/components/analytics/charts/charts-section";
 import { OrganizationActivitySection } from "@/components/analytics/charts/organization-activity-section";
 import { PortalAnalyticsSection } from "@/components/analytics/charts/portal-analytics-section";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 /**
  * Analytics Stage 3 (docs/analytics-architecture.md §10/§11). Authorization
@@ -148,8 +149,8 @@ export default async function AnalyticsPage({
           <ChartPanel title="Invoices: created vs. paid" chart={<ActivityStackedBarChart label="Invoices" series={data.charts.invoiceActivitySeries} />} />
         </ChartsSection>
 
-        <section aria-labelledby="analytics-comparison-heading" className="rounded-lg border border-gray-200 bg-white p-5">
-          <h2 id="analytics-comparison-heading" className="text-base font-semibold text-gray-900">
+        <section aria-labelledby="analytics-comparison-heading" className={`p-5 ${CARD_SURFACE_CLASSES}`}>
+          <h2 id="analytics-comparison-heading" className="text-text-primary text-base font-semibold">
             Period comparison
           </h2>
           <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-3">

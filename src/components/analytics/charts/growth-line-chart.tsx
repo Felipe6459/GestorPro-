@@ -19,7 +19,16 @@ import { ChartEmptyState } from "./chart-empty-state";
  * lower-level alternatives that would need that built by hand — see the
  * architecture doc's own "Library selection" section.
  */
-export function GrowthLineChart({ label, series, color = "#111827" }: { label: string; series: ChartSeries; color?: string }) {
+// Design System Batch 4 — see sparkline.tsx's own comment: literal hex
+// replaced with live CSS custom-property references, valid directly as
+// SVG presentation-attribute values, so every color here tracks
+// `data-theme` with no theme-watching JS. Grid/axis stroke maps to
+// --border-default (#E5E7EB in Light — an exact match for the literal
+// this replaces); tick fill maps to --text-muted (#6B7280 — likewise an
+// exact match). Tooltip contentStyle gets an explicit opaque
+// background/text/border (Recharts' own default tooltip background is
+// white, which would float unreadably over a Dark card without this).
+export function GrowthLineChart({ label, series, color = "var(--accent)" }: { label: string; series: ChartSeries; color?: string }) {
   const total = series.points.reduce((sum, p) => sum + p.count, 0);
   if (total === 0) {
     return <ChartEmptyState label={label} />;
@@ -34,10 +43,19 @@ export function GrowthLineChart({ label, series, color = "#111827" }: { label: s
     <div role="img" aria-label={`${label} over time, ${total} total`} className="h-48 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} accessibilityLayer margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 12, fill: "#6b7280" }} tickLine={false} axisLine={{ stroke: "#e5e7eb" }} />
-          <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "#6b7280" }} tickLine={false} axisLine={false} width={28} />
-          <Tooltip cursor={{ stroke: "#e5e7eb" }} contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" vertical={false} />
+          <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--text-muted)" }} tickLine={false} axisLine={{ stroke: "var(--border-default)" }} />
+          <YAxis allowDecimals={false} tick={{ fontSize: 12, fill: "var(--text-muted)" }} tickLine={false} axisLine={false} width={28} />
+          <Tooltip
+            cursor={{ stroke: "var(--border-default)" }}
+            contentStyle={{
+              fontSize: 12,
+              borderRadius: 8,
+              border: "1px solid var(--border-default)",
+              backgroundColor: "var(--surface)",
+              color: "var(--text-primary)",
+            }}
+          />
           <Line type="monotone" dataKey="count" name={label} stroke={color} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
         </LineChart>
       </ResponsiveContainer>

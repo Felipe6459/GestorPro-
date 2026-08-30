@@ -8,8 +8,10 @@
  */
 export function ChartEmptyState({ label }: { label: string }) {
   return (
-    <div className="flex h-48 w-full flex-col items-center justify-center rounded-md border border-dashed border-gray-200 text-center">
-      <p className="text-sm text-gray-400">Not enough data yet for {label.toLowerCase()}.</p>
+    // Design System Batch 4 — bg-surface added, same "dashed border had no
+    // fill of its own" fix EmptyState/SegmentErrorState already needed.
+    <div className="border-border-default bg-surface flex h-48 w-full flex-col items-center justify-center rounded-md border border-dashed text-center">
+      <p className="text-text-muted text-sm">Not enough data yet for {label.toLowerCase()}.</p>
     </div>
   );
 }

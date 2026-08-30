@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 /**
  * Foundation display: a label, a value, an optional trailing indicator
@@ -22,10 +23,10 @@ export function AnalyticsCard({
   sparkline?: ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
-      <p className="text-sm text-gray-500">{label}</p>
+    <div className={`p-4 ${CARD_SURFACE_CLASSES}`}>
+      <p className="text-text-muted text-sm">{label}</p>
       <div className="mt-1 flex items-baseline justify-between gap-2">
-        <p className="text-2xl font-semibold tracking-tight text-gray-900">{value}</p>
+        <p className="text-text-primary text-2xl font-semibold tracking-tight">{value}</p>
         {indicator}
       </div>
       {sparkline}
