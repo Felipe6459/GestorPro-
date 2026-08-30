@@ -115,13 +115,13 @@ export function CommentComposer({
 
       <div className="flex items-center justify-between gap-3">
         <MentionCombobox candidates={candidates} onSelect={insertMention} />
-        <p id={`${bodyFieldId}-char-count`} className="shrink-0 text-xs text-gray-500">
+        <p id={`${bodyFieldId}-char-count`} className="text-text-muted shrink-0 text-xs">
           {length} / {COMMENT_BODY_MAX_LENGTH}
         </p>
       </div>
 
       {state.error && (
-        <p id={`${bodyFieldId}-error`} role="alert" className="text-sm text-red-600">
+        <p id={`${bodyFieldId}-error`} role="alert" className="text-danger text-sm">
           {state.error}
         </p>
       )}
@@ -131,14 +131,9 @@ export function CommentComposer({
           {pending ? pendingLabel : submitLabel}
         </Button>
         {onCancel && (
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={pending}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-          >
+          <Button type="button" variant="secondary" onClick={onCancel} disabled={pending}>
             {cancelLabel}
-          </button>
+          </Button>
         )}
       </div>
     </form>

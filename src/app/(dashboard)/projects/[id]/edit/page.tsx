@@ -8,6 +8,8 @@ import { ProjectAttachmentsSection } from "./attachments-section";
 import { CommentsSection } from "@/components/comments/comments-section";
 import { createProjectCommentAction, editProjectCommentAction, deleteProjectCommentAction } from "./comment-actions";
 import { parseSearchParam, type RawSearchParams } from "@/lib/list-params";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 function toDateInputValue(date: Date | null): string {
   return date ? date.toISOString().slice(0, 10) : "";
@@ -46,17 +48,14 @@ export default async function EditProjectPage({
   return (
     <div className="mx-auto max-w-xl">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+        <h1 className="text-text-primary text-2xl font-semibold tracking-tight">
           Edit project
         </h1>
-        <Link
-          href="/projects"
-          className="rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-        >
+        <Link href="/projects" className={ACTION_LINK_CLASSES}>
           Cancel
         </Link>
       </div>
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+      <div className={`p-6 ${CARD_SURFACE_CLASSES}`}>
         <ProjectForm
           action={boundUpdateProjectAction}
           clients={clients}

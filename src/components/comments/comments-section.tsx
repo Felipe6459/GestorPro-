@@ -78,15 +78,15 @@ export async function CommentsSection({
   );
 
   return (
-    <div className="mt-8 border-t border-gray-200 pt-6">
-      <h2 className="text-lg font-semibold text-gray-900">Comments</h2>
+    <div className="border-border-default mt-8 border-t pt-6">
+      <h2 className="text-text-primary text-lg font-semibold">Comments</h2>
 
       <div className="mt-4">
         <CommentComposer action={createAction} candidates={candidates} />
       </div>
 
       {page.cursorInvalid && (
-        <p role="alert" className="mt-4 text-sm text-amber-700">
+        <p role="alert" className="text-warning mt-4 text-sm">
           Your previous comments page link expired — showing the latest comments instead.
         </p>
       )}

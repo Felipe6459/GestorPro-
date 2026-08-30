@@ -3,7 +3,14 @@ import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { ProjectForm } from "@/components/projects/project-form";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { createProjectAction } from "./actions";
+
+// Matches Button's own primary variant tokens — same constant used by
+// the Clients/Invoices/Projects/Tasks list pages' own primary action.
+const PRIMARY_LINK_CLASSES =
+  "focus-visible:ring-focus-ring rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
 
 export default async function NewProjectPage() {
   const { organizationId } = await getCurrentUserOrganization();
@@ -16,13 +23,10 @@ export default async function NewProjectPage() {
   return (
     <div className="mx-auto max-w-xl">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+        <h1 className="text-text-primary text-2xl font-semibold tracking-tight">
           Add project
         </h1>
-        <Link
-          href="/projects"
-          className="rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-        >
+        <Link href="/projects" className={ACTION_LINK_CLASSES}>
           Cancel
         </Link>
       </div>
@@ -32,16 +36,13 @@ export default async function NewProjectPage() {
           title="You need a client first"
           description="Projects must belong to a client. Add one before creating a project."
           action={
-            <Link
-              href="/clients/new"
-              className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-            >
+            <Link href="/clients/new" className={PRIMARY_LINK_CLASSES}>
               Add client
             </Link>
           }
         />
       ) : (
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className={`p-6 ${CARD_SURFACE_CLASSES}`}>
           <ProjectForm action={createProjectAction} clients={clients} />
         </div>
       )}

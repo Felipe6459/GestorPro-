@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import type { MentionCandidate } from "@/lib/comments/mention-candidates";
 
 /**
@@ -49,12 +50,12 @@ export function MentionCombobox({
       }}
     >
       <summary
-        className="cursor-pointer list-none rounded-md border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden"
+        className="border-border-strong bg-surface text-text-primary focus-visible:ring-focus-ring cursor-pointer list-none rounded-md border px-2.5 py-1 text-xs font-medium transition-colors hover:bg-[var(--hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden"
         aria-label="Mention a teammate"
       >
         @ Mention teammate
       </summary>
-      <div className="absolute left-0 z-20 mt-1 w-64 rounded-md border border-gray-200 bg-white py-1 shadow-lg">
+      <div className={`absolute left-0 z-20 mt-1 w-64 py-1 shadow-lg ${CARD_SURFACE_CLASSES}`}>
         <div className="px-2 pt-1 pb-2">
           <input
             type="text"
@@ -63,11 +64,11 @@ export function MentionCombobox({
             placeholder="Search name or email"
             aria-label="Search teammates to mention"
             autoFocus
-            className="block w-full rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-900 placeholder:text-gray-400 focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+            className="border-border-strong bg-surface text-text-primary placeholder:text-text-muted block w-full rounded-md border px-2 py-1 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
           />
         </div>
         <ul role="listbox" aria-label="Teammates" className="max-h-56 overflow-y-auto">
-          {filtered.length === 0 && <li className="px-3 py-2 text-sm text-gray-500">No matches</li>}
+          {filtered.length === 0 && <li className="text-text-muted px-3 py-2 text-sm">No matches</li>}
           {filtered.map((candidate) => (
             <li key={candidate.id}>
               <button
@@ -78,10 +79,10 @@ export function MentionCombobox({
                   onSelect(candidate);
                   close();
                 }}
-                className="block w-full truncate px-3 py-1.5 text-left text-sm text-gray-900 hover:bg-gray-100 focus:outline-none focus-visible:bg-gray-100"
+                className="text-text-primary block w-full truncate px-3 py-1.5 text-left text-sm hover:bg-[var(--hover)] focus:outline-none focus-visible:bg-[var(--hover)]"
               >
                 {candidate.name}
-                <span className="ml-1.5 text-gray-500">{candidate.email}</span>
+                <span className="text-text-muted ml-1.5">{candidate.email}</span>
               </button>
             </li>
           ))}

@@ -42,7 +42,7 @@ export function CommentItem({
   if (comment.isDeleted) {
     return (
       <li id={`comment-${comment.id}`} className="scroll-mt-20 px-4 py-3">
-        <p className="text-sm text-gray-400 italic">{comment.placeholder}</p>
+        <p className="text-text-muted text-sm italic">{comment.placeholder}</p>
       </li>
     );
   }
@@ -50,11 +50,11 @@ export function CommentItem({
   return (
     <li id={`comment-${comment.id}`} className="scroll-mt-20 px-4 py-3">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="text-sm font-medium text-gray-900">{comment.authorName}</p>
+        <p className="text-text-primary text-sm font-medium">{comment.authorName}</p>
         <time
           dateTime={comment.createdAt.toISOString()}
           title={comment.createdAt.toLocaleString()}
-          className="shrink-0 text-xs text-gray-400"
+          className="text-text-muted shrink-0 text-xs"
         >
           {relativeTime(comment.createdAt)}
           {comment.isEdited && <span className="ml-1">(edited)</span>}
@@ -77,12 +77,12 @@ export function CommentItem({
         </div>
       ) : (
         <>
-          <p className="mt-1 text-sm whitespace-pre-wrap text-gray-800">
+          <p className="text-text-primary mt-1 text-sm whitespace-pre-wrap">
             {comment.segments.map((segment, index) =>
               segment.type === "mention" ? (
                 <span
                   key={index}
-                  className="rounded bg-blue-50 px-1 font-medium text-blue-700"
+                  className="bg-info-subtle text-info rounded px-1 font-medium"
                 >
                   @{segment.displayName}
                 </span>
@@ -98,7 +98,7 @@ export function CommentItem({
                 <button
                   type="button"
                   onClick={() => setIsEditing(true)}
-                  className="rounded text-xs font-medium text-gray-600 transition-colors hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                  className="text-text-secondary hover:text-text-primary focus-visible:ring-focus-ring rounded text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
                 >
                   Edit
                 </button>

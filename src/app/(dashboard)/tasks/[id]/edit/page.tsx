@@ -7,6 +7,8 @@ import { updateTaskAction } from "./actions";
 import { CommentsSection } from "@/components/comments/comments-section";
 import { createTaskCommentAction, editTaskCommentAction, deleteTaskCommentAction } from "./comment-actions";
 import { parseSearchParam, type RawSearchParams } from "@/lib/list-params";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 function toDateInputValue(date: Date | null): string {
   return date ? date.toISOString().slice(0, 10) : "";
@@ -45,17 +47,14 @@ export default async function EditTaskPage({
   return (
     <div className="mx-auto max-w-xl">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+        <h1 className="text-text-primary text-2xl font-semibold tracking-tight">
           Edit task
         </h1>
-        <Link
-          href="/tasks"
-          className="rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-        >
+        <Link href="/tasks" className={ACTION_LINK_CLASSES}>
           Cancel
         </Link>
       </div>
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+      <div className={`p-6 ${CARD_SURFACE_CLASSES}`}>
         <TaskForm
           action={boundUpdateTaskAction}
           projects={projects.map((project) => ({

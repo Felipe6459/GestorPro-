@@ -1,5 +1,6 @@
 import { CommentItem } from "./comment-item";
 import { resolveCommentPermissions, type CommentViewModel } from "@/lib/comments/format-comment";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import type { MentionCandidate } from "@/lib/comments/mention-candidates";
 import type { CommentActionState } from "@/types";
 
@@ -27,7 +28,7 @@ export function CommentList({
   makeDeleteAction: (commentId: string) => () => Promise<void>;
 }) {
   return (
-    <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
+    <ul className={`divide-border-subtle divide-y ${CARD_SURFACE_CLASSES}`}>
       {comments.map((comment) => {
         const { canEdit, canDelete } = resolveCommentPermissions(comment, currentUserId, isModerator);
         return (
