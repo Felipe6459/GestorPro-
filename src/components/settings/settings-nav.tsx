@@ -34,6 +34,10 @@ const SETTINGS_LINKS: readonly SettingsNavLink[] = [
   { href: "/settings/company", label: "Company" },
   { href: "/settings/payment", label: "Payment details", paymentOnly: true },
   { href: "/settings/domain", label: "Domain" },
+  // Phase D: grouped next to Notifications — both are personal,
+  // per-identity preferences (not organization-wide config like
+  // Company/Payment/Domain/Billing above), and neither is role-gated.
+  { href: "/settings/appearance", label: "Appearance" },
   { href: "/settings/notifications", label: "Notifications" },
   { href: "/settings/billing", label: "Billing" },
 ];
