@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getDomainSettings, getGeneratedSubdomain } from "@/lib/organization-setup/domain-settings";
 import { canManageDomainSettings } from "@/lib/organization-setup/authorization";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { DomainSettingsForm } from "./domain-settings-form";
 
 /**
@@ -25,24 +26,24 @@ export default async function DomainSettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Domain settings</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <h1 className="text-text-primary text-2xl font-semibold tracking-tight">Domain settings</h1>
+      <p className="text-text-muted mt-1 text-sm">
         Your workspace&apos;s address, and an optional custom domain for later.
       </p>
 
-      <div className="mt-6 space-y-1 rounded-lg border border-gray-200 bg-white p-6">
-        <p className="text-xs font-medium text-gray-500">Generated subdomain</p>
-        <p className="font-mono text-sm text-gray-900">{generatedSubdomain}</p>
+      <div className={`mt-6 space-y-1 p-6 ${CARD_SURFACE_CLASSES}`}>
+        <p className="text-text-muted text-xs font-medium">Generated subdomain</p>
+        <p className="font-mono text-text-primary text-sm">{generatedSubdomain}</p>
       </div>
 
       {canManage ? (
         <DomainSettingsForm settings={settings} />
       ) : (
-        <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6">
-          <p className="text-sm text-gray-600">Only the organization owner can update domain settings.</p>
+        <div className={`mt-6 p-6 ${CARD_SURFACE_CLASSES}`}>
+          <p className="text-text-secondary text-sm">Only the organization owner can update domain settings.</p>
           <dl className="mt-4">
-            <dt className="text-xs font-medium text-gray-500">Custom domain</dt>
-            <dd className="mt-1 flex items-center gap-2 text-sm text-gray-900">
+            <dt className="text-text-muted text-xs font-medium">Custom domain</dt>
+            <dd className="text-text-primary mt-1 flex items-center gap-2 text-sm">
               {settings.customDomain ? (
                 <>
                   <span>{settings.customDomain}</span>

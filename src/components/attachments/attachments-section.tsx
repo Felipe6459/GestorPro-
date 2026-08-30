@@ -3,6 +3,8 @@ import { formatFileSize } from "@/lib/format";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DeleteButton } from "@/components/ui/delete-button";
 import { AttachmentUploadForm } from "@/components/attachments/attachment-upload-form";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { MAX_ATTACHMENTS_PER_ENTITY } from "@/lib/storage/attachments-config";
 import type { AttachmentEntityType } from "@/generated/prisma/enums";
 import type { AttachmentUploadState } from "@/types";
@@ -39,10 +41,10 @@ export async function AttachmentsSection({
   const atLimit = attachments.length >= MAX_ATTACHMENTS_PER_ENTITY;
 
   return (
-    <div className="mt-8 border-t border-gray-200 pt-6">
+    <div className="border-border-default mt-8 border-t pt-6">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">Attachments</h2>
-        <p className="text-sm text-gray-500">
+        <h2 className="text-text-primary text-lg font-semibold">Attachments</h2>
+        <p className="text-text-muted text-sm">
           {attachments.length} / {MAX_ATTACHMENTS_PER_ENTITY}
         </p>
       </div>
@@ -61,17 +63,17 @@ export async function AttachmentsSection({
           description={`Upload a file to attach it to this ${parentLabel}.`}
         />
       ) : (
-        <ul className="mt-4 divide-y divide-gray-200 rounded-lg border border-gray-200">
+        <ul className={`divide-border-default mt-4 divide-y ${CARD_SURFACE_CLASSES}`}>
           {attachments.map((attachment) => (
             <li
               key={attachment.id}
               className="flex items-center justify-between gap-4 px-4 py-3"
             >
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-gray-900">
+                <p className="text-text-primary truncate text-sm font-medium">
                   {attachment.originalName}
                 </p>
-                <p className="text-xs text-gray-500">
+                <p className="text-text-muted text-xs">
                   {formatFileSize(attachment.sizeBytes)} ·{" "}
                   {attachment.createdAt.toLocaleDateString()}
                 </p>
@@ -79,7 +81,7 @@ export async function AttachmentsSection({
               <div className="flex shrink-0 items-center gap-4">
                 <a
                   href={`/api/attachments/${attachment.id}/download`}
-                  className="rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                  className={ACTION_LINK_CLASSES}
                 >
                   Download
                 </a>

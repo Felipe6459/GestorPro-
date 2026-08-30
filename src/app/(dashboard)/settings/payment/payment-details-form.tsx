@@ -4,7 +4,9 @@ import { useActionState } from "react";
 import { updatePaymentDetailsAction } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { FormField } from "@/components/ui/form-field";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import type { PaymentDetailsFormState } from "@/types";
 import type { PaymentDetailsData } from "@/lib/organization-setup/payment-details";
 
@@ -14,7 +16,7 @@ export function PaymentDetailsForm({ details }: { details: PaymentDetailsData })
   const [state, formAction, pending] = useActionState(updatePaymentDetailsAction, initialState);
 
   return (
-    <form action={formAction} className="mt-6 space-y-4 rounded-lg border border-gray-200 bg-white p-6">
+    <form action={formAction} className={`mt-6 space-y-4 p-6 ${CARD_SURFACE_CLASSES}`}>
       <FormField label="Bank name" htmlFor="bankName" required error={state.fieldErrors?.bankName}>
         <Input
           id="bankName"
@@ -61,23 +63,22 @@ export function PaymentDetailsForm({ details }: { details: PaymentDetailsData })
       </FormField>
 
       <FormField label="Payment instructions" htmlFor="paymentInstructions" error={state.fieldErrors?.paymentInstructions}>
-        <textarea
+        <Textarea
           id="paymentInstructions"
           name="paymentInstructions"
           rows={3}
           defaultValue={details?.paymentInstructions ?? ""}
-          className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-black focus:ring-1 focus:ring-black focus:outline-none"
           placeholder="Any additional notes a client should know when paying you."
         />
       </FormField>
 
       {state.error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-danger text-sm">
           {state.error}
         </p>
       )}
       {state.message && (
-        <p role="status" className="text-sm text-green-600">
+        <p role="status" className="text-success text-sm">
           {state.message}
         </p>
       )}

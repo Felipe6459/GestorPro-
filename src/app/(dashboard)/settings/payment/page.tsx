@@ -32,8 +32,8 @@ export default async function PaymentDetailsPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Payment receiving details</h1>
-      <p className="mt-1 text-sm text-gray-500">
+      <h1 className="text-text-primary text-2xl font-semibold tracking-tight">Payment receiving details</h1>
+      <p className="text-text-muted mt-1 text-sm">
         Where your organization receives payments. Visible only to you, the organization owner.
       </p>
       <PaymentDetailsForm details={details} />

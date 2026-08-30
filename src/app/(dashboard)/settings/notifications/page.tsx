@@ -2,6 +2,7 @@ import { getCurrentUserOrganization } from "@/lib/current-user";
 import { NOTIFICATION_TYPES, getNotificationPreferenceMap } from "@/lib/notifications/preferences";
 import { NotificationPreferenceToggle } from "@/components/settings/notification-preference-toggle";
 import { ResetPreferencesButton } from "@/components/settings/reset-preferences-button";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import type { NotificationType } from "@/generated/prisma/enums";
 
 const NOTIFICATION_TYPE_LABELS: Record<NotificationType, { title: string; description: string }> = {
@@ -63,8 +64,8 @@ export default async function NotificationPreferencesPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Notification preferences</h1>
-      <p className="mt-1 text-sm text-gray-600">
+      <h1 className="text-text-primary text-2xl font-semibold tracking-tight">Notification preferences</h1>
+      <p className="text-text-secondary mt-1 text-sm">
         Choose what you get notified about, and whether that also reaches your email.
       </p>
 
@@ -72,9 +73,9 @@ export default async function NotificationPreferencesPage() {
         <ResetPreferencesButton />
       </div>
 
-      <div className="mt-2 overflow-hidden overflow-x-auto rounded-lg border border-gray-200 bg-white">
+      <div className={`mt-2 overflow-hidden overflow-x-auto ${CARD_SURFACE_CLASSES}`}>
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-gray-200 bg-gray-50 text-xs font-medium text-gray-500 uppercase">
+          <thead className="border-border-default bg-surface-recessed text-text-muted border-b text-xs font-medium uppercase">
             <tr>
               <th scope="col" className="px-4 py-3">
                 Notification type
@@ -87,7 +88,7 @@ export default async function NotificationPreferencesPage() {
               </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-border-subtle divide-y">
             {NOTIFICATION_TYPES.map((type) => {
               const { title, description } = NOTIFICATION_TYPE_LABELS[type];
               const descId = `${type}-description`;
@@ -96,8 +97,8 @@ export default async function NotificationPreferencesPage() {
               return (
                 <tr key={type}>
                   <td className="px-4 py-3">
-                    <p className="font-medium text-gray-900">{title}</p>
-                    <p id={descId} className="mt-0.5 text-xs text-gray-500">
+                    <p className="text-text-primary font-medium">{title}</p>
+                    <p id={descId} className="text-text-muted mt-0.5 text-xs">
                       {description}
                     </p>
                   </td>
