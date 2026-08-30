@@ -61,18 +61,18 @@ export function SearchResultItem({
         onMouseEnter={onHover}
         onClick={onSelect}
         className={`block rounded-md px-3 py-2 transition-colors ${
-          isActive ? "bg-gray-100" : "hover:bg-gray-50"
+          isActive ? "bg-accent-subtle" : "hover:bg-[var(--hover)]"
         }`}
       >
         <div className="flex items-baseline justify-between gap-3">
-          <p className="min-w-0 truncate text-sm font-medium text-gray-900">
+          <p className="text-text-primary min-w-0 truncate text-sm font-medium">
             <SearchHighlight text={result.title} query={query} />
           </p>
-          <span className="shrink-0 text-xs font-medium text-gray-400">{TYPE_LABEL[result.type]}</span>
+          <span className="text-text-muted shrink-0 text-xs font-medium">{TYPE_LABEL[result.type]}</span>
         </div>
-        {result.subtitle && <p className="truncate text-xs text-gray-500">{result.subtitle}</p>}
+        {result.subtitle && <p className="text-text-muted truncate text-xs">{result.subtitle}</p>}
         {result.preview && (
-          <p className="mt-0.5 line-clamp-2 text-xs text-gray-600">
+          <p className="text-text-secondary mt-0.5 line-clamp-2 text-xs">
             <SearchHighlight text={result.preview} query={query} />
           </p>
         )}

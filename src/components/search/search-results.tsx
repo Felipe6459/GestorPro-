@@ -41,19 +41,19 @@ export function SearchResults({
 
   if (state.phase === "idle") {
     body = (
-      <p className="px-3 py-8 text-center text-sm text-gray-500">
+      <p className="text-text-muted px-3 py-8 text-center text-sm">
         Search clients, projects, tasks, invoices, and comments.
       </p>
     );
   } else if (state.phase === "unauthorized") {
     liveMessage = SEARCH_UNAUTHORIZED_MESSAGE;
-    body = <p className="px-3 py-8 text-center text-sm text-gray-500">{SEARCH_UNAUTHORIZED_MESSAGE}</p>;
+    body = <p className="text-text-muted px-3 py-8 text-center text-sm">{SEARCH_UNAUTHORIZED_MESSAGE}</p>;
   } else if (state.phase === "rate_limited") {
     liveMessage = state.message ?? "";
-    body = <p className="px-3 py-8 text-center text-sm text-gray-500">{state.message}</p>;
+    body = <p className="text-text-muted px-3 py-8 text-center text-sm">{state.message}</p>;
   } else if (state.phase === "error") {
     liveMessage = SEARCH_GENERIC_ERROR_MESSAGE;
-    body = <p className="px-3 py-8 text-center text-sm text-gray-500">{SEARCH_GENERIC_ERROR_MESSAGE}</p>;
+    body = <p className="text-text-muted px-3 py-8 text-center text-sm">{SEARCH_GENERIC_ERROR_MESSAGE}</p>;
   } else if (totalResults > 0) {
     // Covers both a settled "results" phase AND "loading" while a fresh
     // query's request is still in flight but the previous result set is
@@ -78,10 +78,10 @@ export function SearchResults({
     );
   } else if (state.phase === "loading") {
     liveMessage = "Searching…";
-    body = <p className="px-3 py-8 text-center text-sm text-gray-500">Searching…</p>;
+    body = <p className="text-text-muted px-3 py-8 text-center text-sm">Searching…</p>;
   } else {
     liveMessage = "No results found.";
-    body = <p className="px-3 py-8 text-center text-sm text-gray-500">No results found.</p>;
+    body = <p className="text-text-muted px-3 py-8 text-center text-sm">No results found.</p>;
   }
 
   return (

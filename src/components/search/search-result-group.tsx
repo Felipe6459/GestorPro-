@@ -45,7 +45,7 @@ export function SearchResultGroupSection({
 
   return (
     <div role="group" aria-label={GROUP_LABEL[type]}>
-      <p className="px-3 pt-2 pb-1 text-xs font-semibold tracking-wide text-gray-400 uppercase">
+      <p className="text-text-muted px-3 pt-2 pb-1 text-xs font-semibold tracking-wide uppercase">
         {GROUP_LABEL[type]}
       </p>
       <ul>

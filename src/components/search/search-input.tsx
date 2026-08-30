@@ -48,11 +48,11 @@ export function SearchInput({
   activeDescendantId: string | undefined;
 }) {
   return (
-    <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-3">
+    <div className="border-border-default flex items-center gap-2 border-b px-4 py-3">
       {isLoading ? (
-        <SpinnerIcon className="h-4 w-4 shrink-0 text-gray-400" />
+        <SpinnerIcon className="text-text-muted h-4 w-4 shrink-0" />
       ) : (
-        <SearchIcon className="h-4 w-4 shrink-0 text-gray-400" />
+        <SearchIcon className="text-text-muted h-4 w-4 shrink-0" />
       )}
       <input
         ref={inputRef}
@@ -70,7 +70,7 @@ export function SearchInput({
         autoComplete="off"
         autoCorrect="off"
         spellCheck={false}
-        className="w-full border-none bg-transparent text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-0"
+        className="text-text-primary placeholder:text-text-muted w-full border-none bg-transparent text-sm focus:outline-none focus:ring-0"
       />
     </div>
   );
