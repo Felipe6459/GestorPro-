@@ -75,12 +75,11 @@ export default async function ClientsPage({
   return (
     <div>
       <div className="flex items-center justify-between">
-        {/* text-gray-900/text-gray-600 kept literal: this heading sits directly on (dashboard)/layout.tsx's still-raw bg-gray-50 page-shell background (out of this batch's scope — shared across every staff route). Everything below (SearchFilterBar, Table, RecordCard, EmptyState) sits inside its own opaque migrated card and is unaffected. */}
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+          <h1 className="text-text-primary text-2xl font-semibold tracking-tight">
             Clients
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="text-text-secondary mt-1 text-sm">
             {total} {total === 1 ? "client" : "clients"}
           </p>
         </div>

@@ -34,6 +34,13 @@ import {
   buildInvoiceOrderBy,
 } from "./query";
 
+// Page-owned primary call-to-action link (navigates, so a real <Link> —
+// not the shared <Button>, which renders a <button>). Matches Button's
+// own primary variant tokens (bg-accent/hover:bg-accent-hover/focus-ring)
+// — the same constant Batch 1 introduced for Clients' identical pattern.
+const PRIMARY_LINK_CLASSES =
+  "focus-visible:ring-focus-ring rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
+
 const SORT_OPTIONS = [
   { value: "createdAt:desc", label: "Newest first" },
   { value: "createdAt:asc", label: "Oldest first" },
@@ -78,17 +85,17 @@ export default async function InvoicesPage({
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+          <h1 className="text-text-primary text-2xl font-semibold tracking-tight">
             Invoices
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="text-text-secondary mt-1 text-sm">
             {total} {total === 1 ? "invoice" : "invoices"}
           </p>
         </div>
         {projectCount > 0 && (
           <Link
             href="/invoices/new"
-            className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+            className={PRIMARY_LINK_CLASSES}
           >
             Add invoice
           </Link>
@@ -127,7 +134,7 @@ export default async function InvoicesPage({
             action={
               <Link
                 href="/projects/new"
-                className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                className={PRIMARY_LINK_CLASSES}
               >
                 Add project
               </Link>
@@ -140,7 +147,7 @@ export default async function InvoicesPage({
             action={
               <Link
                 href="/invoices"
-                className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                className={PRIMARY_LINK_CLASSES}
               >
                 Clear filters
               </Link>
@@ -153,7 +160,7 @@ export default async function InvoicesPage({
             action={
               <Link
                 href="/invoices/new"
-                className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                className={PRIMARY_LINK_CLASSES}
               >
                 Add invoice
               </Link>

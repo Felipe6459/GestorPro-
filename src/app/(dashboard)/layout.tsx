@@ -90,7 +90,19 @@ export default async function DashboardLayout({
   }));
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50 md:flex-row">
+    // Design System page migration Batch 2 — bg-gray-50 replaced with
+    // bg-surface-recessed: globals.css's own token comment names "page
+    // gutter" as one of surface-recessed's intended consumers, alongside
+    // Sidebar (already migrated in PR #151, and already this same
+    // token) — so this wrapper now reads as visually continuous with the
+    // Sidebar's own gutter tone, exactly the Round 3 layered-surface
+    // hierarchy (recessed gutter/chrome, opaque cards floating on top).
+    // This was the root cause of every Batch-1 "temporary literal text"
+    // exception: page-owned headings/text render directly on this
+    // wrapper with no card of their own, so as long as it stayed raw
+    // light-only, a theme-aware light-in-dark text color here produced
+    // light-on-light. See each Batch-1 file's own cleanup in this PR.
+    <div className="bg-surface-recessed flex min-h-screen flex-col md:flex-row">
       {/*
         Aqenra Theme Persistence Phase C2 — authenticated DB -> cookie/
         runtime reconciliation. currentUser already carries themeMode as

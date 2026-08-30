@@ -46,9 +46,8 @@ export function LeaveOrganizationButton({
       >
         Leave organization
       </Button>
-      {/* text-gray-500 kept literal: this renders directly on the caller's page-shell background (TeamPage's header row), not a card — see TeamPage's own heading comment. */}
       {disabled && disabledReason && (
-        <p className="mt-1 text-xs text-gray-500">{disabledReason}</p>
+        <p className="text-text-muted mt-1 text-xs">{disabledReason}</p>
       )}
       <ConfirmDialog
         ref={dialogRef}

@@ -9,8 +9,7 @@ import { DASHBOARD_PERIOD_OPTIONS, type DashboardPeriod } from "@/lib/dashboard/
 export function PeriodSelector({ period }: { period: DashboardPeriod }) {
   return (
     <div>
-      {/* text-gray-500 kept literal: this label sits directly on the caller's unmigrated page-shell background, not a card — see DashboardPage's own heading comment. The pill group below IS its own opaque bg-surface card, so its contents are unaffected. */}
-      <span id="dashboard-period-label" className="block text-xs font-medium text-gray-500">
+      <span id="dashboard-period-label" className="text-text-muted block text-xs font-medium">
         Period
       </span>
       <div
@@ -34,7 +33,7 @@ export function PeriodSelector({ period }: { period: DashboardPeriod }) {
           );
         })}
       </div>
-      <p className="mt-1 text-xs text-gray-500">
+      <p className="text-text-muted mt-1 text-xs">
         Only Paid revenue and Revenue over time change with this — everything else always reflects the
         current state.
       </p>

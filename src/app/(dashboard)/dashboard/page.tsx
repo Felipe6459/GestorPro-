@@ -47,25 +47,14 @@ export default async function DashboardPage({
               comment on why this uses plain `focus:` rather than
               `focus-visible:` (never in the tab order, only ever
               programmatically focused). */}
-          {/*
-            text-gray-900/text-gray-600 (not the semantic text-text-*
-            tokens) deliberately kept literal here: this heading/subtitle
-            sits directly on (dashboard)/layout.tsx's own still-raw
-            bg-gray-50 page-shell background (out of this batch's scope —
-            it's shared across every staff route, not page-owned to
-            Dashboard/Clients/Team) — that wrapper never goes dark, so a
-            theme-aware light-in-dark-mode text color here would produce
-            light-on-light. Every other migrated token below sits inside
-            its own opaque migrated card/table and is unaffected by this.
-          */}
           <h1
             id={ONBOARDING_DISMISS_RETURN_FOCUS_ID}
             tabIndex={-1}
-            className="rounded text-2xl font-semibold tracking-tight text-gray-900 focus:outline-none focus:ring-2 focus:ring-focus-ring focus:ring-offset-2"
+            className="text-text-primary focus:ring-focus-ring rounded text-2xl font-semibold tracking-tight focus:outline-none focus:ring-2 focus:ring-offset-2"
           >
             Dashboard
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="text-text-secondary mt-1 text-sm">
             An overview of your clients, projects, tasks, and invoices.
           </p>
         </div>
@@ -108,8 +97,7 @@ export default async function DashboardPage({
       />
 
       <div>
-        {/* text-gray-900 kept literal — see the page heading's own comment above: this h2 also sits directly on the unmigrated page-shell background, not a card. */}
-        <h2 className="text-lg font-semibold tracking-tight text-gray-900">Breakdowns</h2>
+        <h2 className="text-text-primary text-lg font-semibold tracking-tight">Breakdowns</h2>
         <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3">
           <BreakdownCard title="Invoice status" items={analytics.breakdowns.invoiceStatus} labelFormatter={formatInvoiceStatusLabel} />
           <BreakdownCard title="Task status" items={analytics.breakdowns.taskStatus} />
