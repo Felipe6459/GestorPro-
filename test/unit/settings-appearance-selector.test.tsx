@@ -154,6 +154,30 @@ describe("appearance-selector.tsx — source contract: identity-agnostic provide
     expect(source).not.toMatch(/document\.cookie/);
     expect(source).toMatch(/useTheme\(\)/);
   });
+
+  it("regression: the selected-state accent wash is layered separately, never as the label's own background-color replacing bg-surface", () => {
+    // The fixed bug: `has-[:checked]:bg-accent-subtle` on the SAME
+    // element as `bg-surface` fully replaces it (both target
+    // `background-color`), and `--accent-subtle` is intentionally
+    // semi-transparent in Dark — so the selected card ended up
+    // compositing against a distant, unmigrated light ancestor instead
+    // of its own opaque surface. The label must keep `bg-surface`
+    // unconditionally, with no `has-[:checked]:bg-*`/`has-[:checked]:bg-accent-subtle`
+    // override on it — selection is expressed by a separate `peer-checked`
+    // layer instead, which always composites against this label's own
+    // opaque background regardless of what ancestor happens to be behind it.
+    const labelMatch = source.match(/<label[\s\S]*?className="([^"]*)"/);
+    expect(labelMatch).toBeDefined();
+    const labelClassName = labelMatch![1];
+    expect(labelClassName).toMatch(/\bbg-surface\b/);
+    expect(labelClassName).not.toMatch(/has-\[:checked\]:bg-/);
+
+    // The wash itself lives on its own element, gated by `peer-checked`
+    // (not `has-[:checked]:bg-accent-subtle` on the label), so it can
+    // never stand in as the label's sole background.
+    expect(source).toMatch(/peer-checked:opacity-100/);
+    expect(source).toMatch(/className="peer sr-only"/);
+  });
 });
 
 describe("theme-provider.tsx — remains identity-agnostic (Phase D did not couple it to Appearance/Server Actions)", () => {

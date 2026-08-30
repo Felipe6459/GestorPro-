@@ -105,7 +105,7 @@ export function AppearanceSelector() {
           return (
             <label
               key={option.mode}
-              className="has-[:checked]:border-accent has-[:checked]:bg-accent-subtle has-[:focus-visible]:ring-focus-ring border-border-default bg-surface relative flex cursor-pointer flex-col gap-1 rounded-lg border p-4 transition-colors hover:bg-[var(--hover)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-offset-2"
+              className="has-[:checked]:border-accent has-[:focus-visible]:ring-focus-ring border-border-default bg-surface relative flex cursor-pointer flex-col gap-1 rounded-lg border p-4 transition-colors hover:bg-[var(--hover)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-offset-2"
             >
               <input
                 type="radio"
@@ -124,18 +124,45 @@ export function AppearanceSelector() {
                 // separate, exactly what aria-describedby is for.
                 aria-labelledby={titleId}
                 aria-describedby={descId}
-                className="sr-only"
+                // `peer` — see the wash span immediately below, which
+                // targets this via `peer-checked:` rather than the
+                // `has-[:checked]:` used on the label itself.
+                className="peer sr-only"
               />
-              <span className="flex items-center justify-between gap-2">
+              {/*
+                The selection "wash" lives on its own layer instead of
+                being the label's own `background-color` (a real, fixed
+                bug this replaces — see this file's own audit history:
+                `has-[:checked]:bg-accent-subtle` previously sat on the
+                SAME element and SAME CSS property as `bg-surface`, so it
+                fully replaced the opaque surface rather than tinting it.
+                `--accent-subtle` is intentionally semi-transparent in
+                Dark (a wash meant to composite over an opaque surface),
+                so with nothing opaque of its own behind it, it painted
+                against whatever ancestor happened to be there instead —
+                in practice the still-light, unmigrated Settings shell,
+                producing a pale, low-contrast selected card.
+                Positioning the wash as its own absolutely-positioned
+                layer, INSIDE this `relative` label, means it always
+                composites against this label's own `bg-surface` — never
+                against any ancestor, migrated or not. `peer-checked`
+                toggles its opacity; the label itself keeps `bg-surface`
+                unconditionally. In Light, `--accent-subtle` is already
+                fully opaque, so this renders pixel-identical to before. */}
+              <span
+                aria-hidden="true"
+                className="bg-accent-subtle pointer-events-none absolute inset-0 rounded-lg opacity-0 transition-opacity peer-checked:opacity-100"
+              />
+              <span className="relative flex items-center justify-between gap-2">
                 <span id={titleId} className="text-text-primary text-sm font-medium">
                   {option.title}
                 </span>
                 <CheckIcon className={`text-accent h-4 w-4 shrink-0 ${selected ? "opacity-100" : "opacity-0"}`} />
               </span>
-              <span id={descId} className="text-text-secondary text-xs">
+              <span id={descId} className="text-text-secondary relative text-xs">
                 {option.description}
               </span>
-              {selected && resolvedHint && <span className="text-text-muted text-xs">{resolvedHint}</span>}
+              {selected && resolvedHint && <span className="text-text-muted relative text-xs">{resolvedHint}</span>}
             </label>
           );
         })}
