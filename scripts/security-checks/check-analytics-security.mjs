@@ -222,7 +222,7 @@ function blockAttributes(cleanedBody) {
 
 const portalUserBlock = extractModelBlock(schemaSource, "PortalUser");
 const portalUserFields = portalUserBlock ? fieldNames(stripLineComments(portalUserBlock.body)) : [];
-const PORTAL_USER_ALLOWED_FIELDS = ["id", "clientId", "client", "email", "name", "lastLoginAt", "createdAt", "updatedAt"];
+const PORTAL_USER_ALLOWED_FIELDS = ["id", "clientId", "client", "email", "name", "themeMode", "lastLoginAt", "createdAt", "updatedAt"];
 ok = report(
   "PortalUser has exactly the approved field set, including exactly one login-tracking field (lastLoginAt) and no login-history/event field",
   portalUserBlock !== null &&
