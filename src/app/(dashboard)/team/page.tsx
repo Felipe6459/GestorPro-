@@ -2,6 +2,7 @@ import { getCurrentMembership } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { Role } from "@/generated/prisma/enums";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
@@ -59,6 +60,7 @@ export default async function TeamPage() {
   return (
     <div className="space-y-10">
       <div className="flex items-start justify-between gap-4">
+        {/* text-gray-900/text-gray-600 kept literal: this heading (and the three section h2's below) sit directly on (dashboard)/layout.tsx's still-raw bg-gray-50 page-shell background (out of this batch's scope). Table/RecordCard/the Invite-a-member card are all safely opaque and unaffected. */}
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
             Team
@@ -101,7 +103,7 @@ export default async function TeamPage() {
                     <TableCell emphasis>
                       {m.user.name}
                       {isSelf && (
-                        <span className="ml-2 text-xs font-normal text-gray-500">
+                        <span className="text-text-muted ml-2 text-xs font-normal">
                           (You)
                         </span>
                       )}
@@ -154,7 +156,7 @@ export default async function TeamPage() {
                     <>
                       {m.user.name}
                       {isSelf && (
-                        <span className="ml-2 text-xs font-normal text-gray-500">(You)</span>
+                        <span className="text-text-muted ml-2 text-xs font-normal">(You)</span>
                       )}
                     </>
                   }
@@ -290,7 +292,7 @@ export default async function TeamPage() {
           <h2 className="text-lg font-semibold tracking-tight text-gray-900">
             Invite a member
           </h2>
-          <div className="mt-4 max-w-md rounded-lg border border-gray-200 bg-white p-6">
+          <div className={`mt-4 max-w-md p-6 ${CARD_SURFACE_CLASSES}`}>
             <InviteForm action={inviteMemberAction} />
           </div>
         </section>

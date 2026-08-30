@@ -1,16 +1,26 @@
 import { formatStatusLabel } from "@/lib/format";
 import { STATUS_TONES, type StatusTone } from "@/components/ui/status-badge";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 // Static class strings only — Tailwind can't see a dynamically-built
 // `bg-${color}-500`, so every value here is written out in full and never
 // concatenated at runtime.
+//
+// Design System page migration Batch 1 — the raw Tailwind palette colors
+// above are replaced with the same semantic success/warning/danger/info
+// tokens StatusBadge already uses for these exact STATUS_TONES categories
+// (imported below, unchanged) — no new color meaning invented, just a
+// tokenized presentation of the same existing mapping. neutral/muted have
+// no dedicated brand color (they mean "no particular status"), so they
+// use the text/border scale instead, preserving their original relative
+// weight (neutral a shade more prominent than muted).
 const TONE_BAR_CLASSES: Record<StatusTone, string> = {
-  neutral: "bg-gray-400",
-  info: "bg-blue-500",
-  warning: "bg-amber-500",
-  success: "bg-green-500",
-  danger: "bg-red-500",
-  muted: "bg-gray-300",
+  neutral: "bg-text-muted",
+  info: "bg-info",
+  warning: "bg-warning",
+  success: "bg-success",
+  danger: "bg-danger",
+  muted: "bg-border-strong",
 };
 
 export type BreakdownItem = { status: string; count: number };
@@ -32,11 +42,11 @@ export function BreakdownCard({
   const total = items.reduce((sum, item) => sum + item.count, 0);
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
-      <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
+    <div className={`p-6 ${CARD_SURFACE_CLASSES}`}>
+      <h3 className="text-text-primary text-sm font-semibold">{title}</h3>
 
       {total === 0 ? (
-        <p className="mt-4 text-sm text-gray-500">No data yet.</p>
+        <p className="text-text-muted mt-4 text-sm">No data yet.</p>
       ) : (
         <ul className="mt-4 space-y-3">
           {items.map((item) => {
@@ -45,12 +55,12 @@ export function BreakdownCard({
             return (
               <li key={item.status}>
                 <div className="flex items-baseline justify-between gap-2 text-sm">
-                  <span className="text-gray-700">{labelFormatter(item.status)}</span>
-                  <span className="text-gray-500">
+                  <span className="text-text-secondary">{labelFormatter(item.status)}</span>
+                  <span className="text-text-muted">
                     {item.count} ({percent}%)
                   </span>
                 </div>
-                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+                <div className="bg-surface-recessed mt-1 h-1.5 w-full overflow-hidden rounded-full">
                   <div
                     className={`h-full rounded-full ${TONE_BAR_CLASSES[tone]}`}
                     style={{ width: `${percent}%` }}

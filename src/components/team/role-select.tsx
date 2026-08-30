@@ -38,7 +38,7 @@ export function RoleSelect({
         <option value="ADMIN">Admin</option>
       </Select>
       {error && (
-        <p role="alert" className="mt-1 text-xs text-red-600">
+        <p role="alert" className="text-danger mt-1 text-xs">
           {error}
         </p>
       )}

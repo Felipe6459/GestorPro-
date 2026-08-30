@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { ConfirmDialog, type ConfirmDialogHandle } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/toast/toast-provider";
+import { Button } from "@/components/ui/button";
 
 export function LeaveOrganizationButton({
   action,
@@ -37,14 +38,15 @@ export function LeaveOrganizationButton({
 
   return (
     <div>
-      <button
+      <Button
         type="button"
+        variant="secondary"
         disabled={disabled || pending}
         onClick={() => dialogRef.current?.open()}
-        className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Leave organization
-      </button>
+      </Button>
+      {/* text-gray-500 kept literal: this renders directly on the caller's page-shell background (TeamPage's header row), not a card — see TeamPage's own heading comment. */}
       {disabled && disabledReason && (
         <p className="mt-1 text-xs text-gray-500">{disabledReason}</p>
       )}

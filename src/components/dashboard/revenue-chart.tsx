@@ -1,6 +1,7 @@
 import { formatCurrency } from "@/lib/format";
 import { formatDashboardPeriodLabel, type DashboardBucketUnit, type DashboardPeriod } from "@/lib/dashboard/period";
 import type { RevenueBucket } from "@/lib/dashboard/revenue";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 const BAR_MAX_HEIGHT_PX = 160;
 
@@ -36,17 +37,17 @@ export function RevenueChart({
   const isEmpty = total === 0;
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
+    <div className={`p-6 ${CARD_SURFACE_CLASSES}`}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="text-sm font-semibold text-gray-900">Revenue over time</h3>
-        <p className="text-xs text-gray-500">{formatDashboardPeriodLabel(period)}</p>
+        <h3 className="text-text-primary text-sm font-semibold">Revenue over time</h3>
+        <p className="text-text-muted text-xs">{formatDashboardPeriodLabel(period)}</p>
       </div>
-      <p className="mt-1 text-2xl font-semibold tracking-tight text-gray-900">
+      <p className="text-text-primary mt-1 text-2xl font-semibold tracking-tight">
         {formatCurrency(total)}
       </p>
 
       {isEmpty ? (
-        <p className="mt-6 text-sm text-gray-500">No paid invoices in this period.</p>
+        <p className="text-text-muted mt-6 text-sm">No paid invoices in this period.</p>
       ) : (
         <div
           role="img"
@@ -62,7 +63,7 @@ export function RevenueChart({
               <div key={bucket.bucketStart} className="flex flex-1 flex-col items-center justify-end gap-1">
                 <div
                   title={`${label}: ${formatCurrency(bucket.amount)}`}
-                  className={`w-full rounded-t ${bucket.amount > 0 ? "bg-gray-900" : "bg-gray-100"}`}
+                  className={`w-full rounded-t ${bucket.amount > 0 ? "bg-accent" : "bg-border-default"}`}
                   style={{ height: heightPx }}
                 >
                   <span className="sr-only">
@@ -70,7 +71,7 @@ export function RevenueChart({
                   </span>
                 </div>
                 {showLabel && (
-                  <span aria-hidden="true" className="w-full truncate text-center text-[10px] text-gray-400">
+                  <span aria-hidden="true" className="text-text-muted w-full truncate text-center text-[10px]">
                     {label}
                   </span>
                 )}

@@ -7,6 +7,8 @@ import { RevenueChart } from "@/components/dashboard/revenue-chart";
 import { BreakdownCard } from "@/components/dashboard/breakdown-card";
 import { RecentActivity } from "@/components/dashboard/recent-activity";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { formatInvoiceStatusLabel } from "@/lib/invoices/status-label";
 import { OnboardingCard, ONBOARDING_DISMISS_RETURN_FOCUS_ID } from "@/components/onboarding/onboarding-card";
 import { parseDashboardPeriod, formatDashboardPeriodLabel } from "@/lib/dashboard/period";
@@ -14,10 +16,9 @@ import { getOrganizationOnboardingProgress } from "@/lib/onboarding/progress";
 import { getDashboardAnalytics } from "./query";
 import type { RawSearchParams } from "@/lib/list-params";
 
-const linkClass =
-  "rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2";
+const linkClass = ACTION_LINK_CLASSES;
 const itemLinkClass =
-  "rounded text-sm font-medium text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2";
+  "text-text-primary focus-visible:ring-focus-ring rounded text-sm font-medium hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
 
 export default async function DashboardPage({
   searchParams,
@@ -46,10 +47,21 @@ export default async function DashboardPage({
               comment on why this uses plain `focus:` rather than
               `focus-visible:` (never in the tab order, only ever
               programmatically focused). */}
+          {/*
+            text-gray-900/text-gray-600 (not the semantic text-text-*
+            tokens) deliberately kept literal here: this heading/subtitle
+            sits directly on (dashboard)/layout.tsx's own still-raw
+            bg-gray-50 page-shell background (out of this batch's scope —
+            it's shared across every staff route, not page-owned to
+            Dashboard/Clients/Team) — that wrapper never goes dark, so a
+            theme-aware light-in-dark-mode text color here would produce
+            light-on-light. Every other migrated token below sits inside
+            its own opaque migrated card/table and is unaffected by this.
+          */}
           <h1
             id={ONBOARDING_DISMISS_RETURN_FOCUS_ID}
             tabIndex={-1}
-            className="rounded text-2xl font-semibold tracking-tight text-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2"
+            className="rounded text-2xl font-semibold tracking-tight text-gray-900 focus:outline-none focus:ring-2 focus:ring-focus-ring focus:ring-offset-2"
           >
             Dashboard
           </h1>
@@ -96,6 +108,7 @@ export default async function DashboardPage({
       />
 
       <div>
+        {/* text-gray-900 kept literal — see the page heading's own comment above: this h2 also sits directly on the unmigrated page-shell background, not a card. */}
         <h2 className="text-lg font-semibold tracking-tight text-gray-900">Breakdowns</h2>
         <div className="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-3">
           <BreakdownCard title="Invoice status" items={analytics.breakdowns.invoiceStatus} labelFormatter={formatInvoiceStatusLabel} />
@@ -107,24 +120,24 @@ export default async function DashboardPage({
       <RecentActivity items={analytics.recentActivity} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <section className={`p-6 ${CARD_SURFACE_CLASSES}`}>
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900">Upcoming tasks</h3>
+            <h3 className="text-text-primary text-sm font-semibold">Upcoming tasks</h3>
             <Link href="/tasks" className={linkClass}>
               View all
             </Link>
           </div>
           {analytics.upcomingTasks.length === 0 ? (
-            <p className="text-sm text-gray-500">No upcoming tasks.</p>
+            <p className="text-text-muted text-sm">No upcoming tasks.</p>
           ) : (
-            <ul className="divide-y divide-gray-200">
+            <ul className="divide-border-default divide-y">
               {analytics.upcomingTasks.map((task) => (
                 <li key={task.id} className="py-3 first:pt-0 last:pb-0">
                   <Link href={`/tasks/${task.id}/edit`} className={itemLinkClass}>
                     {task.title}
                   </Link>
-                  <p className="text-sm text-gray-500">{task.projectName}</p>
-                  <p className="mt-1 text-xs text-gray-500">
+                  <p className="text-text-muted text-sm">{task.projectName}</p>
+                  <p className="text-text-muted mt-1 text-xs">
                     Due {task.dueDate.toLocaleDateString()}
                   </p>
                 </li>
@@ -133,16 +146,16 @@ export default async function DashboardPage({
           )}
         </section>
 
-        <section className="rounded-lg border border-gray-200 bg-white p-6">
-          <h3 className="mb-4 text-sm font-semibold text-gray-900">Overdue items</h3>
+        <section className={`p-6 ${CARD_SURFACE_CLASSES}`}>
+          <h3 className="text-text-primary mb-4 text-sm font-semibold">Overdue items</h3>
           {analytics.overdueItems.length === 0 ? (
-            <p className="text-sm text-gray-500">Nothing overdue.</p>
+            <p className="text-text-muted text-sm">Nothing overdue.</p>
           ) : (
-            <ul className="divide-y divide-gray-200">
+            <ul className="divide-border-default divide-y">
               {analytics.overdueItems.map((item) => (
                 <li key={`${item.kind}-${item.id}`} className="py-3 first:pt-0 last:pb-0">
                   <div className="flex items-center gap-2">
-                    <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                    <span className="bg-surface-muted text-text-secondary inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium">
                       {item.kind === "task" ? "Task" : "Invoice"}
                     </span>
                     <Link
@@ -152,11 +165,11 @@ export default async function DashboardPage({
                       {item.kind === "task" ? item.title : item.invoiceNumber}
                     </Link>
                   </div>
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p className="text-text-muted mt-1 text-sm">
                     {item.kind === "task" ? item.projectName : item.clientName}
                     {item.kind === "invoice" && ` · ${formatCurrency(item.amount, item.currency)}`}
                   </p>
-                  <p className="mt-0.5 text-xs text-red-600">
+                  <p className="text-danger mt-0.5 text-xs">
                     Due {item.dueDate.toLocaleDateString()}
                   </p>
                 </li>
@@ -165,26 +178,26 @@ export default async function DashboardPage({
           )}
         </section>
 
-        <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <section className={`p-6 ${CARD_SURFACE_CLASSES}`}>
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-gray-900">Recent invoices</h3>
+            <h3 className="text-text-primary text-sm font-semibold">Recent invoices</h3>
             <Link href="/invoices" className={linkClass}>
               View all
             </Link>
           </div>
           {analytics.recentInvoices.length === 0 ? (
-            <p className="text-sm text-gray-500">No invoices yet.</p>
+            <p className="text-text-muted text-sm">No invoices yet.</p>
           ) : (
-            <ul className="divide-y divide-gray-200">
+            <ul className="divide-border-default divide-y">
               {analytics.recentInvoices.map((invoice) => (
                 <li key={invoice.id} className="py-3 first:pt-0 last:pb-0">
                   <Link href={`/invoices/${invoice.id}/edit`} className={itemLinkClass}>
                     {invoice.invoiceNumber}
                   </Link>
-                  <p className="text-sm text-gray-500">{invoice.clientName}</p>
+                  <p className="text-text-muted text-sm">{invoice.clientName}</p>
                   <div className="mt-1 flex items-center gap-2">
                     <StatusBadge status={invoice.status} label={formatInvoiceStatusLabel(invoice.status)} />
-                    <span className="text-xs text-gray-500">
+                    <span className="text-text-muted text-xs">
                       {formatCurrency(invoice.amount, invoice.currency)}
                     </span>
                   </div>
