@@ -18,6 +18,13 @@ enum Role {
   MEMBER
 }
 
+enum ThemeMode {
+  LIGHT
+  DARK
+  SYSTEM
+  AUTOMATIC
+}
+
 enum ClientStatus {
   LEAD
   ACTIVE
@@ -313,13 +320,14 @@ enum DomainVerificationStatus {
 
 // id is intended to match Supabase auth.users.id once auth is wired up.
 model User {
-  id        String   @id @default(uuid()) @db.Uuid
-  email     String   @unique
+  id        String    @id @default(uuid()) @db.Uuid
+  email     String    @unique
   name      String
   avatarUrl String?
-  role      Role     @default(MEMBER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  role      Role      @default(MEMBER)
+  themeMode ThemeMode @default(SYSTEM)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   ownedProjects Project[] @relation("ProjectOwner")
   assignedTasks Task[]    @relation("TaskAssignee")
@@ -1384,6 +1392,8 @@ model PortalUser {
 
   email String
   name  String
+
+  themeMode ThemeMode @default(SYSTEM)
 
   // Portal Analytics persistence foundation (docs/analytics-architecture.md
   // §12, Slice 1). Current-state only: the timestamp of this identity's
