@@ -13,16 +13,6 @@ function buildHref(
 const NAV_BUTTON_CLASS =
   "focus-visible:ring-focus-ring rounded-md border px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
 
-// This component renders directly on the caller's page background — every
-// page-level caller (Clients/Invoices/Projects/Tasks) places it as a
-// sibling of Table/RecordCard, not inside any card — so unlike
-// SearchFilterBar (its own opaque bg-surface form), there is no opaque
-// ancestor here yet. (dashboard)/layout.tsx's own page-shell background
-// is still raw bg-gray-50 (out of this batch's scope, shared across every
-// staff route), so a theme-aware light-in-dark text color here would
-// produce light-on-light. The literal grays below are deliberately kept
-// invariant until that shell itself is migrated.
-
 export function Pagination({
   basePath,
   params,
@@ -40,7 +30,7 @@ export function Pagination({
   return (
     <nav
       aria-label="Pagination"
-      className="mt-4 flex items-center justify-between text-sm text-gray-600"
+      className="text-text-secondary mt-4 flex items-center justify-between text-sm"
     >
       <p>
         Page {page} of {totalPages}
@@ -49,14 +39,14 @@ export function Pagination({
         {hasPrev ? (
           <Link
             href={buildHref(basePath, params, page - 1)}
-            className={`${NAV_BUTTON_CLASS} border-gray-300 text-gray-700 hover:bg-gray-50`}
+            className={`${NAV_BUTTON_CLASS} border-border-strong text-text-secondary hover:bg-[var(--hover)]`}
           >
             Previous
           </Link>
         ) : (
           <span
             aria-disabled="true"
-            className={`${NAV_BUTTON_CLASS} cursor-not-allowed border-gray-200 text-gray-300`}
+            className={`${NAV_BUTTON_CLASS} border-border-default text-text-muted cursor-not-allowed`}
           >
             Previous
           </span>
@@ -64,14 +54,14 @@ export function Pagination({
         {hasNext ? (
           <Link
             href={buildHref(basePath, params, page + 1)}
-            className={`${NAV_BUTTON_CLASS} border-gray-300 text-gray-700 hover:bg-gray-50`}
+            className={`${NAV_BUTTON_CLASS} border-border-strong text-text-secondary hover:bg-[var(--hover)]`}
           >
             Next
           </Link>
         ) : (
           <span
             aria-disabled="true"
-            className={`${NAV_BUTTON_CLASS} cursor-not-allowed border-gray-200 text-gray-300`}
+            className={`${NAV_BUTTON_CLASS} border-border-default text-text-muted cursor-not-allowed`}
           >
             Next
           </span>

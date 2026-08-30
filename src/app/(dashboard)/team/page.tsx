@@ -60,12 +60,11 @@ export default async function TeamPage() {
   return (
     <div className="space-y-10">
       <div className="flex items-start justify-between gap-4">
-        {/* text-gray-900/text-gray-600 kept literal: this heading (and the three section h2's below) sit directly on (dashboard)/layout.tsx's still-raw bg-gray-50 page-shell background (out of this batch's scope). Table/RecordCard/the Invite-a-member card are all safely opaque and unaffected. */}
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+          <h1 className="text-text-primary text-2xl font-semibold tracking-tight">
             Team
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="text-text-secondary mt-1 text-sm">
             Manage who has access to your organization.
           </p>
         </div>
@@ -81,7 +80,7 @@ export default async function TeamPage() {
       </div>
 
       <section>
-        <h2 className="text-lg font-semibold tracking-tight text-gray-900">
+        <h2 className="text-text-primary text-lg font-semibold tracking-tight">
           Members
         </h2>
         <div className="hidden xl:block">
@@ -196,7 +195,7 @@ export default async function TeamPage() {
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold tracking-tight text-gray-900">
+        <h2 className="text-text-primary text-lg font-semibold tracking-tight">
           Pending invitations
         </h2>
         {invitations.length === 0 ? (
@@ -289,7 +288,7 @@ export default async function TeamPage() {
 
       {canManage && (
         <section>
-          <h2 className="text-lg font-semibold tracking-tight text-gray-900">
+          <h2 className="text-text-primary text-lg font-semibold tracking-tight">
             Invite a member
           </h2>
           <div className={`mt-4 max-w-md p-6 ${CARD_SURFACE_CLASSES}`}>
