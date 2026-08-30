@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState, type ChangeEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { FileInput } from "@/components/ui/file-input";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { uploadCompanyLogoAction } from "./actions";
 import type { LogoUploadState } from "@/types";
 
@@ -68,14 +69,14 @@ function LogoUploadFormInner({ currentLogoUrl }: { currentLogoUrl: string | null
   const displayedUrl = previewUrl ?? currentLogoUrl;
 
   return (
-    <div className="mt-6 space-y-4 rounded-lg border border-gray-200 bg-white p-6">
+    <div className={`mt-6 space-y-4 p-6 ${CARD_SURFACE_CLASSES}`}>
       <div>
-        <h2 className="text-base font-semibold text-gray-900">Logo</h2>
-        <p className="mt-1 text-sm text-gray-500">PNG, JPEG, or WebP. Max 2 MB.</p>
+        <h2 className="text-text-primary text-base font-semibold">Logo</h2>
+        <p className="text-text-muted mt-1 text-sm">PNG, JPEG, or WebP. Max 2 MB.</p>
       </div>
 
       <div className="flex flex-wrap items-start gap-4">
-        <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-gray-50">
+        <div className="border-border-default bg-surface-muted flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border">
           {displayedUrl ? (
             // Deliberately a plain <img>, not next/image: this shows either
             // a client-only blob: URL (a live pre-upload preview) or an
@@ -86,7 +87,7 @@ function LogoUploadFormInner({ currentLogoUrl }: { currentLogoUrl: string | null
             // eslint-disable-next-line @next/next/no-img-element
             <img src={displayedUrl} alt="Organization logo" className="h-full w-full object-contain" />
           ) : (
-            <span className="text-xs text-gray-400">No logo</span>
+            <span className="text-text-muted text-xs">No logo</span>
           )}
         </div>
 
@@ -102,7 +103,7 @@ function LogoUploadFormInner({ currentLogoUrl }: { currentLogoUrl: string | null
             triggerLabel="Choose logo"
           />
           {state.error && (
-            <p role="alert" className="text-sm text-red-600">
+            <p role="alert" className="text-danger text-sm">
               {state.error}
             </p>
           )}

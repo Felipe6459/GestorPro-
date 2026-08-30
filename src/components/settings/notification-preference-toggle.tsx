@@ -53,7 +53,7 @@ export function NotificationPreferenceToggle({
         disabled={isPending}
         onChange={handleChange}
         aria-describedby={describedById}
-        className="h-4 w-4 rounded border-gray-300 text-black focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+        className="border-border-strong accent-accent focus-visible:ring-focus-ring h-4 w-4 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
       />
     </>
   );

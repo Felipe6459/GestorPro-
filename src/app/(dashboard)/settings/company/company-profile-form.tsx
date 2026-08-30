@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { FormField } from "@/components/ui/form-field";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import type { CompanyProfileFormState } from "@/types";
 import type { CompanyProfileData } from "@/lib/organization-setup/company-profile";
 
@@ -46,9 +47,9 @@ export function CompanyProfileForm({
   const [state, formAction, pending] = useActionState(updateCompanyProfileAction, initialState);
 
   return (
-    <form action={formAction} className="mt-6 space-y-8 rounded-lg border border-gray-200 bg-white p-6">
+    <form action={formAction} className={`mt-6 space-y-8 p-6 ${CARD_SURFACE_CLASSES}`}>
       <fieldset className="space-y-4">
-        <legend className="text-base font-semibold text-gray-900">Business</legend>
+        <legend className="text-text-primary text-base font-semibold">Business</legend>
 
         <FormField label="Display / company name" htmlFor="displayName" required error={state.fieldErrors?.displayName}>
           <Input
@@ -112,7 +113,7 @@ export function CompanyProfileForm({
       </fieldset>
 
       <fieldset className="space-y-4">
-        <legend className="text-base font-semibold text-gray-900">Contact</legend>
+        <legend className="text-text-primary text-base font-semibold">Contact</legend>
 
         <FormField label="Support email" htmlFor="supportEmail" error={state.fieldErrors?.supportEmail}>
           <Input
@@ -155,7 +156,7 @@ export function CompanyProfileForm({
       </fieldset>
 
       <fieldset className="space-y-4">
-        <legend className="text-base font-semibold text-gray-900">Address</legend>
+        <legend className="text-text-primary text-base font-semibold">Address</legend>
 
         <FormField label="Country" htmlFor="country" required error={state.fieldErrors?.country}>
           <Input
@@ -210,7 +211,7 @@ export function CompanyProfileForm({
       </fieldset>
 
       <fieldset className="space-y-4">
-        <legend className="text-base font-semibold text-gray-900">Tax</legend>
+        <legend className="text-text-primary text-base font-semibold">Tax</legend>
 
         <FormField label="Tax ID / VAT" htmlFor="taxId" error={state.fieldErrors?.taxId}>
           <Input
@@ -224,7 +225,7 @@ export function CompanyProfileForm({
       </fieldset>
 
       <fieldset className="space-y-4">
-        <legend className="text-base font-semibold text-gray-900">Branding</legend>
+        <legend className="text-text-primary text-base font-semibold">Branding</legend>
 
         {/*
           Deliberately type="text", not type="color": a native color
@@ -248,12 +249,12 @@ export function CompanyProfileForm({
       </fieldset>
 
       {state.error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-danger text-sm">
           {state.error}
         </p>
       )}
       {state.message && (
-        <p role="status" className="text-sm text-green-600">
+        <p role="status" className="text-success text-sm">
           {state.message}
         </p>
       )}

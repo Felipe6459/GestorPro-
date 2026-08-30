@@ -3,6 +3,7 @@ import { getCompanyProfile } from "@/lib/organization-setup/company-profile";
 import { canManageCompanyProfile } from "@/lib/organization-setup/authorization";
 import { getSupportedCurrencies, getSupportedTimezones } from "@/lib/validation/company-profile";
 import { DefinitionList, DefinitionItem } from "@/components/ui/definition-list";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { CompanyProfileForm } from "./company-profile-form";
 import { LogoUploadForm } from "./logo-upload-form";
 
@@ -33,8 +34,8 @@ export default async function CompanyProfilePage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Business identity</h1>
-      <p className="mt-1 text-sm text-gray-500">Configure your business — legal details, contact info, address, tax ID, and branding.</p>
+      <h1 className="text-text-primary text-2xl font-semibold tracking-tight">Business identity</h1>
+      <p className="text-text-muted mt-1 text-sm">Configure your business — legal details, contact info, address, tax ID, and branding.</p>
 
       {canManage ? (
         <>
@@ -42,16 +43,16 @@ export default async function CompanyProfilePage() {
           <LogoUploadForm currentLogoUrl={profile.logoUrl} />
         </>
       ) : (
-        <div className="mt-6 space-y-4 rounded-lg border border-gray-200 bg-white p-6">
-          <p className="text-sm text-gray-600">Only the organization owner can update company details.</p>
+        <div className={`mt-6 space-y-4 p-6 ${CARD_SURFACE_CLASSES}`}>
+          <p className="text-text-secondary text-sm">Only the organization owner can update company details.</p>
           {profile.logoUrl && (
             <div>
-              <p className="text-xs font-medium text-gray-500">Logo</p>
+              <p className="text-text-muted text-xs font-medium">Logo</p>
               {/* eslint-disable-next-line @next/next/no-img-element -- see LogoUploadForm's own doc comment */}
               <img
                 src={profile.logoUrl}
                 alt="Organization logo"
-                className="mt-1 h-20 w-20 rounded-md border border-gray-200 object-contain"
+                className="border-border-default mt-1 h-20 w-20 rounded-md border object-contain"
               />
             </div>
           )}

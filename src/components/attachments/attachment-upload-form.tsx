@@ -46,12 +46,12 @@ export function AttachmentUploadForm({
           triggerLabel="Choose file"
         />
         {state.error && (
-          <p role="alert" className="mt-1 text-sm text-red-600">
+          <p role="alert" className="text-danger mt-1 text-sm">
             {state.error}
           </p>
         )}
         {disabled && disabledReason && !state.error && (
-          <p className="mt-1 text-sm text-gray-500">{disabledReason}</p>
+          <p className="text-text-muted mt-1 text-sm">{disabledReason}</p>
         )}
       </div>
       <Button type="submit" loading={pending} disabled={disabled}>
