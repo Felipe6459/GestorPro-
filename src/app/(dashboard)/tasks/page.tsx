@@ -28,6 +28,14 @@ import {
 import { TASK_STATUSES, TASK_PRIORITIES } from "@/lib/validation/task";
 import { parseTaskListParams, buildTaskWhere, buildTaskOrderBy } from "./query";
 
+// Page-owned primary call-to-action link (navigates, so a real <Link> —
+// not the shared <Button>, which renders a <button>). Matches Button's
+// own primary variant tokens (bg-accent/hover:bg-accent-hover/focus-ring)
+// — the same constant Batch 1/2 introduced for Clients'/Invoices'
+// identical pattern.
+const PRIMARY_LINK_CLASSES =
+  "focus-visible:ring-focus-ring rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
+
 const SORT_OPTIONS = [
   { value: "createdAt:desc", label: "Newest first" },
   { value: "createdAt:asc", label: "Oldest first" },
@@ -72,18 +80,15 @@ export default async function TasksPage({
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+          <h1 className="text-text-primary text-2xl font-semibold tracking-tight">
             Tasks
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="text-text-secondary mt-1 text-sm">
             {total} {total === 1 ? "task" : "tasks"}
           </p>
         </div>
         {projectCount > 0 && (
-          <Link
-            href="/tasks/new"
-            className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
+          <Link href="/tasks/new" className={PRIMARY_LINK_CLASSES}>
             Add task
           </Link>
         )}
@@ -131,10 +136,7 @@ export default async function TasksPage({
             title="You need a project first"
             description="Tasks must belong to a project. Add one before creating a task."
             action={
-              <Link
-                href="/projects/new"
-                className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-              >
+              <Link href="/projects/new" className={PRIMARY_LINK_CLASSES}>
                 Add project
               </Link>
             }
@@ -144,10 +146,7 @@ export default async function TasksPage({
             title="No matching tasks"
             description="Try a different search term or clear your filters."
             action={
-              <Link
-                href="/tasks"
-                className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-              >
+              <Link href="/tasks" className={PRIMARY_LINK_CLASSES}>
                 Clear filters
               </Link>
             }
@@ -157,10 +156,7 @@ export default async function TasksPage({
             title="No tasks yet"
             description="Tasks break a project down into the specific work you need to track and complete."
             action={
-              <Link
-                href="/tasks/new"
-                className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-              >
+              <Link href="/tasks/new" className={PRIMARY_LINK_CLASSES}>
                 Create your first task
               </Link>
             }

@@ -32,6 +32,14 @@ import {
   buildProjectOrderBy,
 } from "./query";
 
+// Page-owned primary call-to-action link (navigates, so a real <Link> —
+// not the shared <Button>, which renders a <button>). Matches Button's
+// own primary variant tokens (bg-accent/hover:bg-accent-hover/focus-ring)
+// — the same constant Batch 1/2 introduced for Clients'/Invoices'
+// identical pattern.
+const PRIMARY_LINK_CLASSES =
+  "focus-visible:ring-focus-ring rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
+
 const SORT_OPTIONS = [
   { value: "createdAt:desc", label: "Newest first" },
   { value: "createdAt:asc", label: "Oldest first" },
@@ -72,18 +80,15 @@ export default async function ProjectsPage({
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+          <h1 className="text-text-primary text-2xl font-semibold tracking-tight">
             Projects
           </h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="text-text-secondary mt-1 text-sm">
             {total} {total === 1 ? "project" : "projects"}
           </p>
         </div>
         {clientCount > 0 && (
-          <Link
-            href="/projects/new"
-            className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
+          <Link href="/projects/new" className={PRIMARY_LINK_CLASSES}>
             Add project
           </Link>
         )}
@@ -119,10 +124,7 @@ export default async function ProjectsPage({
             title="You need a client first"
             description="Projects must belong to a client. Add one before creating a project."
             action={
-              <Link
-                href="/clients/new"
-                className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-              >
+              <Link href="/clients/new" className={PRIMARY_LINK_CLASSES}>
                 Add client
               </Link>
             }
@@ -132,10 +134,7 @@ export default async function ProjectsPage({
             title="No matching projects"
             description="Try a different search term or clear your filters."
             action={
-              <Link
-                href="/projects"
-                className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-              >
+              <Link href="/projects" className={PRIMARY_LINK_CLASSES}>
                 Clear filters
               </Link>
             }
@@ -145,10 +144,7 @@ export default async function ProjectsPage({
             title="No projects yet"
             description="Projects organize your work for a client — group related tasks together and track progress from start to finish."
             action={
-              <Link
-                href="/projects/new"
-                className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-              >
+              <Link href="/projects/new" className={PRIMARY_LINK_CLASSES}>
                 Create your first project
               </Link>
             }

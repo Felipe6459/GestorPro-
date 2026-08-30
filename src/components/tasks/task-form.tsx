@@ -147,7 +147,7 @@ export function TaskForm({
       </FormField>
 
       {state.error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-danger text-sm">
           {state.error}
         </p>
       )}

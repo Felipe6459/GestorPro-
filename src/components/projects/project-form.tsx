@@ -129,7 +129,7 @@ export function ProjectForm({
       </div>
 
       {state.error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-danger text-sm">
           {state.error}
         </p>
       )}
