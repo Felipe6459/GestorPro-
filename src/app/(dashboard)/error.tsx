@@ -1,6 +1,7 @@
 "use client";
 
 import { useErrorBoundaryLogging } from "@/components/ui/segment-error-state";
+import { Button } from "@/components/ui/button";
 
 export default function DashboardError({
   error,
@@ -12,20 +13,16 @@ export default function DashboardError({
   useErrorBoundaryLogging(error);
 
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 py-16 text-center">
-      <h2 className="text-lg font-semibold text-gray-900">
+    <div className="border-border-strong bg-surface flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
+      <h2 className="text-text-primary text-lg font-semibold">
         Something went wrong
       </h2>
-      <p className="mt-2 max-w-sm text-sm text-gray-600">
+      <p className="text-text-secondary mt-2 max-w-sm text-sm">
         We couldn&apos;t load this page. Please try again.
       </p>
-      <button
-        type="button"
-        onClick={() => reset()}
-        className="mt-4 rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-      >
+      <Button type="button" onClick={() => reset()} className="mt-4">
         Try again
-      </button>
+      </Button>
     </div>
   );
 }

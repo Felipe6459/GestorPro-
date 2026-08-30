@@ -4,6 +4,7 @@ import { DismissOnboardingButton } from "./dismiss-onboarding-button";
 import { WorkspaceCompletionSummary } from "./workspace-completion-summary";
 import { shouldRenderOnboardingCard } from "./should-render-card";
 import { getWorkspaceCompletionSummary } from "./workspace-completion";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import type { OnboardingProgressSummary } from "@/lib/onboarding/progress";
 
 /**
@@ -45,14 +46,14 @@ export function OnboardingCard({ progress }: { progress: OnboardingProgressSumma
   const completion = getWorkspaceCompletionSummary(progress);
 
   return (
-    <section aria-labelledby="onboarding-heading" className="rounded-lg border border-gray-200 bg-white p-6">
+    <section aria-labelledby="onboarding-heading" className={`p-6 ${CARD_SURFACE_CLASSES}`}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 id="onboarding-heading" className="text-lg font-semibold tracking-tight text-gray-900">
+          <h2 id="onboarding-heading" className="text-text-primary text-lg font-semibold tracking-tight">
             Getting started
           </h2>
-          <p className="mt-1 text-sm font-medium text-gray-900">{completion.headline}</p>
-          <p className="mt-0.5 text-sm text-gray-600">{completion.subheadline}</p>
+          <p className="text-text-primary mt-1 text-sm font-medium">{completion.headline}</p>
+          <p className="text-text-secondary mt-0.5 text-sm">{completion.subheadline}</p>
         </div>
         <DismissOnboardingButton returnFocusId={ONBOARDING_DISMISS_RETURN_FOCUS_ID} />
       </div>
@@ -72,7 +73,7 @@ export function OnboardingCard({ progress }: { progress: OnboardingProgressSumma
         <WorkspaceCompletionSummary summary={completion} />
       </div>
 
-      <ul className="mt-6 divide-y divide-gray-200">
+      <ul className="divide-border-default mt-6 divide-y">
         {progress.steps.map((step) => (
           <li key={step.key} className="py-4 first:pt-0 last:pb-0">
             <OnboardingStepRow step={step} />

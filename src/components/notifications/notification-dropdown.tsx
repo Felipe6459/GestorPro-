@@ -31,23 +31,23 @@ export function NotificationDropdown({
 
   return (
     <div>
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <span className="text-sm font-semibold text-gray-900">Notifications</span>
+      <div className="border-border-subtle flex items-center justify-between border-b px-4 py-3">
+        <span className="text-text-primary text-sm font-semibold">Notifications</span>
         {hasUnread && (
           <button
             type="button"
             disabled={isPending}
             onClick={handleMarkAll}
-            className="rounded text-xs font-medium text-gray-600 transition-colors hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
+            className="text-text-secondary hover:text-text-primary rounded text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
           >
             Mark all as read
           </button>
         )}
       </div>
       {notifications.length === 0 ? (
-        <p className="px-4 py-8 text-center text-sm text-gray-500">No notifications yet.</p>
+        <p className="text-text-muted px-4 py-8 text-center text-sm">No notifications yet.</p>
       ) : (
-        <ul className="max-h-96 divide-y divide-gray-100 overflow-y-auto">
+        <ul className="divide-border-subtle max-h-96 divide-y overflow-y-auto">
           {notifications.map((item) => (
             <NotificationItem
               key={item.id}
@@ -58,11 +58,11 @@ export function NotificationDropdown({
           ))}
         </ul>
       )}
-      <div className="border-t border-gray-100 px-4 py-2 text-center">
+      <div className="border-border-subtle border-t px-4 py-2 text-center">
         <Link
           href="/notifications"
           onClick={onNavigate}
-          className="rounded text-xs font-medium text-gray-600 transition-colors hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+          className="text-text-secondary hover:text-text-primary focus-visible:ring-focus-ring rounded text-xs font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
         >
           View all notifications
         </Link>

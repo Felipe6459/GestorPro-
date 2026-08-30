@@ -1,4 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 // A flat-list-shaped skeleton — tabs + a row of rows, unlike /activity's
 // day-grouped timeline skeleton and unlike ListPageSkeleton's table columns.
@@ -16,9 +17,9 @@ export default function NotificationsLoading() {
         <Skeleton className="h-8 w-32" />
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-lg border border-gray-200 bg-white">
+      <div className={`mt-6 overflow-hidden ${CARD_SURFACE_CLASSES}`}>
         {Array.from({ length: 6 }).map((_, rowIndex) => (
-          <div key={rowIndex} className="border-b border-gray-100 p-4 last:border-0">
+          <div key={rowIndex} className="border-border-subtle border-b p-4 last:border-0">
             <Skeleton className="h-4 w-2/3" />
             <Skeleton className="mt-2 h-3 w-1/3" />
             <Skeleton className="mt-2 h-3 w-16" />

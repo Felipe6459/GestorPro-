@@ -5,6 +5,19 @@ import { useToast } from "@/components/toast/toast-provider";
 import { skipOnboardingStepAction } from "@/lib/onboarding/actions";
 import type { OnboardingStepKey } from "@/generated/prisma/enums";
 
+// Matches Button's own secondary variant tokens exactly (same constant
+// onboarding-step-row.tsx's own "Go to" link uses), but stays a plain
+// <button> here rather than the shared <Button> component — this and the
+// adjacent "Go to" link can render side by side in the same row (both
+// independently controlled — see this file's own doc comment) and must
+// stay the same compact px-3 py-1.5 size; Button's own base classes
+// already hardcode px-4 py-2, and appending a conflicting padding utility
+// on top is the exact "two same-specificity Tailwind utilities, order
+// doesn't decide the winner" bug button.tsx's own doc comment warns
+// against — safer to match the sibling link's own literal size directly.
+const SKIP_BUTTON_CLASSES =
+  "border-border-strong bg-surface text-text-primary focus-visible:ring-focus-ring rounded-md border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-[var(--hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
+
 /**
  * Same "use client" + useTransition + direct-Server-Action-call pattern as
  * ResetPreferencesButton/NotificationDropdown — the action's own
@@ -46,7 +59,7 @@ export function SkipStepButton({
       disabled={isPending}
       onClick={handleClick}
       aria-label={`Skip: ${label}`}
-      className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+      className={SKIP_BUTTON_CLASSES}
     >
       {isPending ? "Skipping…" : "Skip"}
     </button>
