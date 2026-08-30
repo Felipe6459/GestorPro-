@@ -36,43 +36,65 @@ import type { ThemeMode } from "@/lib/theme/types";
  * device) — never claimed as a no-flash guarantee, unlike the pre-paint
  * script's own first-paint job.
  *
- * Correctness note — `ThemeProvider`'s own `mode`/`resolvedTheme` come
- * from `useSyncExternalStore`, which (by design, see `theme-provider.tsx`'s
- * own doc comment) renders a fixed SSR-safe placeholder
- * (`getServerMode()` = `DEFAULT_THEME_MODE`, "system") on the client's
- * first (hydrating) pass, then corrects to the real client value
- * (`getClientMode()`, read from the actual cookie) on an immediate
- * follow-up render. This effect can therefore observe `currentMode`
- * still holding that transient placeholder on its very first firing —
- * checking equality against `mode` (the DB value) at that exact moment
- * would be comparing against a value that hasn't settled yet, not the
- * real client truth. Guarding against action ONLY inside the
- * `mode !== currentMode` branch (rather than unconditionally marking
- * `mode` as "handled" the instant this effect fires at all, regardless
- * of whether the placeholder briefly happened to match `mode`) is what
- * makes this converge correctly: a coincidental placeholder/DB match on
- * the first pass is a legitimate no-op FOR THAT RENDER, not a permanent
- * decision — the effect naturally re-evaluates once `currentMode`
- * settles to its real value on the very next render (`currentMode` is a
- * dependency), and only THEN does `reconciledFor` latch, exactly once,
- * preventing this component from later re-fighting a legitimate
- * subsequent mode change made through any other path (a future Settings
- * UI, System/Automatic's own live updates) — `mode` itself (the prop)
- * never changes for the lifetime of one server-rendered page, so once
- * reconciliation has genuinely happened for it, this must never act
- * again for that same value even if `currentMode` later diverges from it
- * for a legitimate reason.
+ * CRITICAL correctness note — a real, reproduced bug this design fixes.
+ * An earlier version compared `mode` (this prop, fixed for the whole
+ * page's lifetime) against the LIVE `currentMode` from `useTheme()` on
+ * every render, latching its "already handled" guard only once an actual
+ * mismatch was found. That is unsafe: `currentMode` changes for TWO
+ * indistinguishable reasons — (a) `ThemeProvider`'s own
+ * `useSyncExternalStore` settling from its fixed SSR-safe placeholder
+ * ("system") to the real client value on an immediate follow-up render
+ * (a genuine "the truth just became known" event this component SHOULD
+ * react to), and (b) a real, later, deliberate `setMode()` call from
+ * anywhere else — a user's own click (e.g. `AppearanceSelector`), or
+ * System/Automatic's own live re-resolution (a real Playwright E2E
+ * reproduction: choosing an explicit mode on `/settings/appearance`
+ * immediately after load was silently overwritten back to the stale DB
+ * value, because the guard had never latched during the harmless
+ * placeholder-coincidence render and was still "armed" the moment the
+ * user's own click changed `currentMode`). Comparing against the live,
+ * ever-changing `currentMode` cannot distinguish these two cases from
+ * the outside.
+ *
+ * The fix: bind the comparison to a value read via `requestAnimationFrame`
+ * on mount instead of reacting to every `currentMode` change. React
+ * flushes `useSyncExternalStore`'s own settling render (if one is
+ * needed) as an ordinary, higher-priority update that completes and
+ * paints before the browser's NEXT animation frame — so by the time this
+ * one-shot `requestAnimationFrame` callback runs, `currentModeRef`
+ * (kept in sync on every render, a plain assignment during render — not
+ * inside an effect or event handler) already reflects the fully-settled
+ * client value, exactly once. This check runs exactly once per mount
+ * (the effect's dependency array excludes `currentMode` on purpose) and
+ * never again — so a later, real `setMode()` call from anywhere else
+ * can never be "corrected" back to the DB value: by the time it happens,
+ * this component isn't looking anymore.
  */
 export function ThemePreferenceReconciler({ mode }: { mode: ThemeMode }) {
   const { mode: currentMode, setMode } = useTheme();
-  const reconciledFor = useRef<ThemeMode | null>(null);
+  const currentModeRef = useRef(currentMode);
+
+  // Keeps the ref in sync outside of render (mutating a ref during render
+  // itself is disallowed — react-hooks/refs). Runs after every render,
+  // including the settling render `useSyncExternalStore` triggers, so by
+  // the time the mount-only effect below's requestAnimationFrame callback
+  // fires, this has already been updated to the latest value.
+  useEffect(() => {
+    currentModeRef.current = currentMode;
+  });
 
   useEffect(() => {
-    if (mode === currentMode) return;
-    if (reconciledFor.current === mode) return;
-    reconciledFor.current = mode;
-    setMode(mode);
-  }, [mode, currentMode, setMode]);
+    const frame = requestAnimationFrame(() => {
+      if (mode !== currentModeRef.current) {
+        setMode(mode);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+    // `currentModeRef` is a ref, not a reactive value, so it's correctly
+    // excluded from this dependency array — this effect must evaluate
+    // exactly once per mount/mode value, never re-triggered by a later
+    // legitimate `currentMode` change (see the doc comment above).
+  }, [mode, setMode]);
 
   return null;
 }

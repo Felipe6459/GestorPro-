@@ -36,6 +36,23 @@ export function TrashIcon({ className = "h-4 w-4" }: IconProps) {
   );
 }
 
+export function CheckIcon({ className = "h-4 w-4" }: IconProps) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      <path d="m5 12 5 5L20 7" />
+    </svg>
+  );
+}
+
 export function InboxIcon({ className = "h-10 w-10" }: IconProps) {
   return (
     <svg
