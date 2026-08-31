@@ -6,6 +6,7 @@ import { portalSignup } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormLabel } from "@/components/ui/form-field";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
 import type { AuthActionState } from "@/types";
 
 const initialState: AuthActionState = { error: null };
@@ -50,24 +51,24 @@ export function PortalSignupForm({ redirectTo }: { redirectTo?: string }) {
       </div>
 
       {state.error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-danger text-sm">
           {state.error}
         </p>
       )}
 
       {state.message && (
-        <p role="status" className="text-sm text-green-600">
+        <p role="status" className="text-success text-sm">
           {state.message}
         </p>
       )}
 
-      <p className="text-center text-xs text-gray-500">
+      <p className="text-text-muted text-center text-xs">
         By creating an account, you agree to our{" "}
-        <Link href="/terms" className="rounded font-medium text-black hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2">
+        <Link href="/terms" className={ACTION_LINK_CLASSES}>
           Terms of Service
         </Link>{" "}
         and{" "}
-        <Link href="/privacy" className="rounded font-medium text-black hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2">
+        <Link href="/privacy" className={ACTION_LINK_CLASSES}>
           Privacy Policy
         </Link>
         .
@@ -77,11 +78,11 @@ export function PortalSignupForm({ redirectTo }: { redirectTo?: string }) {
         {pending ? "Creating account…" : "Sign up"}
       </Button>
 
-      <p className="text-center text-sm text-gray-600">
+      <p className="text-text-muted text-center text-sm">
         Already have an account?{" "}
         <Link
           href={redirectTo ? `/portal/login?redirectTo=${encodeURIComponent(redirectTo)}` : "/portal/login"}
-          className="rounded font-medium text-black hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+          className={ACTION_LINK_CLASSES}
         >
           Sign in
         </Link>

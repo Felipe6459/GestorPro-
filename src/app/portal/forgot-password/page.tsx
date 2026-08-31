@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { createClient } from "@/lib/supabase/server";
 import { getOptionalPortalUser } from "@/lib/current-portal-user";
 import { ForgotPasswordForm } from "@/components/auth/forgot-password-form";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { requestPortalPasswordReset } from "./actions";
 
 export default async function PortalForgotPasswordPage() {
@@ -28,9 +29,9 @@ export default async function PortalForgotPasswordPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
-        <h1 className="mb-6 text-2xl font-semibold tracking-tight text-gray-900">Forgot your password?</h1>
+    <main className="bg-surface-recessed flex min-h-screen items-center justify-center px-4">
+      <div className={`w-full max-w-sm p-8 shadow-sm ${CARD_SURFACE_CLASSES}`}>
+        <h1 className="text-text-primary mb-6 text-2xl font-semibold tracking-tight">Forgot your password?</h1>
         <ForgotPasswordForm action={requestPortalPasswordReset} loginPath="/portal/login" />
       </div>
     </main>

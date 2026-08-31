@@ -6,6 +6,7 @@ import { portalLogin } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormLabel } from "@/components/ui/form-field";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
 import type { AuthActionState } from "@/types";
 
 const initialState: AuthActionState = { error: null };
@@ -30,10 +31,7 @@ export function PortalLoginForm({ redirectTo }: { redirectTo: string }) {
           <FormLabel htmlFor="password" required>
             Password
           </FormLabel>
-          <Link
-            href="/portal/forgot-password"
-            className="rounded text-sm font-medium text-black hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
+          <Link href="/portal/forgot-password" className={ACTION_LINK_CLASSES}>
             Forgot password?
           </Link>
         </div>
@@ -47,7 +45,7 @@ export function PortalLoginForm({ redirectTo }: { redirectTo: string }) {
       </div>
 
       {state.error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-danger text-sm">
           {state.error}
         </p>
       )}
