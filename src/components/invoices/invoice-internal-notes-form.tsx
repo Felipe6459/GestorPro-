@@ -32,11 +32,11 @@ export function InvoiceInternalNotesForm({ invoiceId, initialValue }: { invoiceI
 
   return (
     <div>
-      <label htmlFor="invoice-internal-notes" className="block text-sm font-medium text-gray-700">
+      <label htmlFor="invoice-internal-notes" className="text-text-secondary block text-sm font-medium">
         Internal notes
       </label>
       <Textarea id="invoice-internal-notes" rows={3} value={value} onChange={(event) => setValue(event.target.value)} />
-      <p className="mt-1 text-xs text-gray-500">Staff-only — never shown to the client.</p>
+      <p className="text-text-muted mt-1 text-xs">Staff-only — never shown to the client.</p>
       <div className="mt-2">
         <Button type="button" onClick={handleSave} loading={pending} disabled={pending}>
           Save notes

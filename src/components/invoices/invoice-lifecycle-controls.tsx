@@ -100,7 +100,7 @@ export function InvoiceLifecycleControls({
       {canDuplicate && (
         <Link
           href={`/invoices/${invoiceId}/duplicate`}
-          className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+          className="border-border-strong bg-surface text-text-primary focus-visible:ring-focus-ring inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium transition-colors hover:bg-[var(--hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
         >
           Duplicate as new draft
         </Link>

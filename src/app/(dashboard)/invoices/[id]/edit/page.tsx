@@ -4,6 +4,8 @@ import { getCurrentMembership } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { InvoiceDraftPanel } from "@/components/invoices/invoice-draft-panel";
 import { InvoiceReadOnlyView } from "@/components/invoices/invoice-read-only-view";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { buildInvoiceTotalsViewModel } from "@/lib/invoices/totals-view-model";
 import { getSupportedInvoiceCurrencies } from "@/lib/invoices/currencies";
 import { formatDateOnly } from "@/lib/invoices/date-only";
@@ -91,17 +93,14 @@ export default async function EditInvoicePage({
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+        <h1 className="text-text-primary text-2xl font-semibold tracking-tight">
           {isDraft ? "Edit invoice" : "Invoice"}
         </h1>
-        <Link
-          href="/invoices"
-          className="rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-        >
+        <Link href="/invoices" className={ACTION_LINK_CLASSES}>
           Back
         </Link>
       </div>
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+      <div className={`p-6 ${CARD_SURFACE_CLASSES}`}>
         {isDraft ? (
           <InvoiceDraftPanel
             invoiceId={invoice.id}

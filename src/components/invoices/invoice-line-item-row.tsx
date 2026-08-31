@@ -31,7 +31,7 @@ function RowField({
         aria-describedby={error ? `${id}-error` : undefined}
       />
       {error && (
-        <p id={`${id}-error`} role="alert" className="mt-1 text-sm text-red-600">
+        <p id={`${id}-error`} role="alert" className="text-danger mt-1 text-sm">
           {error}
         </p>
       )}
@@ -63,7 +63,7 @@ export function InvoiceLineItemRow({
   return (
     <fieldset
       aria-label={`Line item ${index + 1}`}
-      className="grid grid-cols-1 gap-3 rounded-md border border-gray-200 p-3 sm:grid-cols-[1fr_7rem_8rem_auto]"
+      className="border-border-default grid grid-cols-1 gap-3 rounded-md border p-3 sm:grid-cols-[1fr_7rem_8rem_auto]"
     >
       <RowField
         id={`lineItems.${index}.description`}
@@ -92,7 +92,7 @@ export function InvoiceLineItemRow({
           onClick={onMoveUp}
           disabled={!canMoveUp}
           aria-label={`Move line item ${index + 1} up`}
-          className="rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black disabled:cursor-not-allowed disabled:opacity-40"
+          className="border-border-strong text-text-secondary focus-visible:ring-focus-ring rounded-md border px-2 py-2 text-sm transition-colors hover:bg-[var(--hover)] focus:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-40"
         >
           ↑
         </button>
@@ -101,7 +101,7 @@ export function InvoiceLineItemRow({
           onClick={onMoveDown}
           disabled={!canMoveDown}
           aria-label={`Move line item ${index + 1} down`}
-          className="rounded-md border border-gray-300 px-2 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black disabled:cursor-not-allowed disabled:opacity-40"
+          className="border-border-strong text-text-secondary focus-visible:ring-focus-ring rounded-md border px-2 py-2 text-sm transition-colors hover:bg-[var(--hover)] focus:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-40"
         >
           ↓
         </button>
@@ -109,7 +109,7 @@ export function InvoiceLineItemRow({
           type="button"
           onClick={onRemove}
           aria-label={`Remove line item ${index + 1}`}
-          className="rounded-md border border-gray-300 px-2 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600"
+          className="border-border-strong text-danger focus-visible:ring-danger rounded-md border px-2 py-2 text-sm transition-colors hover:bg-danger-subtle focus:outline-none focus-visible:ring-2"
         >
           Remove
         </button>

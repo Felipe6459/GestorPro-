@@ -1,5 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
+import { Table, TableHead, TableHeaderCell, TableBody, TableRow, TableCell } from "@/components/ui/table";
 import { formatInvoiceStatusLabel } from "@/lib/invoices/status-label";
 import { formatInvoiceCurrencyAmount } from "@/lib/invoices/currencies";
 import { formatDateOnlyForDisplay } from "@/lib/invoices/date-only";
@@ -79,8 +81,8 @@ export function InvoiceReadOnlyView({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">{invoiceNumber}</h2>
-          <p className="mt-1 text-sm text-gray-600">
+          <h2 className="text-text-primary text-lg font-semibold">{invoiceNumber}</h2>
+          <p className="text-text-secondary mt-1 text-sm">
             {projectName} — {clientName}
           </p>
         </div>
@@ -89,85 +91,82 @@ export function InvoiceReadOnlyView({
 
       <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
         <div>
-          <dt className="text-gray-500">Currency</dt>
-          <dd className="mt-0.5 text-gray-900">{currency}</dd>
+          <dt className="text-text-muted">Currency</dt>
+          <dd className="text-text-primary mt-0.5">{currency}</dd>
         </div>
         <div>
-          <dt className="text-gray-500">Issue date</dt>
-          <dd className="mt-0.5 text-gray-900">{formatDateOnlyForDisplay(issueDate)}</dd>
+          <dt className="text-text-muted">Issue date</dt>
+          <dd className="text-text-primary mt-0.5">{formatDateOnlyForDisplay(issueDate)}</dd>
         </div>
         <div>
-          <dt className="text-gray-500">Due date</dt>
-          <dd className="mt-0.5 text-gray-900">{dueDate ? formatDateOnlyForDisplay(dueDate) : "—"}</dd>
+          <dt className="text-text-muted">Due date</dt>
+          <dd className="text-text-primary mt-0.5">{dueDate ? formatDateOnlyForDisplay(dueDate) : "—"}</dd>
         </div>
         <div>
-          <dt className="text-gray-500">Paid date</dt>
-          <dd className="mt-0.5 text-gray-900">{paidAt ? paidAt.toLocaleDateString() : "—"}</dd>
+          <dt className="text-text-muted">Paid date</dt>
+          <dd className="text-text-primary mt-0.5">{paidAt ? paidAt.toLocaleDateString() : "—"}</dd>
         </div>
       </dl>
 
       {lineItems.length > 0 ? (
-        <div className="overflow-x-auto rounded-md border border-gray-200">
-          <table className="min-w-full divide-y divide-gray-200 text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">Description</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Qty</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Unit price</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Line total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {lineItems.map((item, index) => (
-                <tr key={index}>
-                  <td className="px-3 py-2 text-gray-900">{item.description}</td>
-                  <td className="px-3 py-2 text-right text-gray-700">{String(item.quantity)}</td>
-                  <td className="px-3 py-2 text-right text-gray-700">{format(item.unitPrice)}</td>
-                  <td className="px-3 py-2 text-right text-gray-900">{format(item.lineTotal)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table>
+          <TableHead>
+            <tr>
+              <TableHeaderCell>Description</TableHeaderCell>
+              <TableHeaderCell align="right">Qty</TableHeaderCell>
+              <TableHeaderCell align="right">Unit price</TableHeaderCell>
+              <TableHeaderCell align="right">Line total</TableHeaderCell>
+            </tr>
+          </TableHead>
+          <TableBody>
+            {lineItems.map((item, index) => (
+              <TableRow key={index}>
+                <TableCell emphasis>{item.description}</TableCell>
+                <TableCell align="right">{String(item.quantity)}</TableCell>
+                <TableCell align="right">{format(item.unitPrice)}</TableCell>
+                <TableCell align="right" emphasis>
+                  {format(item.lineTotal)}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       ) : null}
 
       <div className="ml-auto max-w-xs space-y-1 text-sm">
         <div className="flex justify-between">
-          <span className="text-gray-500">Subtotal</span>
-          <span className="text-gray-900">{totals.displayedSubtotal}</span>
+          <span className="text-text-muted">Subtotal</span>
+          <span className="text-text-primary">{totals.displayedSubtotal}</span>
         </div>
         {totals.discountRow && (
           <div className="flex justify-between">
-            <span className="text-gray-500">{totals.discountRow.label}</span>
-            <span className="text-gray-900">-{totals.discountRow.amount}</span>
+            <span className="text-text-muted">{totals.discountRow.label}</span>
+            <span className="text-text-primary">-{totals.discountRow.amount}</span>
           </div>
         )}
         {totals.taxRow && (
           <div className="flex justify-between">
-            <span className="text-gray-500">{totals.taxRow.label}</span>
-            <span className="text-gray-900">{totals.taxRow.amount}</span>
+            <span className="text-text-muted">{totals.taxRow.label}</span>
+            <span className="text-text-primary">{totals.taxRow.amount}</span>
           </div>
         )}
-        <div className="flex justify-between border-t border-gray-200 pt-1 font-medium">
-          <span className="text-gray-900">Total</span>
-          <span className="text-gray-900">{totals.total}</span>
+        <div className="border-border-default flex justify-between border-t pt-1 font-medium">
+          <span className="text-text-primary">Total</span>
+          <span className="text-text-primary">{totals.total}</span>
         </div>
       </div>
 
       {notes && (
         <div>
-          <h3 className="text-sm font-medium text-gray-700">Notes</h3>
-          <p className="mt-1 whitespace-pre-wrap text-sm text-gray-700">{notes}</p>
+          <h3 className="text-text-secondary text-sm font-medium">Notes</h3>
+          <p className="text-text-secondary mt-1 text-sm whitespace-pre-wrap">{notes}</p>
         </div>
       )}
 
       <InvoiceInternalNotesForm invoiceId={invoiceId} initialValue={internalNotes ?? ""} />
 
       {hasArchivedPdf && (
-        <a
-          href={`/api/invoices/${invoiceId}/pdf`}
-          className="inline-block rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-        >
+        <a href={`/api/invoices/${invoiceId}/pdf`} className={`inline-block ${ACTION_LINK_CLASSES}`}>
           Download PDF
         </a>
       )}

@@ -7,12 +7,19 @@ import { InvoiceForm } from "@/components/invoices/invoice-form";
  * Product UI/UX PR 5 (Design Investigation finding F7): the Invoice
  * type mode-toggle radio buttons (`invoice-form.tsx`) relied on the
  * browser's bare default focus outline instead of the app's own
- * `focus-visible:ring-2 ring-black` convention used everywhere else
- * (Button, ConfirmDialog, DeleteButton, FileInput,
- * NotificationPreferenceToggle's checkbox). `InvoiceForm` is the one
- * shared component rendered by both the create page (`/invoices/new`)
- * and the DRAFT edit surface (`InvoiceDraftPanel`, itself rendered by
- * `/invoices/[id]/edit`) — one fix here covers both surfaces.
+ * focus-visible ring convention used everywhere else (Button,
+ * ConfirmDialog, DeleteButton, FileInput, NotificationPreferenceToggle's
+ * checkbox). `InvoiceForm` is the one shared component rendered by both
+ * the create page (`/invoices/new`) and the DRAFT edit surface
+ * (`InvoiceDraftPanel`, itself rendered by `/invoices/[id]/edit`) — one
+ * fix here covers both surfaces.
+ *
+ * Design System Batch 10 — the literal `ring-black` this test originally
+ * asserted has itself been replaced by `ring-focus-ring` (globals.css's
+ * own semantic focus-ring token), matching every one of the reference
+ * components named above, all of which made this exact same swap in
+ * earlier Design System batches. Updated here to assert the current,
+ * correct convention rather than the raw literal it was written against.
  *
  * This is a genuine behavior-level render test (real render pipeline,
  * `react-dom/server`, no jsdom/testing-library — see
@@ -48,7 +55,7 @@ describe("InvoiceForm — Invoice type radios, real render", () => {
     for (const radio of radioMatches) {
       expect(radio).toMatch(/focus:outline-none/);
       expect(radio).toMatch(/focus-visible:ring-2/);
-      expect(radio).toMatch(/focus-visible:ring-black/);
+      expect(radio).toMatch(/focus-visible:ring-focus-ring/);
       expect(radio).toMatch(/focus-visible:ring-offset-2/);
     }
   });
@@ -90,7 +97,8 @@ describe("invoice-form.tsx — source contract: byte-preserved name/checked/onCh
     const source = readFileSync("src/components/invoices/invoice-form.tsx", "utf-8");
     const radioBlocks = source.match(/<input\s+type="radio"[\s\S]*?\/>/g) ?? [];
     for (const block of radioBlocks) {
-      expect(block).toMatch(/className="[^"]*focus-visible:ring-2[^"]*focus-visible:ring-black[^"]*focus-visible:ring-offset-2[^"]*"/);
+      expect(block).toMatch(/className="[^"]*focus-visible:ring-focus-ring[^"]*"/);
+      expect(block).toMatch(/className="[^"]*focus-visible:ring-2[^"]*focus-visible:ring-offset-2[^"]*"/);
     }
   });
 });

@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { getCurrentUserOrganization } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { InvoiceForm } from "@/components/invoices/invoice-form";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { getDuplicateSourceInvoice } from "@/lib/invoices/duplicate-source";
 import { buildDuplicateInvoiceDefaults, type DuplicateSourceData } from "@/lib/invoices/duplicate";
 import { isSupportedInvoiceCurrency, getSupportedInvoiceCurrencies } from "@/lib/invoices/currencies";
@@ -45,17 +47,14 @@ export default async function DuplicateInvoicePage({
     return (
       <div className="mx-auto max-w-xl">
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+          <h1 className="text-text-primary text-2xl font-semibold tracking-tight">
             Can&rsquo;t duplicate this invoice automatically
           </h1>
-          <Link
-            href="/invoices"
-            className="rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
+          <Link href="/invoices" className={ACTION_LINK_CLASSES}>
             Back
           </Link>
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-700">
+        <div className={`text-text-secondary p-6 text-sm ${CARD_SURFACE_CLASSES}`}>
           <p>
             Invoice {source.invoiceNumber}&rsquo;s currency ({source.currency}) isn&rsquo;t supported for new
             invoices, so it can&rsquo;t be duplicated automatically. Create a new invoice manually and choose a
@@ -64,13 +63,13 @@ export default async function DuplicateInvoicePage({
           <div className="mt-4 flex gap-4">
             <Link
               href={`/invoices/${source.id}/edit`}
-              className="rounded text-sm font-medium text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+              className="text-text-primary focus-visible:ring-focus-ring rounded text-sm font-medium hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
             >
               View original invoice
             </Link>
             <Link
               href="/invoices/new"
-              className="rounded text-sm font-medium text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+              className="text-text-primary focus-visible:ring-focus-ring rounded text-sm font-medium hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
             >
               Add invoice
             </Link>
@@ -112,29 +111,26 @@ export default async function DuplicateInvoicePage({
   return (
     <div className="mx-auto max-w-xl">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+        <h1 className="text-text-primary text-2xl font-semibold tracking-tight">
           Duplicate invoice
         </h1>
-        <Link
-          href="/invoices"
-          className="rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-        >
+        <Link href="/invoices" className={ACTION_LINK_CLASSES}>
           Cancel
         </Link>
       </div>
-      <p className="-mt-4 mb-6 text-sm text-gray-600">
+      <p className="text-text-secondary -mt-4 mb-6 text-sm">
         Creates a new draft pre-filled from cancelled invoice {source.invoiceNumber}. Review and confirm the
         invoice number before saving.{" "}
-        <Link href={`/invoices/${source.id}/edit`} className="font-medium text-gray-900 hover:underline">
+        <Link href={`/invoices/${source.id}/edit`} className="text-text-primary font-medium hover:underline">
           View original invoice
         </Link>
         .
       </p>
 
       {projects.length === 0 ? (
-        <p className="text-sm text-gray-600">You need a project first — add one before duplicating this invoice.</p>
+        <p className="text-text-secondary text-sm">You need a project first — add one before duplicating this invoice.</p>
       ) : (
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <div className={`p-6 ${CARD_SURFACE_CLASSES}`}>
           <InvoiceForm
             action={createInvoiceAction}
             projects={projects.map((project) => ({

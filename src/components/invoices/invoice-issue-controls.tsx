@@ -71,7 +71,7 @@ export function InvoiceIssueControls({
 
   return (
     <div className="flex flex-col items-start gap-2">
-      {disabled && <p className="text-sm text-amber-700">Save changes before issuing.</p>}
+      {disabled && <p className="text-warning text-sm">Save changes before issuing.</p>}
       <Button
         type="button"
         disabled={disabled || pending}

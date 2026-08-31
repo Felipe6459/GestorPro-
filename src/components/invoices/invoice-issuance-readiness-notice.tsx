@@ -28,7 +28,7 @@ export function InvoiceIssuanceReadinessNotice({ readiness }: { readiness: Invoi
   }
 
   return (
-    <div role="status" className="mb-4 flex flex-col gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+    <div role="status" className="border-warning bg-warning-subtle text-warning mb-4 flex flex-col gap-2 rounded-md border p-3 text-sm">
       {!companyProfileReady && (
         <p>
           Company profile isn&apos;t set up yet — seller details in the issued PDF may be incomplete.{" "}

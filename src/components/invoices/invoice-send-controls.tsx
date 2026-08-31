@@ -94,7 +94,7 @@ export function InvoiceSendControls({
 
   return (
     <div className="space-y-3">
-      {disabled && <p className="text-sm text-amber-700">Save changes before issuing and sending.</p>}
+      {disabled && <p className="text-warning text-sm">Save changes before issuing and sending.</p>}
       <Button
         type="button"
         disabled={disabled || pending || latest?.status === "PENDING"}
@@ -115,14 +115,14 @@ export function InvoiceSendControls({
 
       {attempts.length > 0 && (
         <div>
-          <h3 className="text-sm font-medium text-gray-700">Email attempts</h3>
+          <h3 className="text-text-secondary text-sm font-medium">Email attempts</h3>
           <ul className="mt-2 space-y-2 text-sm">
             {attempts.map((attempt) => (
-              <li key={attempt.id} className="rounded border border-gray-200 px-3 py-2 text-gray-700">
-                <span className="font-medium text-gray-900">{statusLabel(attempt.status)}</span>
-                <span className="mx-2 text-gray-400">·</span>
+              <li key={attempt.id} className="border-border-default text-text-secondary rounded border px-3 py-2">
+                <span className="text-text-primary font-medium">{statusLabel(attempt.status)}</span>
+                <span className="text-text-muted mx-2">·</span>
                 <span>{attempt.recipientEmail}</span>
-                <span className="mx-2 text-gray-400">·</span>
+                <span className="text-text-muted mx-2">·</span>
                 <time dateTime={attempt.attemptedAt.toISOString()}>{attempt.attemptedAt.toLocaleString()}</time>
               </li>
             ))}
