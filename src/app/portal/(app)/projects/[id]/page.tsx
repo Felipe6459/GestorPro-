@@ -4,6 +4,8 @@ import { getCurrentPortalUser } from "@/lib/current-portal-user";
 import { getPortalProject } from "@/lib/client-portal/queries";
 import { getPortalProjectAttachments } from "@/lib/client-portal/attachments";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { PortalAttachmentsList } from "@/components/client-portal/portal-attachments-list";
 
 export default async function PortalProjectDetailPage({
@@ -30,52 +32,49 @@ export default async function PortalProjectDetailPage({
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link
-        href="/portal/projects"
-        className="rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-      >
+      <Link href="/portal/projects" className={ACTION_LINK_CLASSES}>
         ← Back to projects
       </Link>
 
-      <div className="mt-4 rounded-lg border border-gray-200 bg-white p-6">
+      <div className={`mt-4 p-6 ${CARD_SURFACE_CLASSES}`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <h1 className="text-xl font-semibold tracking-tight text-gray-900">
+          <h1 className="text-text-primary text-xl font-semibold tracking-tight">
             {project.name}
           </h1>
           <StatusBadge status={project.status} />
         </div>
 
         {project.description && (
-          <p className="mt-4 text-sm text-gray-600">{project.description}</p>
+          <p className="text-text-muted mt-4 text-sm">{project.description}</p>
         )}
 
         <dl className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <dt className="text-xs font-medium tracking-wide text-gray-500 uppercase">
+            <dt className="text-text-muted text-xs font-medium tracking-wide uppercase">
               Client
             </dt>
-            <dd className="mt-1 text-sm text-gray-900">{project.clientName}</dd>
+            <dd className="text-text-primary mt-1 text-sm">{project.clientName}</dd>
           </div>
           <div>
-            <dt className="text-xs font-medium tracking-wide text-gray-500 uppercase">
+            <dt className="text-text-muted text-xs font-medium tracking-wide uppercase">
               Start date
             </dt>
-            <dd className="mt-1 text-sm text-gray-900">
+            <dd className="text-text-primary mt-1 text-sm">
               {project.startDate ? project.startDate.toLocaleDateString() : "—"}
             </dd>
           </div>
           <div>
-            <dt className="text-xs font-medium tracking-wide text-gray-500 uppercase">
+            <dt className="text-text-muted text-xs font-medium tracking-wide uppercase">
               End date
             </dt>
-            <dd className="mt-1 text-sm text-gray-900">
+            <dd className="text-text-primary mt-1 text-sm">
               {project.endDate ? project.endDate.toLocaleDateString() : "—"}
             </dd>
           </div>
         </dl>
 
-        <div className="mt-8 border-t border-gray-200 pt-6">
-          <h2 className="text-sm font-semibold text-gray-900">Attachments</h2>
+        <div className="border-border-default mt-8 border-t pt-6">
+          <h2 className="text-text-primary text-sm font-semibold">Attachments</h2>
           <PortalAttachmentsList
             attachments={attachments}
             emptyDescription="Files shared for this project will appear here."

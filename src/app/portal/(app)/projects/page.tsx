@@ -18,8 +18,8 @@ export default async function PortalProjectsPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Projects</h1>
-      <p className="mt-1 text-sm text-gray-600">
+      <h1 className="text-text-primary text-2xl font-semibold tracking-tight">Projects</h1>
+      <p className="text-text-muted mt-1 text-sm">
         {projects.length} {projects.length === 1 ? "project" : "projects"}
       </p>
 
@@ -45,7 +45,7 @@ export default async function PortalProjectsPage() {
                 <TableCell emphasis>
                   <Link
                     href={`/portal/projects/${project.id}`}
-                    className="rounded hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                    className="focus-visible:ring-focus-ring rounded hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
                   >
                     {project.name}
                   </Link>

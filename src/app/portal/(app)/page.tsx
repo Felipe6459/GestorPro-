@@ -5,14 +5,14 @@ import { MetricCard } from "@/components/dashboard/metric-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { PortalWelcomeBanner } from "@/components/portal/portal-welcome-banner";
 import { isPortalWelcomeEligible } from "@/components/portal/portal-welcome-eligibility";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { formatCurrency } from "@/lib/format";
 
 const OVERVIEW_HEADING_ID = "portal-overview-heading";
 
 const itemLinkClass =
-  "rounded text-sm font-medium text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2";
-const viewAllClass =
-  "rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2";
+  "text-text-primary focus-visible:ring-focus-ring rounded text-sm font-medium hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
 
 export default async function PortalOverviewPage() {
   const { client, clientId, organizationId, portalUser } = await getCurrentPortalUser();
@@ -29,11 +29,11 @@ export default async function PortalOverviewPage() {
         <h1
           id={OVERVIEW_HEADING_ID}
           tabIndex={-1}
-          className="rounded text-2xl font-semibold tracking-tight text-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 break-words"
+          className="text-text-primary focus:ring-focus-ring rounded text-2xl font-semibold tracking-tight break-words focus:outline-none focus:ring-2 focus:ring-offset-2"
         >
           {client.name}
         </h1>
-        <p className="mt-1 text-sm text-gray-600">
+        <p className="text-text-muted mt-1 text-sm">
           An overview of your projects and invoices.
         </p>
       </div>
@@ -59,15 +59,15 @@ export default async function PortalOverviewPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <section className={`p-6 ${CARD_SURFACE_CLASSES}`}>
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-900">Recent projects</h2>
-            <Link href="/portal/projects" className={viewAllClass}>
+            <h2 className="text-text-primary text-sm font-semibold">Recent projects</h2>
+            <Link href="/portal/projects" className={ACTION_LINK_CLASSES}>
               View all
             </Link>
           </div>
           {overview.recentProjects.length === 0 ? (
-            <p className="text-sm text-gray-500">No projects yet.</p>
+            <p className="text-text-muted text-sm">No projects yet.</p>
           ) : (
             <ul className="space-y-3">
               {overview.recentProjects.map((project) => (
@@ -82,15 +82,15 @@ export default async function PortalOverviewPage() {
           )}
         </section>
 
-        <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <section className={`p-6 ${CARD_SURFACE_CLASSES}`}>
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-900">Recent invoices</h2>
-            <Link href="/portal/invoices" className={viewAllClass}>
+            <h2 className="text-text-primary text-sm font-semibold">Recent invoices</h2>
+            <Link href="/portal/invoices" className={ACTION_LINK_CLASSES}>
               View all
             </Link>
           </div>
           {overview.recentInvoices.length === 0 ? (
-            <p className="text-sm text-gray-500">No invoices yet.</p>
+            <p className="text-text-muted text-sm">No invoices yet.</p>
           ) : (
             <ul className="space-y-3">
               {overview.recentInvoices.map((invoice) => (
@@ -99,7 +99,7 @@ export default async function PortalOverviewPage() {
                     {invoice.invoiceNumber}
                   </Link>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-gray-600">
+                    <span className="text-text-muted text-sm">
                       {formatCurrency(invoice.amount, invoice.currency)}
                     </span>
                     <StatusBadge status={invoice.status} />
