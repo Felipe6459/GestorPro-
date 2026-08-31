@@ -47,6 +47,19 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={toast.id}
             role="status"
+            // Aqenra Round 3 Design System audit (Toast decision, Option A):
+            // this fixed dark success pill / fixed red error pill is
+            // intentionally theme-invariant, not a page-embedded surface —
+            // ToastProvider is mounted once at the app root (src/app/
+            // layout.tsx) and is shared, byte-identical, across staff,
+            // Portal, and Platform Admin. As a floating ephemeral overlay
+            // (fixed bottom-4 right-4, never composited against a
+            // particular page background) it already reads as opaque and
+            // legible in every theme, so it was deliberately left out of
+            // this migration's page-surface token sweep. Do not convert
+            // these to theme-aware/semantic-surface classes without a
+            // dedicated cross-product design review (staff + Portal +
+            // Platform Admin, all four theme modes, both variants).
             className={`pointer-events-auto rounded-md px-4 py-3 text-sm font-medium shadow-lg ${
               toast.variant === "success"
                 ? "bg-gray-900 text-white"
