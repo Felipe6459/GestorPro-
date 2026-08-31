@@ -38,7 +38,7 @@ export function PortalInviteForm({
       </FormField>
 
       {state.error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-danger text-sm">
           {state.error}
         </p>
       )}
@@ -47,14 +47,14 @@ export function PortalInviteForm({
         <div
           className={`rounded-md border p-3 ${
             state.emailFailed
-              ? "border-amber-200 bg-amber-50"
-              : "border-green-200 bg-green-50"
+              ? "border-warning bg-warning-subtle"
+              : "border-success bg-success-subtle"
           }`}
         >
           <p
             role="status"
             className={`text-sm font-medium ${
-              state.emailFailed ? "text-amber-800" : "text-green-800"
+              state.emailFailed ? "text-warning" : "text-success"
             }`}
           >
             {state.message ?? "Invitation created."}

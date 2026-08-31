@@ -106,9 +106,9 @@ export function ClientForm({
         (or leaving every field blank on an existing client) is always
         valid; a blank field is normalized to null, never an empty string.
       */}
-      <fieldset className="space-y-4 border-t border-gray-200 pt-4">
-        <legend className="text-base font-semibold text-gray-900">Billing details</legend>
-        <p className="text-sm text-gray-500">
+      <fieldset className="border-border-default space-y-4 border-t pt-4">
+        <legend className="text-text-primary text-base font-semibold">Billing details</legend>
+        <p className="text-text-muted text-sm">
           Optional — used on future invoices for this client. Leave blank if not needed.
         </p>
 
@@ -198,7 +198,7 @@ export function ClientForm({
       </fieldset>
 
       {state.error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-danger text-sm">
           {state.error}
         </p>
       )}

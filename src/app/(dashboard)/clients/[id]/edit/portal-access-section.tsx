@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { Role } from "@/generated/prisma/enums";
 import { EmptyState } from "@/components/ui/empty-state";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import {
   Table,
   TableHead,
@@ -54,16 +55,16 @@ export async function ClientPortalAccessSection({
   ]);
 
   return (
-    <section className="mt-10 border-t border-gray-200 pt-8">
-      <h2 className="text-lg font-semibold tracking-tight text-gray-900">
+    <section className="border-border-default mt-10 border-t pt-8">
+      <h2 className="text-text-primary text-lg font-semibold tracking-tight">
         Client Portal access
       </h2>
-      <p className="mt-1 text-sm text-gray-600">
+      <p className="text-text-secondary mt-1 text-sm">
         Invite this client to sign in and view their own portal.
       </p>
 
       <div className="mt-4">
-        <h3 className="text-sm font-medium text-gray-900">Portal users</h3>
+        <h3 className="text-text-primary text-sm font-medium">Portal users</h3>
         {portalUsers.length === 0 ? (
           <EmptyState
             title="No portal users yet"
@@ -101,7 +102,7 @@ export async function ClientPortalAccessSection({
       </div>
 
       <div className="mt-8">
-        <h3 className="text-sm font-medium text-gray-900">Pending invitations</h3>
+        <h3 className="text-text-primary text-sm font-medium">Pending invitations</h3>
         {invitations.length === 0 ? (
           <EmptyState
             title="No pending invitations"
@@ -152,8 +153,8 @@ export async function ClientPortalAccessSection({
 
       {canManage && (
         <div className="mt-8 max-w-md">
-          <h3 className="text-sm font-medium text-gray-900">Invite a contact</h3>
-          <div className="mt-2 rounded-lg border border-gray-200 p-4">
+          <h3 className="text-text-primary text-sm font-medium">Invite a contact</h3>
+          <div className={`mt-2 p-4 ${CARD_SURFACE_CLASSES}`}>
             <PortalInviteForm action={inviteClientPortalUserAction.bind(null, clientId)} />
           </div>
         </div>

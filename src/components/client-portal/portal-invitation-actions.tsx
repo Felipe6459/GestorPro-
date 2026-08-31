@@ -3,6 +3,7 @@
 import { useActionState, useRef, useState } from "react";
 import { ConfirmDialog, type ConfirmDialogHandle } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/toast/toast-provider";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
 import { PortalCopyLinkButton } from "./portal-copy-link-button";
 import type { PortalInvitationFormState } from "@/types";
 
@@ -31,21 +32,21 @@ export function ResendPortalInvitationForm({
           <button
             type="submit"
             disabled={pending}
-            className="rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+            className={`${ACTION_LINK_CLASSES} disabled:cursor-not-allowed disabled:opacity-60`}
           >
             {pending ? "Resending…" : "Resend"}
           </button>
         </form>
       </div>
       {state.error && (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-danger text-xs">
           {state.error}
         </p>
       )}
       {state.message && !state.error && (
         <p
           role="status"
-          className={`text-xs ${state.emailFailed ? "text-amber-700" : "text-green-700"}`}
+          className={`text-xs ${state.emailFailed ? "text-warning" : "text-success"}`}
         >
           {state.message}
         </p>
@@ -84,7 +85,7 @@ export function CancelPortalInvitationButton({
         type="button"
         disabled={pending}
         onClick={() => dialogRef.current?.open()}
-        className="rounded text-sm font-medium text-red-600 transition-colors hover:text-red-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+        className="text-danger focus-visible:ring-danger rounded text-sm font-medium transition-colors hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Cancel
       </button>
@@ -130,7 +131,7 @@ export function RemovePortalUserButton({
         type="button"
         disabled={pending}
         onClick={() => dialogRef.current?.open()}
-        className="rounded text-sm font-medium text-red-600 transition-colors hover:text-red-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+        className="text-danger focus-visible:ring-danger rounded text-sm font-medium transition-colors hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
       >
         Remove access
       </button>
