@@ -18,6 +18,13 @@ export const metadata: Metadata = {
   title: "Organizations — Platform Admin",
 };
 
+// Design System Phase 2's own established per-file pattern (see e.g.
+// (dashboard)/clients/page.tsx) for a <Link> styled as the page's primary
+// action — used here for the EmptyState "Clear search"/"Clear filter"
+// actions, mechanically equivalent to the previous raw bg-black button.
+const PRIMARY_LINK_CLASSES =
+  "focus-visible:ring-focus-ring rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
+
 const BASE_PATH = "/platform-admin/organizations";
 
 // Display order for the filter dropdown — deliberately not
@@ -65,8 +72,8 @@ export default async function PlatformAdminOrganizationsPage({
   return (
     <div>
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Organizations</h1>
-        <p className="mt-1 text-sm text-gray-600">
+        <h1 className="text-text-primary text-2xl font-semibold tracking-tight">Organizations</h1>
+        <p className="text-text-secondary mt-1 text-sm">
           {total} {total === 1 ? "organization" : "organizations"}
         </p>
       </div>
@@ -96,10 +103,7 @@ export default async function PlatformAdminOrganizationsPage({
             title="No matching organizations"
             description={`No organizations match "${listParams.q}". Try a different search term.`}
             action={
-              <Link
-                href={BASE_PATH}
-                className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-              >
+              <Link href={BASE_PATH} className={PRIMARY_LINK_CLASSES}>
                 Clear search
               </Link>
             }
@@ -109,10 +113,7 @@ export default async function PlatformAdminOrganizationsPage({
             title="No organizations in this status"
             description={`No organizations are currently ${formatStatusLabel(listParams.status)}.`}
             action={
-              <Link
-                href={BASE_PATH}
-                className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-              >
+              <Link href={BASE_PATH} className={PRIMARY_LINK_CLASSES}>
                 Clear filter
               </Link>
             }
@@ -160,16 +161,16 @@ export default async function PlatformAdminOrganizationsPage({
                 <TableRow key={org.id}>
                   <TableCell emphasis>
                     <div>{org.name}</div>
-                    <div className="text-xs font-normal text-gray-500">{org.slug}</div>
+                    <div className="text-text-muted text-xs font-normal">{org.slug}</div>
                   </TableCell>
                   <TableCell className={TABLET_UP}>
                     {org.owner ? (
                       <>
                         <div>{org.owner.name}</div>
-                        <div className="text-xs text-gray-500">{org.owner.email}</div>
+                        <div className="text-text-muted text-xs">{org.owner.email}</div>
                       </>
                     ) : (
-                      <span className="text-gray-400">No owner</span>
+                      <span className="text-text-muted">No owner</span>
                     )}
                   </TableCell>
                   <TableCell>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { MetricCard } from "@/components/dashboard/metric-card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { getPlatformDashboardData } from "@/lib/platform-admin/queries/platform-dashboard";
 
 export const metadata: Metadata = {
@@ -26,8 +27,8 @@ export default async function PlatformAdminDashboardPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Platform Dashboard</h1>
-        <p className="mt-1 text-sm text-gray-600">
+        <h1 className="text-text-primary text-2xl font-semibold tracking-tight">Platform Dashboard</h1>
+        <p className="text-text-secondary mt-1 text-sm">
           Organization, subscription, and registration metrics across every tenant.
         </p>
       </div>
@@ -45,7 +46,7 @@ export default async function PlatformAdminDashboardPage() {
       </div>
 
       <div>
-        <h2 className="text-lg font-semibold tracking-tight text-gray-900">Registrations</h2>
+        <h2 className="text-text-primary text-lg font-semibold tracking-tight">Registrations</h2>
         <div className="mt-4 grid grid-cols-2 gap-4 sm:max-w-md">
           <MetricCard label="Today" value={data.registrations.today} href="/platform-admin/organizations" />
           <MetricCard label="Last 7 days" value={data.registrations.last7Days} href="/platform-admin/organizations" />
@@ -53,16 +54,16 @@ export default async function PlatformAdminDashboardPage() {
       </div>
 
       <div>
-        <h2 className="text-lg font-semibold tracking-tight text-gray-900">Newest organizations</h2>
+        <h2 className="text-text-primary text-lg font-semibold tracking-tight">Newest organizations</h2>
         {data.newestOrganizations.length === 0 ? (
           <EmptyState title="No organizations yet" description="New organizations will appear here as they register." />
         ) : (
-          <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
-            <ul className="divide-y divide-gray-100">
+          <div className={`mt-4 overflow-hidden ${CARD_SURFACE_CLASSES}`}>
+            <ul className="divide-border-default divide-y">
               {data.newestOrganizations.map((organization) => (
                 <li key={organization.id} className="flex items-center justify-between gap-3 px-6 py-3">
-                  <p className="text-sm font-medium text-gray-900">{organization.name}</p>
-                  <time dateTime={organization.createdAt.toISOString()} className="shrink-0 text-xs text-gray-500">
+                  <p className="text-text-primary text-sm font-medium">{organization.name}</p>
+                  <time dateTime={organization.createdAt.toISOString()} className="text-text-muted shrink-0 text-xs">
                     {organization.createdAt.toLocaleDateString("en-US", {
                       year: "numeric",
                       month: "short",

@@ -1,5 +1,6 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { RouteLoadingAnnouncement } from "@/components/ui/page-loading";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 /**
  * Platform Admin loading-state completeness (primary tier). Mirrors the
@@ -31,7 +32,7 @@ export default function PlatformAdminDashboardLoading() {
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
         {Array.from({ length: 9 }, (_, index) => (
-          <div key={index} className="rounded-lg border border-gray-200 bg-white p-5">
+          <div key={index} className={`p-5 ${CARD_SURFACE_CLASSES}`}>
             <Skeleton className="h-3 w-20" />
             <Skeleton className="mt-3 h-7 w-12" />
           </div>
@@ -42,7 +43,7 @@ export default function PlatformAdminDashboardLoading() {
         <Skeleton className="h-5 w-36" />
         <div className="mt-4 grid grid-cols-2 gap-4 sm:max-w-md">
           {Array.from({ length: 2 }, (_, index) => (
-            <div key={index} className="rounded-lg border border-gray-200 bg-white p-5">
+            <div key={index} className={`p-5 ${CARD_SURFACE_CLASSES}`}>
               <Skeleton className="h-3 w-16" />
               <Skeleton className="mt-3 h-7 w-10" />
             </div>
@@ -52,8 +53,8 @@ export default function PlatformAdminDashboardLoading() {
 
       <div>
         <Skeleton className="h-5 w-44" />
-        <div className="mt-4 overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <div className="divide-y divide-gray-100">
+        <div className={`mt-4 overflow-hidden ${CARD_SURFACE_CLASSES}`}>
+          <div className="divide-border-default divide-y">
             {Array.from({ length: 5 }, (_, index) => (
               <div key={index} className="flex items-center justify-between gap-3 px-6 py-3">
                 <Skeleton className="h-4 w-40" />
