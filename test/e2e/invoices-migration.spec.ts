@@ -71,13 +71,23 @@ test.describe("Design System Batch 10 — Remaining Invoices surfaces", () => {
     await page.goto("/invoices/new");
     await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute("data-theme"))).toBe("dark");
 
-    await page.getByLabel("Itemized").check();
-    const previewBox = page.getByText("Enter valid amounts to see a total preview.").locator("..");
+    // Scoped to the one real form card — same disambiguation as the first
+    // test above: React's hidden progressive-enhancement safety-net
+    // <form> duplicates this entire subtree, so any page-wide locator for
+    // a control inside it (the radio, the preview box, a line-item row)
+    // can resolve to two identical matches. Scoping every interaction/
+    // assertion below to this single, already-disambiguated container
+    // keeps each one unique regardless — this reproduced on CI (though
+    // not locally) for the bare page-wide getByLabel("Itemized").
+    const cardDiv = page.getByText("Invoice type", { exact: true }).locator("../../..").first();
+
+    await cardDiv.getByLabel("Itemized").check();
+    const previewBox = cardDiv.getByText("Enter valid amounts to see a total preview.").locator("..");
     await expect
       .poll(() => previewBox.evaluate((el) => getComputedStyle(el).backgroundColor))
       .toBe("rgb(23, 26, 32)");
 
-    const lineItemRow = page.getByRole("group", { name: "Line item 1" });
+    const lineItemRow = cardDiv.getByRole("group", { name: "Line item 1" });
     await expect
       .poll(() => lineItemRow.evaluate((el) => getComputedStyle(el).borderColor))
       .toBe("rgba(255, 255, 255, 0.14)");
@@ -151,7 +161,11 @@ test.describe("Design System Batch 10 — Remaining Invoices surfaces", () => {
       }));
       expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
 
-      await page.getByLabel("Itemized").check();
+      // Same duplicate-form disambiguation as the tests above — a bare
+      // page-wide getByLabel("Itemized") can match both the real and the
+      // hidden progressive-enhancement clone.
+      const cardDiv = page.getByText("Invoice type", { exact: true }).locator("../../..").first();
+      await cardDiv.getByLabel("Itemized").check();
       overflow = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
         clientWidth: document.documentElement.clientWidth,
