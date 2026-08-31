@@ -78,7 +78,7 @@ export function InvoiceDraftPanel({
         onDirtyChange={() => setDirty(true)}
       />
       {canIssue && (
-        <div className="mt-6 border-t border-gray-200 pt-6">
+        <div className="border-border-default mt-6 border-t pt-6">
           {readiness && <InvoiceIssuanceReadinessNotice readiness={readiness} />}
           <InvoiceIssueControls
             invoiceId={invoiceId}

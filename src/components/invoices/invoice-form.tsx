@@ -172,9 +172,9 @@ export function InvoiceForm({
       </FormField>
 
       <fieldset aria-describedby={fieldErrors.mode ? "mode-error" : undefined}>
-        <legend className="block text-sm font-medium text-gray-700">Invoice type</legend>
+        <legend className="text-text-secondary block text-sm font-medium">Invoice type</legend>
         <div className="mt-1 flex gap-4">
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="text-text-secondary flex items-center gap-2 text-sm">
             <input
               type="radio"
               name="mode-selector"
@@ -183,11 +183,11 @@ export function InvoiceForm({
                 setMode("flat");
                 dismissCurrentErrors();
               }}
-              className="focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+              className="focus-visible:ring-focus-ring focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
             />
             Flat amount
           </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="text-text-secondary flex items-center gap-2 text-sm">
             <input
               type="radio"
               name="mode-selector"
@@ -196,13 +196,13 @@ export function InvoiceForm({
                 setMode("itemized");
                 dismissCurrentErrors();
               }}
-              className="focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+              className="focus-visible:ring-focus-ring focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
             />
             Itemized
           </label>
         </div>
         {fieldErrors.mode && (
-          <p id="mode-error" role="alert" className="mt-1 text-sm text-red-600">
+          <p id="mode-error" role="alert" className="text-danger mt-1 text-sm">
             {fieldErrors.mode}
           </p>
         )}
@@ -227,7 +227,7 @@ export function InvoiceForm({
         <div>
           <FormLabel htmlFor="lineItems-list">Line items</FormLabel>
           {fieldErrors.lineItems && (
-            <p id="lineItems-error" role="alert" className="mt-1 text-sm text-red-600">
+            <p id="lineItems-error" role="alert" className="text-danger mt-1 text-sm">
               {fieldErrors.lineItems}
             </p>
           )}
@@ -253,11 +253,11 @@ export function InvoiceForm({
         </div>
       )}
 
-      <div aria-live="polite" className="rounded-md border border-gray-200 bg-gray-50 px-4 py-3 text-sm">
+      <div aria-live="polite" className="border-border-default bg-surface-muted rounded-md border px-4 py-3 text-sm">
         {previewText ? (
-          <span className="font-medium text-gray-900">Total: {previewText}</span>
+          <span className="text-text-primary font-medium">Total: {previewText}</span>
         ) : (
-          <span className="text-gray-500">Enter valid amounts to see a total preview.</span>
+          <span className="text-text-muted">Enter valid amounts to see a total preview.</span>
         )}
       </div>
 
@@ -280,7 +280,7 @@ export function InvoiceForm({
             </option>
           ))}
         </Select>
-        {currencyFallbackNotice && <p className="mt-1 text-sm text-amber-700">{currencyFallbackNotice}</p>}
+        {currencyFallbackNotice && <p className="text-warning mt-1 text-sm">{currencyFallbackNotice}</p>}
       </FormField>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -409,11 +409,11 @@ export function InvoiceForm({
           aria-invalid={!!fieldErrors.internalNotes}
           aria-describedby={fieldErrors.internalNotes ? "internalNotes-error" : undefined}
         />
-        <p className="mt-1 text-xs text-gray-500">Staff-only — never shown to the client.</p>
+        <p className="text-text-muted mt-1 text-xs">Staff-only — never shown to the client.</p>
       </FormField>
 
       {state.error && errorsVisible && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-danger text-sm">
           {state.error}
         </p>
       )}
