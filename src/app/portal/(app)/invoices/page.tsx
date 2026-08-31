@@ -37,8 +37,8 @@ export default async function PortalInvoicesPage({
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Invoices</h1>
-      <p className="mt-1 text-sm text-gray-600">
+      <h1 className="text-text-primary text-2xl font-semibold tracking-tight">Invoices</h1>
+      <p className="text-text-muted mt-1 text-sm">
         {invoices.length} {invoices.length === 1 ? "invoice" : "invoices"}
       </p>
 
@@ -51,8 +51,8 @@ export default async function PortalInvoicesPage({
               key={tab.value}
               href={href}
               aria-current={active ? "page" : undefined}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 ${
-                active ? "bg-black text-white" : "text-gray-700 hover:bg-gray-100"
+              className={`focus-visible:ring-focus-ring rounded-md px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                active ? "bg-accent text-white" : "text-text-secondary hover:bg-[var(--hover)]"
               }`}
             >
               {tab.label}
@@ -88,7 +88,7 @@ export default async function PortalInvoicesPage({
                 <TableCell emphasis>
                   <Link
                     href={`/portal/invoices/${invoice.id}`}
-                    className="rounded hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                    className="focus-visible:ring-focus-ring rounded hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
                   >
                     {invoice.invoiceNumber}
                   </Link>
