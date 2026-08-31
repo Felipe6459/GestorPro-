@@ -12,6 +12,13 @@ export const metadata: Metadata = {
   title: "Users — Platform Admin",
 };
 
+// Design System Phase 2's own established per-file pattern (see e.g.
+// (dashboard)/clients/page.tsx) for a <Link> styled as the page's primary
+// action — used here for the EmptyState "Clear search" action,
+// mechanically equivalent to the previous raw bg-black button.
+const PRIMARY_LINK_CLASSES =
+  "focus-visible:ring-focus-ring rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
+
 const BASE_PATH = "/platform-admin/users";
 
 const SORT_OPTIONS = [
@@ -44,8 +51,8 @@ export default async function PlatformAdminUsersPage({
   return (
     <div>
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Users</h1>
-        <p className="mt-1 text-sm text-gray-600">
+        <h1 className="text-text-primary text-2xl font-semibold tracking-tight">Users</h1>
+        <p className="text-text-secondary mt-1 text-sm">
           {total} {total === 1 ? "staff user" : "staff users"}, across every organization.
         </p>
       </div>
@@ -64,10 +71,7 @@ export default async function PlatformAdminUsersPage({
             title="No matching users"
             description={`No users match "${listParams.q}". Try a different search term.`}
             action={
-              <Link
-                href={BASE_PATH}
-                className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-              >
+              <Link href={BASE_PATH} className={PRIMARY_LINK_CLASSES}>
                 Clear search
               </Link>
             }
@@ -95,14 +99,14 @@ export default async function PlatformAdminUsersPage({
                   <TableCell className="wrap-anywhere">{user.email}</TableCell>
                   <TableCell>
                     {user.memberships.length === 0 ? (
-                      <span className="text-gray-400">No organizations</span>
+                      <span className="text-text-muted">No organizations</span>
                     ) : (
                       <ul className="space-y-1.5">
                         {user.memberships.map((membership) => (
                           <li key={membership.organizationId} className="flex flex-wrap items-center gap-2">
                             <Link
                               href={`/platform-admin/organizations/${membership.organizationId}`}
-                              className="wrap-anywhere rounded text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                              className="text-text-primary focus-visible:ring-focus-ring wrap-anywhere rounded hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
                             >
                               {membership.organizationName}
                             </Link>
