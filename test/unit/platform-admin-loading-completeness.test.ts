@@ -35,6 +35,12 @@ const ALLOWED_IMPORT_SPECIFIERS = new Set([
   "@/components/ui/skeleton",
   "@/components/ui/list-page-skeleton",
   "@/components/ui/page-loading",
+  // CARD_SURFACE_CLASSES — a single static string-constant export, no
+  // imports of its own, no hooks/effects/timers/network/database/auth —
+  // exactly as pure as the entries above. Same class of extension as
+  // route-loading-adoption-contract.test.ts's own earlier addition of
+  // this same specifier.
+  "@/components/ui/surface",
 ]);
 
 describe("Platform Admin loading-state completeness — exactly the intended files exist", () => {
