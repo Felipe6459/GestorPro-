@@ -65,7 +65,12 @@ export default async function PortalAppLayout({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    // Portal Redesign Batch 1 — bg-gray-50 replaced with bg-surface-recessed,
+    // the same "page gutter" token the staff (dashboard) layout's own outer
+    // wrapper already uses (Design System page migration Batch 2) — keeps
+    // this shell visually continuous with the rest of the Aqenra system
+    // rather than introducing a second, Portal-only gutter tone.
+    <div className="bg-surface-recessed min-h-screen">
       {/*
         Aqenra Theme Persistence Phase C2 — same reconciliation as the
         staff (dashboard) layout, using identity.portalUser.themeMode.
@@ -74,23 +79,33 @@ export default async function PortalAppLayout({
         extra queries.
       */}
       <ThemePreferenceReconciler mode={dbThemeModeToRuntimeMode(identity.portalUser.themeMode)} />
-      <header className="border-b border-gray-200 bg-white">
+      <header className="border-border-default bg-surface border-b">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-4 py-4 sm:px-6">
-          <div>
-            <p className="text-xs font-medium tracking-wide text-gray-500 uppercase">
-              Client Portal
+          {/* min-w-0: lets this group actually shrink below its content's
+              intrinsic width when the header wraps on a narrow viewport —
+              flex items default to min-width: auto, which would otherwise
+              silently block the client-name truncate below from ever
+              taking effect (the same header-overflow cause already fixed
+              this way in the staff Header). */}
+          <div className="min-w-0">
+            <p className="text-text-muted text-xs font-medium tracking-wide uppercase">Client Portal</p>
+            <p className="text-text-primary truncate text-sm font-semibold" title={identity.client.name}>
+              {identity.client.name}
             </p>
-            <p className="text-sm font-semibold text-gray-900">{identity.client.name}</p>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="text-right text-sm">
-              <p className="font-medium text-gray-900">{identity.portalUser.name}</p>
-              <p className="text-xs text-gray-500">{identity.portalUser.email}</p>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="min-w-0 text-right text-sm">
+              <p className="text-text-primary truncate" title={identity.portalUser.name}>
+                {identity.portalUser.name}
+              </p>
+              <p className="text-text-muted truncate text-xs" title={identity.portalUser.email}>
+                {identity.portalUser.email}
+              </p>
             </div>
-            <form action={portalSignOut}>
+            <form action={portalSignOut} className="shrink-0">
               <button
                 type="submit"
-                className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+                className="border-border-strong text-text-secondary focus-visible:ring-focus-ring rounded-md border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-[var(--hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
               >
                 Sign out
               </button>
