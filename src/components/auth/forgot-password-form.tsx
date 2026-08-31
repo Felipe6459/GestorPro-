@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FormLabel } from "@/components/ui/form-field";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
 import type { AuthActionState } from "@/types";
 
 const initialState: AuthActionState = { error: null };
@@ -30,13 +31,10 @@ export function ForgotPasswordForm({
   if (!pending && state.error === null && state.message) {
     return (
       <div className="space-y-4 text-center">
-        <h2 className="text-base font-semibold text-gray-900">Check your email</h2>
-        <p className="text-sm text-gray-600">{state.message}</p>
-        <p className="text-sm text-gray-600">
-          <Link
-            href={loginPath}
-            className="rounded font-medium text-black hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
+        <h2 className="text-text-primary text-base font-semibold">Check your email</h2>
+        <p className="text-text-muted text-sm">{state.message}</p>
+        <p className="text-text-muted text-sm">
+          <Link href={loginPath} className={ACTION_LINK_CLASSES}>
             Back to sign in
           </Link>
         </p>
@@ -46,7 +44,7 @@ export function ForgotPasswordForm({
 
   return (
     <form action={formAction} className="space-y-4">
-      <p className="text-sm text-gray-600">Enter your email and we&apos;ll send you a link to reset your password.</p>
+      <p className="text-text-muted text-sm">Enter your email and we&apos;ll send you a link to reset your password.</p>
 
       <div>
         <FormLabel htmlFor="email" required>
@@ -56,7 +54,7 @@ export function ForgotPasswordForm({
       </div>
 
       {state.error && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-danger text-sm">
           {state.error}
         </p>
       )}
@@ -65,12 +63,9 @@ export function ForgotPasswordForm({
         {pending ? "Sending…" : "Send reset link"}
       </Button>
 
-      <p className="text-center text-sm text-gray-600">
+      <p className="text-text-muted text-center text-sm">
         Remembered your password?{" "}
-        <Link
-          href={loginPath}
-          className="rounded font-medium text-black hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-        >
+        <Link href={loginPath} className={ACTION_LINK_CLASSES}>
           Sign in
         </Link>
       </p>
