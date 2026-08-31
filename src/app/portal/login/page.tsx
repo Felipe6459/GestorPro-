@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getOptionalPortalUser } from "@/lib/current-portal-user";
 import { parseSearchParam, type RawSearchParams } from "@/lib/list-params";
 import { sanitizePortalRedirectPath } from "@/lib/safe-redirect";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { PortalLoginForm } from "./portal-login-form";
 
 export default async function PortalLoginPage({
@@ -37,9 +38,9 @@ export default async function PortalLoginPage({
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
-        <h1 className="mb-6 text-2xl font-semibold tracking-tight text-gray-900">
+    <main className="bg-surface-recessed flex min-h-screen items-center justify-center px-4">
+      <div className={`w-full max-w-sm p-8 shadow-sm ${CARD_SURFACE_CLASSES}`}>
+        <h1 className="text-text-primary mb-6 text-2xl font-semibold tracking-tight">
           Client Portal
         </h1>
         <PortalLoginForm redirectTo={redirectTo} />

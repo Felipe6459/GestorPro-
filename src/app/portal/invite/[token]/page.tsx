@@ -3,7 +3,13 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 import { AcceptClientInvitationForm } from "@/components/client-portal/accept-client-invitation-form";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { acceptClientInvitationAction, signOutForPortalInviteAction } from "./actions";
+
+const PRIMARY_LINK_CLASSES =
+  "focus-visible:ring-focus-ring rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent-hover focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
+const SECONDARY_LINK_CLASSES =
+  "border-border-strong text-text-secondary focus-visible:ring-focus-ring rounded-md border px-4 py-2 text-sm font-medium transition-colors hover:bg-[var(--hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
 
 function InviteCard({
   title,
@@ -13,9 +19,9 @@ function InviteCard({
   children: ReactNode;
 }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
-        <h1 className="mb-6 text-2xl font-semibold tracking-tight text-gray-900">
+    <main className="bg-surface-recessed flex min-h-screen items-center justify-center px-4">
+      <div className={`w-full max-w-sm p-8 shadow-sm ${CARD_SURFACE_CLASSES}`}>
+        <h1 className="text-text-primary mb-6 text-2xl font-semibold tracking-tight">
           {title}
         </h1>
         {children}
@@ -51,7 +57,7 @@ export default async function ClientInvitePage({
   if (!invitation || invitation.status === "REVOKED" || !invitation.client.organizationId) {
     return (
       <InviteCard title="Invitation not found">
-        <p className="text-sm text-gray-600">
+        <p className="text-text-muted text-sm">
           Invitation not found or no longer available.
         </p>
       </InviteCard>
@@ -70,15 +76,12 @@ export default async function ClientInvitePage({
 
     return (
       <InviteCard title="Invitation already accepted">
-        <p className="text-sm text-gray-600">
+        <p className="text-text-muted text-sm">
           This invitation to {invitation.client.name}&apos;s client portal has
           already been accepted.
         </p>
         {alreadyAccepted && (
-          <Link
-            href="/portal"
-            className="mt-4 inline-block rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-          >
+          <Link href="/portal" className={`mt-4 inline-block ${PRIMARY_LINK_CLASSES}`}>
             Go to portal
           </Link>
         )}
@@ -92,7 +95,7 @@ export default async function ClientInvitePage({
   if (invitation.status === "EXPIRED" || isExpired(invitation.expiresAt)) {
     return (
       <InviteCard title="Invitation expired">
-        <p className="text-sm text-gray-600">This invitation has expired.</p>
+        <p className="text-text-muted text-sm">This invitation has expired.</p>
       </InviteCard>
     );
   }
@@ -104,17 +107,17 @@ export default async function ClientInvitePage({
 
   return (
     <InviteCard title="You're invited">
-      <div className="space-y-2 text-sm text-gray-600">
+      <div className="text-text-muted space-y-2 text-sm">
         <p>
           You&apos;ve been invited to the client portal for{" "}
-          <span className="font-medium text-gray-900">
+          <span className="text-text-primary font-medium">
             {invitation.client.name}
           </span>
           .
         </p>
         <p>
           Invited email:{" "}
-          <span className="font-medium text-gray-900">{invitation.email}</span>
+          <span className="text-text-primary font-medium">{invitation.email}</span>
         </p>
         <p>Expires: {invitation.expiresAt.toLocaleDateString()}</p>
       </div>
@@ -124,13 +127,13 @@ export default async function ClientInvitePage({
           <div className="flex gap-3">
             <Link
               href={`/portal/login?redirectTo=${encodeURIComponent(redirectTarget)}`}
-              className="flex-1 rounded-md bg-black px-4 py-2 text-center text-sm font-medium text-white transition-colors hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+              className={`flex-1 text-center ${PRIMARY_LINK_CLASSES}`}
             >
               Client Portal login
             </Link>
             <Link
               href={`/portal/signup?redirectTo=${encodeURIComponent(redirectTarget)}`}
-              className="flex-1 rounded-md border border-gray-300 px-4 py-2 text-center text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+              className={`flex-1 text-center ${SECONDARY_LINK_CLASSES}`}
             >
               Sign up
             </Link>
@@ -139,20 +142,17 @@ export default async function ClientInvitePage({
 
         {authUser && !emailMatches && (
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">
+            <p className="text-text-muted text-sm">
               This invitation was sent to{" "}
-              <span className="font-medium text-gray-900">
+              <span className="text-text-primary font-medium">
                 {invitation.email}
               </span>
               , but you&apos;re signed in as{" "}
-              <span className="font-medium text-gray-900">{authUser.email}</span>
+              <span className="text-text-primary font-medium">{authUser.email}</span>
               .
             </p>
             <form action={signOutForPortalInviteAction.bind(null, token)}>
-              <button
-                type="submit"
-                className="w-full rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-              >
+              <button type="submit" className={`w-full ${SECONDARY_LINK_CLASSES}`}>
                 Sign out and log in with the right account
               </button>
             </form>
