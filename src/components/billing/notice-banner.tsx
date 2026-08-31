@@ -1,11 +1,16 @@
 import type { BillingNotice } from "@/lib/billing/view-model";
 
+// Design System Batch 8 — matches the border-{tone} + bg-{tone}-subtle +
+// text-{tone} pattern already established in invite-form.tsx's own
+// warning/success notice; neutral has no dedicated brand-color pair (same
+// reasoning as StatusBadge's own "neutral"), so it uses the existing
+// surface/text scale instead.
 const TONE_STYLES: Record<BillingNotice["tone"], string> = {
-  neutral: "border-gray-200 bg-gray-50 text-gray-700",
-  info: "border-blue-200 bg-blue-50 text-blue-800",
-  success: "border-green-200 bg-green-50 text-green-800",
-  warning: "border-amber-200 bg-amber-50 text-amber-800",
-  danger: "border-red-200 bg-red-50 text-red-800",
+  neutral: "border-border-default bg-surface-muted text-text-secondary",
+  info: "border-info bg-info-subtle text-info",
+  success: "border-success bg-success-subtle text-success",
+  warning: "border-warning bg-warning-subtle text-warning",
+  danger: "border-danger bg-danger-subtle text-danger",
 };
 
 /**

@@ -1,4 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 /** Matches BillingPage's real layout: heading, current-plan card, usage grid, plans grid — see this stage's own §12. */
 export default function BillingLoading() {
@@ -8,13 +9,13 @@ export default function BillingLoading() {
       <Skeleton className="mt-2 h-4 w-64" />
 
       <div className="mt-6 space-y-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className={`p-5 ${CARD_SURFACE_CLASSES}`}>
           <Skeleton className="h-5 w-40" />
           <Skeleton className="mt-2 h-5 w-24" />
           <Skeleton className="mt-4 h-12 w-full" />
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+        <div className={`p-5 ${CARD_SURFACE_CLASSES}`}>
           <Skeleton className="h-5 w-24" />
           <div className="mt-4 grid grid-cols-1 gap-6 sm:grid-cols-2">
             {Array.from({ length: 4 }, (_, i) => (

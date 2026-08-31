@@ -1,16 +1,25 @@
 import type { UsageRowViewModel } from "@/lib/billing/view-model";
 
+// Design System Batch 8 — matches OnboardingProgressBar's own established
+// track/fill precedent (bg-surface-muted / bg-accent for "the one
+// meaningful value") for NORMAL; APPROACHING/REACHED/EXCEEDED borrow the
+// same warning/danger tokens StatusBadge already uses everywhere else,
+// as solid fills rather than that token's own "-subtle" wash. The two
+// raw ambers this replaced (amber-500 or amber-600) collapse to one
+// --warning shade — a deliberate, disclosed simplification: severity is
+// still fully conveyed by the STATUS_TAGS label below ("Approaching
+// limit" vs "Limit reached"), never by the bar color alone.
 const BAR_COLORS: Record<UsageRowViewModel["status"], string> = {
-  NORMAL: "bg-gray-900",
-  APPROACHING: "bg-amber-500",
-  REACHED: "bg-amber-600",
-  EXCEEDED: "bg-red-600",
+  NORMAL: "bg-accent",
+  APPROACHING: "bg-warning",
+  REACHED: "bg-warning",
+  EXCEEDED: "bg-danger",
 };
 
 const STATUS_TAGS: Partial<Record<UsageRowViewModel["status"], { label: string; className: string }>> = {
-  APPROACHING: { label: "Approaching limit", className: "bg-amber-100 text-amber-800" },
-  REACHED: { label: "Limit reached", className: "bg-amber-100 text-amber-800" },
-  EXCEEDED: { label: "Over limit", className: "bg-red-100 text-red-700" },
+  APPROACHING: { label: "Approaching limit", className: "bg-warning-subtle text-warning" },
+  REACHED: { label: "Limit reached", className: "bg-warning-subtle text-warning" },
+  EXCEEDED: { label: "Over limit", className: "bg-danger-subtle text-danger" },
 };
 
 /**
@@ -34,7 +43,7 @@ export function UsageRow({ row }: { row: UsageRowViewModel }) {
   return (
     <div>
       <div className="flex items-center justify-between gap-2 text-sm">
-        <span className="font-medium text-gray-900">{row.label}</span>
+        <span className="text-text-primary font-medium">{row.label}</span>
         {tag && (
           <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${tag.className}`}>
             {tag.label}
@@ -42,12 +51,12 @@ export function UsageRow({ row }: { row: UsageRowViewModel }) {
         )}
       </div>
 
-      <p className="mt-0.5 text-sm text-gray-500">
+      <p className="text-text-muted mt-0.5 text-sm">
         {row.unlimited ? `${row.currentLabel} used` : `${row.currentLabel} of ${row.limitLabel} used`}
       </p>
 
       {row.unlimited ? (
-        <p className="mt-2 text-xs text-gray-400">Unlimited</p>
+        <p className="text-text-muted mt-2 text-xs">Unlimited</p>
       ) : (
         <div
           role="progressbar"
@@ -55,7 +64,7 @@ export function UsageRow({ row }: { row: UsageRowViewModel }) {
           aria-valuemin={0}
           aria-valuemax={row.limit ?? undefined}
           aria-label={`${row.label} usage`}
-          className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-100"
+          className="bg-surface-muted mt-2 h-2 w-full overflow-hidden rounded-full"
         >
           <div
             className={`h-full rounded-full transition-all ${BAR_COLORS[row.status]}`}

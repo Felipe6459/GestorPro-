@@ -1,10 +1,11 @@
 import type { UsageRowViewModel } from "@/lib/billing/view-model";
 import { UsageRow } from "./usage-row";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 
 export function UsageSection({ rows }: { rows: UsageRowViewModel[] }) {
   return (
-    <section aria-labelledby="billing-usage-heading" className="rounded-lg border border-gray-200 bg-white p-5">
-      <h2 id="billing-usage-heading" className="text-base font-semibold text-gray-900">
+    <section aria-labelledby="billing-usage-heading" className={`p-5 ${CARD_SURFACE_CLASSES}`}>
+      <h2 id="billing-usage-heading" className="text-text-primary text-base font-semibold">
         Usage
       </h2>
       <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
