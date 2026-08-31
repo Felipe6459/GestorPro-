@@ -53,7 +53,7 @@ export function PlanActionButton({
       >
         {label}
       </Button>
-      {disabled && disabledReason && <p className="mt-1 text-xs text-gray-500">{disabledReason}</p>}
+      {disabled && disabledReason && <p className="text-text-muted mt-1 text-xs">{disabledReason}</p>}
     </div>
   );
 }

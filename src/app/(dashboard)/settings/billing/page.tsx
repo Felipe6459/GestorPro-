@@ -44,8 +44,8 @@ export default async function BillingPage({
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Billing</h1>
-      <p className="mt-1 text-sm text-gray-500">Manage your organization&apos;s plan and usage.</p>
+      <h1 className="text-text-primary text-2xl font-semibold tracking-tight">Billing</h1>
+      <p className="text-text-muted mt-1 text-sm">Manage your organization&apos;s plan and usage.</p>
 
       <div className="mt-6 space-y-6">
         {checkout === "success" && (
