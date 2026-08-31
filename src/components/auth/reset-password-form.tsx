@@ -38,7 +38,7 @@ export function ResetPasswordForm({
     return (
       <div className="space-y-4 text-center">
         <h2 className="text-text-primary text-base font-semibold">Password updated</h2>
-        <p className="text-text-muted text-sm">Sign in with your new password.</p>
+        <p className="text-text-secondary text-sm">Sign in with your new password.</p>
         <form action={signOutAction}>
           <Button type="submit" className="w-full">
             Continue to sign in
@@ -50,7 +50,7 @@ export function ResetPasswordForm({
 
   return (
     <form action={formAction} className="space-y-4">
-      <p className="text-text-muted text-sm">Choose a new password for your account.</p>
+      <p className="text-text-secondary text-sm">Choose a new password for your account.</p>
 
       <div>
         <FormLabel htmlFor="password" required>

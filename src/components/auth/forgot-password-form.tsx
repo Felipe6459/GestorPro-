@@ -32,8 +32,8 @@ export function ForgotPasswordForm({
     return (
       <div className="space-y-4 text-center">
         <h2 className="text-text-primary text-base font-semibold">Check your email</h2>
-        <p className="text-text-muted text-sm">{state.message}</p>
-        <p className="text-text-muted text-sm">
+        <p className="text-text-secondary text-sm">{state.message}</p>
+        <p className="text-text-secondary text-sm">
           <Link href={loginPath} className={ACTION_LINK_CLASSES}>
             Back to sign in
           </Link>
@@ -44,7 +44,7 @@ export function ForgotPasswordForm({
 
   return (
     <form action={formAction} className="space-y-4">
-      <p className="text-text-muted text-sm">Enter your email and we&apos;ll send you a link to reset your password.</p>
+      <p className="text-text-secondary text-sm">Enter your email and we&apos;ll send you a link to reset your password.</p>
 
       <div>
         <FormLabel htmlFor="email" required>
@@ -63,7 +63,7 @@ export function ForgotPasswordForm({
         {pending ? "Sending…" : "Send reset link"}
       </Button>
 
-      <p className="text-text-muted text-center text-sm">
+      <p className="text-text-secondary text-center text-sm">
         Remembered your password?{" "}
         <Link href={loginPath} className={ACTION_LINK_CLASSES}>
           Sign in
