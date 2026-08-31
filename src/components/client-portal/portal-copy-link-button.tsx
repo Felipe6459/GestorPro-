@@ -31,7 +31,7 @@ export function PortalCopyLinkButton({ token }: { token: string }) {
     <button
       type="button"
       onClick={handleCopy}
-      className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+      className="border-border-strong text-text-secondary focus-visible:ring-focus-ring rounded-md border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-[var(--hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
     >
       {copied ? "Copied!" : "Copy link"}
     </button>

@@ -3,6 +3,8 @@ import Link from "next/link";
 import { getCurrentMembership } from "@/lib/current-user";
 import { prisma } from "@/lib/prisma";
 import { ClientForm } from "@/components/clients/client-form";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
+import { CARD_SURFACE_CLASSES } from "@/components/ui/surface";
 import { updateClientAction } from "./actions";
 import { ClientAttachmentsSection } from "./attachments-section";
 import { ClientPortalAccessSection } from "./portal-access-section";
@@ -28,17 +30,14 @@ export default async function EditClientPage({
   return (
     <div className="mx-auto max-w-xl">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">
+        <h1 className="text-text-primary text-2xl font-semibold tracking-tight">
           Edit client
         </h1>
-        <Link
-          href="/clients"
-          className="rounded text-sm text-gray-600 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
-        >
+        <Link href="/clients" className={ACTION_LINK_CLASSES}>
           Cancel
         </Link>
       </div>
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+      <div className={`p-6 ${CARD_SURFACE_CLASSES}`}>
         <ClientForm
           action={boundUpdateClientAction}
           defaultValues={client}
