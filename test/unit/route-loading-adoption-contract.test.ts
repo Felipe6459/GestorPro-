@@ -124,17 +124,36 @@ describe("every new loading.tsx is a pure, server-renderable presentation file",
     expect(occurrences, `${path}: expected exactly one RouteLoadingAnnouncement`).toBe(1);
   });
 
-  it.each(INTENDED_NEW_LOADING_FILES)("%s imports its shared skeleton pieces only from @/components/ui/page-loading or @/components/ui/skeleton", (path) => {
-    const source = readFileSync(path, "utf-8");
-    const importLines = source.match(/^import .+$/gm) ?? [];
-    for (const line of importLines) {
-      const fromMatch = line.match(/from\s+["']([^"']+)["']/);
-      expect(fromMatch).not.toBeNull();
-      const specifier = fromMatch![1];
-      expect(
-        specifier === "@/components/ui/page-loading" || specifier === "@/components/ui/skeleton",
-        `${path}: unexpected import "${specifier}"`,
-      ).toBe(true);
-    }
-  });
+  // @/components/ui/surface (CARD_SURFACE_CLASSES) added post-F5, by the
+  // Aqenra Round 3 Design System wrap-up: settings/domain/loading.tsx's
+  // one card box needed the same opaque-surface treatment its own real
+  // page already uses, and no raw-light fallback exists for it. It is
+  // just as inert as the two originally-approved specifiers below — a
+  // single exported string constant, zero imports of its own, zero
+  // hooks/effects/fetch/Prisma/Server Action/timer/random/Date/env — so
+  // permitting it here preserves this contract's actual protective
+  // intent (no behavioral/runtime-heavy import in a loading boundary)
+  // rather than merely its original literal wording.
+  const ALLOWED_LOADING_IMPORT_SPECIFIERS = [
+    "@/components/ui/page-loading",
+    "@/components/ui/skeleton",
+    "@/components/ui/surface",
+  ];
+
+  it.each(INTENDED_NEW_LOADING_FILES)(
+    "%s imports its shared skeleton pieces only from an approved static UI module (page-loading, skeleton, or surface)",
+    (path) => {
+      const source = readFileSync(path, "utf-8");
+      const importLines = source.match(/^import .+$/gm) ?? [];
+      for (const line of importLines) {
+        const fromMatch = line.match(/from\s+["']([^"']+)["']/);
+        expect(fromMatch).not.toBeNull();
+        const specifier = fromMatch![1];
+        expect(
+          ALLOWED_LOADING_IMPORT_SPECIFIERS.includes(specifier),
+          `${path}: unexpected import "${specifier}"`,
+        ).toBe(true);
+      }
+    },
+  );
 });
