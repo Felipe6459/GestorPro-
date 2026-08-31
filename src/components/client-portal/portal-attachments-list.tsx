@@ -1,5 +1,6 @@
 import { formatFileSize } from "@/lib/format";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ACTION_LINK_CLASSES } from "@/components/ui/action-link-classes";
 import type { PortalAttachment } from "@/lib/client-portal/attachments";
 
 // Read-only by design: no upload form, no delete button, and never a
@@ -18,24 +19,24 @@ export function PortalAttachmentsList({
   }
 
   return (
-    <ul className="mt-4 divide-y divide-gray-200 rounded-lg border border-gray-200">
+    <ul className="divide-border-default border-border-default mt-4 divide-y rounded-lg border">
       {attachments.map((attachment) => (
         <li
           key={attachment.id}
           className="flex items-center justify-between gap-4 px-4 py-3"
         >
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-gray-900">
+            <p className="text-text-primary truncate text-sm font-medium" title={attachment.originalName}>
               {attachment.originalName}
             </p>
-            <p className="text-xs text-gray-500">
+            <p className="text-text-muted text-xs">
               {formatFileSize(attachment.sizeBytes)} ·{" "}
               {attachment.createdAt.toLocaleDateString()}
             </p>
           </div>
           <a
             href={`/api/portal/attachments/${attachment.id}/download`}
-            className="shrink-0 rounded text-sm font-medium text-gray-700 transition-colors hover:text-gray-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+            className={`shrink-0 ${ACTION_LINK_CLASSES}`}
           >
             Download
           </a>
