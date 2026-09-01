@@ -1,5 +1,5 @@
 export const siteConfig = {
-  name: "Aqenra",
+  name: "GestorPro",
   description:
-    "A lightweight CRM for freelancers and small agencies to manage clients, projects, tasks, and invoices.",
+    "Plataforma SaaS para gerenciamento de clientes, planos, vencimentos, cobranças e pagamentos.",
 };
