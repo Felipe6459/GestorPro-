@@ -1,0 +1,1 @@
+Acesse esta área pelo menu Configurações > Segurança.
