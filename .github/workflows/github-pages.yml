@@ -22,6 +22,7 @@ jobs:
         run: |
           mkdir -p _site
           cp docs/index.html _site/index.html
+          if [ -f docs/recuperar-senha.html ]; then cp docs/recuperar-senha.html _site/recuperar-senha.html; fi
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:
