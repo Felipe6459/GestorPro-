@@ -3,14 +3,22 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseCookieOptions } from "./cookie-options";
 import { TEST_MODE } from "@/lib/test-mode";
 
+// These are safe client-side Supabase values. The environment variables remain
+// the preferred source; the fallbacks prevent the Vercel middleware from
+// crashing before the first page can even render when an environment variable
+// was renamed by the hosting dashboard.
+const SUPABASE_URL =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ??
+  "https://jbdjfmvdrwdfnuhqrprc.supabase.co";
+
+const SUPABASE_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+  "sb_publishable_3ABEFAwN_wzmSu13EyVOwQ_h5Xfmz80";
+
 export async function updateSession(request: NextRequest) {
   const response = NextResponse.next({ request });
 
-  // TEST_MODE has no real Supabase Auth session to refresh — the test
-  // identity cookie (see src/lib/test-mode.ts) isn't a Supabase session
-  // and needs no token-refresh call. Without this, every request would
-  // make a real network call to NEXT_PUBLIC_SUPABASE_URL, which has no
-  // real Auth service listening in this sandbox (see the Stage 4 report).
   if (TEST_MODE) {
     return response;
   }
@@ -18,33 +26,30 @@ export async function updateSession(request: NextRequest) {
   return updateRealSupabaseSession(request, response);
 }
 
-async function updateRealSupabaseSession(request: NextRequest, initialResponse: NextResponse) {
+async function updateRealSupabaseSession(
+  request: NextRequest,
+  initialResponse: NextResponse,
+) {
   let response = initialResponse;
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookieOptions: getSupabaseCookieOptions(),
-      cookies: {
-        getAll() {
-          return request.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value),
-          );
-          response = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
-          );
-        },
+  const supabase = createServerClient(SUPABASE_URL, SUPABASE_KEY, {
+    cookieOptions: getSupabaseCookieOptions(),
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value }) => {
+          request.cookies.set(name, value);
+        });
+        response = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) => {
+          response.cookies.set(name, value, options);
+        });
       },
     },
-  );
+  });
 
-  // Revalidates the token against Supabase Auth (and refreshes it if
-  // expired) rather than trusting the cookie payload alone.
   await supabase.auth.getUser();
 
   return response;
