@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GestorPro</title>
+<style>body{font-family:system-ui;margin:0;background:#0f1020;color:#fff;display:grid;place-items:center;min-height:100vh}.card{width:min(420px,90%);background:#191a2e;padding:28px;border-radius:18px;box-shadow:0 15px 50px #0006}h1{margin-top:0;color:#a78bfa}input,button{box-sizing:border-box;width:100%;padding:13px;margin:7px 0;border-radius:9px;border:1px solid #393b5a}input{background:#101124;color:#fff}button{background:#7c3aed;color:#fff;border:0;font-weight:700;cursor:pointer}#app{display:none}.muted{color:#aaa;font-size:14px}#msg{min-height:20px;color:#fca5a5}</style>
+</head>
+<body><main class="card"><section id="login"><h1>GestorPro</h1><p>Gestão de clientes, cobranças e pagamentos.</p><form id="form"><input id="email" type="email" placeholder="E-mail" required><input id="password" type="password" placeholder="Senha" required><button>Entrar</button></form><p id="msg"></p><p class="muted">Backend: Supabase</p></section><section id="app"><h1>GestorPro</h1><p id="welcome"></p><button id="logout">Sair</button></section></main>
+<script type="module">
+import {createClient} from 'https://esm.sh/@supabase/supabase-js@2';
+const supabase=createClient('https://jbdjfmvdrwdfnuhqrprc.supabase.co','sb_publishable_3ABEFAwN_wzmSu13EyVOwQ_h5Xfmz80');
+const login=document.querySelector('#login'),app=document.querySelector('#app'),msg=document.querySelector('#msg');
+async function render(){const {data:{user}}=await supabase.auth.getUser();if(user){login.style.display='none';app.style.display='block';document.querySelector('#welcome').textContent='Olá, '+(user.email||'usuário')+'!';}else{login.style.display='block';app.style.display='none';}}
+document.querySelector('#form').onsubmit=async e=>{e.preventDefault();msg.textContent='Entrando...';const {error}=await supabase.auth.signInWithPassword({email:email.value,password:password.value});msg.textContent=error?error.message:'';await render();};document.querySelector('#logout').onclick=async()=>{await supabase.auth.signOut();await render()};supabase.auth.onAuthStateChange(()=>render());render();
+</script></body></html>
