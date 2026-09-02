@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache,no-store,must-revalidate"><meta http-equiv="Pragma" content="no-cache">
+<title>GestorPro — Painel</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0b0912;color:#f8fafc;font-family:system-ui,-apple-system,sans-serif}.wrap{max-width:1200px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:24px}.brand{color:#a78bfa;font-size:28px;font-weight:800}.user{color:#a1a1aa;font-size:14px}button{border:0;border-radius:10px;padding:11px 15px;font-weight:700;cursor:pointer;background:#8b5cf6;color:white}button.secondary{background:#27213b}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.card,.panel{background:#171326;border:1px solid #30264d;border-radius:16px;padding:20px}.label{color:#a1a1aa;font-size:13px}.value{font-size:30px;font-weight:800;margin-top:6px}.panel{margin-top:20px}.panel h2{margin:0 0 14px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:760px}th,td{text-align:left;padding:12px;border-bottom:1px solid #2a2340}th{color:#a1a1aa;font-size:12px;text-transform:uppercase}td{font-size:14px}.pill{display:inline-block;padding:4px 9px;border-radius:999px;background:#241d3a;color:#c4b5fd;font-size:12px}.msg{margin:12px 0;color:#fca5a5}.empty{color:#a1a1aa;padding:20px 0}.actions{display:flex;gap:10px;flex-wrap:wrap}@media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}.top{align-items:flex-start;flex-direction:column}}@media(max-width:500px){.wrap{padding:14px}.cards{grid-template-columns:1fr 1fr}.value{font-size:24px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top"><div><div class="brand">GestorPro</div><div class="user" id="user">Verificando sessão…</div></div><div class="actions"><button class="secondary" id="refresh">Atualizar</button><button id="logout">Sair</button></div></header>
+<div id="msg" class="msg"></div>
+<section class="cards">
+<div class="card"><div class="label">Total de clientes</div><div class="value" id="total">—</div></div>
+<div class="card"><div class="label">Clientes ativos</div><div class="value" id="active">—</div></div>
+<div class="card"><div class="label">Vencendo em 7 dias</div><div class="value" id="soon">—</div></div>
+<div class="card"><div class="label">Vencidos</div><div class="value" id="expired">—</div></div>
+</section>
+<section class="panel"><h2>Clientes</h2><div class="table-wrap"><table><thead><tr><th>Nome</th><th>WhatsApp</th><th>Plano</th><th>Telas</th><th>Valor</th><th>Vencimento</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table></div><div class="empty" id="empty" hidden>Nenhum cliente disponível para esta conta.</div></section>
+<section class="panel"><h2>Acesso rápido</h2><p class="label">Esta versão está publicada diretamente no GitHub Pages. As funções do sistema serão migradas para o modo estático por etapas, sem depender do Vercel.</p></section>
+</div>
+<script type="module">
+import{createClient}from'https://esm.sh/@supabase/supabase-js@2';
+const supabase=createClient('https://jbdjfmvdrwdfnuhqrprc.supabase.co','sb_publishable_3ABEFAwN_wzmSu13EyVOwQ_h5Xfmz80',{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+const $=id=>document.getElementById(id); const msg=$('msg');
+function error(t){msg.textContent=t} function clear(){msg.textContent=''}
+function dateOnly(v){return v?new Date(v+'T00:00:00'):null}
+async function load(){clear();const{data:{session}}=await supabase.auth.getSession();if(!session){location.href='./';return}$('user').textContent=session.user.email||'Usuário autenticado';
+ const{data,error:e}=await supabase.from('clients').select('id,name,whatsapp,plan,screens,value,due_date,status').order('due_date',{ascending:true});
+ if(e){error('Não foi possível carregar os clientes: '+e.message);return}
+ const today=new Date();today.setHours(0,0,0,0);const limit=new Date(today);limit.setDate(limit.getDate()+7);
+ let active=0,soon=0,expired=0;const rows=[];
+ (data||[]).forEach(c=>{const d=dateOnly(c.due_date);const st=String(c.status||'').toLowerCase();if(st==='active'||st==='ativo')active++;if(d){if(d<today)expired++;else if(d<=limit)soon++;}rows.push(`<tr><td>${esc(c.name)}</td><td>${esc(c.whatsapp||'—')}</td><td>${esc(c.plan||'—')}</td><td>${c.screens??'—'}</td><td>${c.value==null?'—':'R$ '+Number(c.value).toFixed(2).replace('.',',')}</td><td>${c.due_date?brDate(c.due_date):'—'}</td><td><span class="pill">${esc(c.status||'—')}</span></td></tr>`)});
+ $('total').textContent=data?.length||0;$('active').textContent=active;$('soon').textContent=soon;$('expired').textContent=expired;$('rows').innerHTML=rows.join('');$('empty').hidden=!!(data&&data.length);}
+function brDate(v){const [y,m,d]=v.split('-');return d+'/'+m+'/'+y}function esc(v){return String(v??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]))}
+$('refresh').onclick=load;$('logout').onclick=async()=>{await supabase.auth.signOut();location.href='./'};supabase.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT')location.href='./'});load();
+</script>
+</body></html>
