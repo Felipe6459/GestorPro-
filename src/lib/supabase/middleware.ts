@@ -3,10 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseCookieOptions } from "./cookie-options";
 import { TEST_MODE } from "@/lib/test-mode";
 
-// These are safe client-side Supabase values. The environment variables remain
-// the preferred source; the fallbacks prevent the Vercel middleware from
-// crashing before the first page can even render when an environment variable
-// was renamed by the hosting dashboard.
+// Safe public Supabase configuration. Environment variables remain preferred,
+// but the known project values prevent the middleware from crashing when a
+// public variable is missing or was renamed in the hosting dashboard.
 const SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL ??
   "https://jbdjfmvdrwdfnuhqrprc.supabase.co";
@@ -23,7 +22,15 @@ export async function updateSession(request: NextRequest) {
     return response;
   }
 
-  return updateRealSupabaseSession(request, response);
+  // Middleware must never turn an otherwise renderable page into a 500.
+  // Supabase session refresh is helpful, but the server-side auth checks are
+  // still performed by the application. If the refresh service is unavailable
+  // or the runtime rejects a middleware operation, let the request continue.
+  try {
+    return await updateRealSupabaseSession(request, response);
+  } catch {
+    return response;
+  }
 }
 
 async function updateRealSupabaseSession(
