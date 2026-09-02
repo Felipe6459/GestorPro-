@@ -5,6 +5,9 @@ import { cookies } from "next/headers";
 import { getSupabaseCookieOptions } from "./cookie-options";
 import { TEST_MODE, TEST_USER_COOKIE, decodeTestModeIdentity } from "@/lib/test-mode";
 
+// Safe public Supabase configuration. Environment variables remain preferred,
+// but the public URL/key fallback keeps the production app from crashing when
+// Vercel has a renamed/missing public Supabase variable.
 const SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL ??
   "https://jbdjfmvdrwdfnuhqrprc.supabase.co";
