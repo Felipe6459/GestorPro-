@@ -1,0 +1,32 @@
+name: Integrar controle de créditos no painel
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/creditos.js'
+      - '.github/workflows/integrar-creditos.yml'
+permissions:
+  contents: write
+jobs:
+  integrar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inserir módulo de créditos no painel
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('docs/painel.html')
+          s = p.read_text(encoding='utf-8')
+          tag = '<script type="module" src="./creditos.js"></script>'
+          if tag not in s:
+              s = s.replace('</body>', tag + '</body>')
+              p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit da integração
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/painel.html
+          git diff --cached --quiet || git commit -m 'Integra controle de créditos ao painel'
+          git push
