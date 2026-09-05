@@ -19,8 +19,8 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          head = '''<link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icon-192.svg"><link rel="manifest" href="manifest.json"><meta name="theme-color" content="#2563eb">'''
-          sw = '''<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}</script>'''
+          head = '<link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icon-192.svg"><link rel="manifest" href="manifest.json"><meta name="theme-color" content="#2563eb">'
+          sw = "<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}</script>"
           for p in Path('docs').glob('*.html'):
               s=p.read_text(encoding='utf-8')
               if 'rel="manifest"' not in s:
@@ -29,24 +29,6 @@ jobs:
                   s=s.replace('</body>',sw+'</body>',1)
               p.write_text(s,encoding='utf-8')
           PY
-
-      - name: Gerar ícones PNG para instalação
-        shell: bash
-        run: |
-          if command -v convert >/dev/null 2>&1; then
-            convert -background none docs/icon-192.svg docs/icon-192.png
-            convert -background none docs/icon-512.svg docs/icon-512.png
-            python - <<'PY'
-            import json
-            p='docs/manifest.json'
-            d=json.load(open(p,encoding='utf-8'))
-            d['icons']=[
-              {'src':'/GestorPro-/icon-192.png','sizes':'192x192','type':'image/png','purpose':'any maskable'},
-              {'src':'/GestorPro-/icon-512.png','sizes':'512x512','type':'image/png','purpose':'any maskable'}
-            ]
-            open(p,'w',encoding='utf-8').write(json.dumps(d,ensure_ascii=False,separators=(',',':')))
-            PY
-          fi
 
       - name: Publicar alterações
         shell: bash
