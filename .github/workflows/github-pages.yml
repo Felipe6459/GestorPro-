@@ -21,8 +21,7 @@ jobs:
       - name: Preparar site
         run: |
           mkdir -p _site
-          cp docs/index.html _site/index.html
-          if [ -f docs/recuperar-senha.html ]; then cp docs/recuperar-senha.html _site/recuperar-senha.html; fi
+          cp -R docs/. _site/
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v3
         with:
