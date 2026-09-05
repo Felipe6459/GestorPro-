@@ -1,5 +1,5 @@
 // Integrações do GestorPro.
-// Importa apenas os módulos auxiliares. Não importa este próprio arquivo,
-// evitando conflito/carga duplicada no GitHub Pages.
+// Importa os módulos auxiliares do painel.
 import './whatsapp-fila.js';
 import './configuracoes-whatsapp.js';
+import './equipe.js';
