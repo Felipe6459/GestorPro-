@@ -22,12 +22,12 @@ jobs:
           mods=['configuracoes-whatsapp.js','vendedores.js','owner-enhancements.js','owner-ui-fix.js','credit-finance-fix.js','asaas-painel.js','asaas-tab-fix.js','vendor-client-billing.js']
           for f in mods:
               if f not in t:
-                  tag=('<script type="module" src="./'+f+'?v=20260905"></script>' if f.endswith('.js') and f not in ['owner-ui-fix.js'] else '<script src="./'+f+'?v=20260905"></script>')
+                  tag=('<script src="./'+f+'?v=20260905"></script>' if f=='owner-ui-fix.js' else '<script type="module" src="./'+f+'?v=20260905"></script>')
                   t=t.replace('</body>',tag+'</body>',1)
           p.write_text(t,encoding='utf-8')
           p=Path('docs/index.html'); t=p.read_text(encoding='utf-8')
           if 'vendor-signup.js' not in t:
-              t=t.replace('</body>','<script type="module" src="./vendor-signup.js?v=20260905"></script></body>',1)
+              t=t.replace('</body>','<script type="module" src="./vendor-signup.js?v=20260905"></script><script src="./login-signup-link.js?v=20260905"></script></body>',1)
           p.write_text(t,encoding='utf-8')
           PY
       - name: Commit changes
