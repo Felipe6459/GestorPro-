@@ -1,0 +1,1 @@
+// Cadastro de vendedor: o formulário principal está em cadastro-vendedor.html e chama a Edge Function vendor-signup.
