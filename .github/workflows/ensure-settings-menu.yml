@@ -2,56 +2,40 @@ name: Ensure GestorPro settings and vendor menu
 on:
   push:
     branches: [main]
-
 permissions:
   contents: write
-
 jobs:
   ensure-settings:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Add panel modules
+      - name: Add GestorPro modules
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('docs/painel.html')
-          text = p.read_text(encoding='utf-8')
-
-          marker = '<button data-v="whatsapp">WhatsApp</button>'
-          button = marker + '<button id="gpConfigTab" data-v="settings" type="button">⚙ Configurações</button><button id="gpAsaasTabStatic" type="button">💰 Asaas</button>'
-          if 'id="gpAsaasTabStatic"' not in text and marker in text:
-              text = text.replace(marker, button, 1)
-
-          modules = [
-              '<script type="module" src="./configuracoes-whatsapp.js?v=20260905"></script>',
-              '<script type="module" src="./vendedores.js?v=20260905"></script>',
-              '<script type="module" src="./owner-enhancements.js?v=20260905"></script>',
-              '<script src="./owner-ui-fix.js?v=20260905"></script>',
-              '<script type="module" src="./credit-finance-fix.js?v=20260905"></script>',
-              '<script type="module" src="./asaas-painel.js?v=20260905"></script>',
-              '<script src="./asaas-tab-fix.js?v=20260905"></script>',
-          ]
-          for module in modules:
-              filename = module.split('src="./',1)[1].split('?',1)[0]
-              if filename not in text:
-                  text = text.replace('</body>', module + '</body>', 1)
-
-          p.write_text(text, encoding='utf-8')
+          p=Path('docs/painel.html'); t=p.read_text(encoding='utf-8')
+          marker='<button data-v="whatsapp">WhatsApp</button>'
+          if 'id="gpAsaasTabStatic"' not in t and marker in t:
+              t=t.replace(marker,marker+'<button id="gpConfigTab" data-v="settings" type="button">⚙ Configurações</button><button id="gpAsaasTabStatic" type="button">💰 Asaas</button>',1)
+          mods=['configuracoes-whatsapp.js','vendedores.js','owner-enhancements.js','owner-ui-fix.js','credit-finance-fix.js','asaas-painel.js','asaas-tab-fix.js','vendor-client-billing.js']
+          for f in mods:
+              if f not in t:
+                  tag=('<script type="module" src="./'+f+'?v=20260905"></script>' if f.endswith('.js') and f not in ['owner-ui-fix.js'] else '<script src="./'+f+'?v=20260905"></script>')
+                  t=t.replace('</body>',tag+'</body>',1)
+          p.write_text(t,encoding='utf-8')
+          p=Path('docs/index.html'); t=p.read_text(encoding='utf-8')
+          if 'vendor-signup.js' not in t:
+              t=t.replace('</body>','<script type="module" src="./vendor-signup.js?v=20260905"></script></body>',1)
+          p.write_text(t,encoding='utf-8')
           PY
-
       - name: Commit changes
         shell: bash
         run: |
-          if git diff --quiet -- docs/painel.html; then
-            echo "No changes needed."
-            exit 0
-          fi
+          if git diff --quiet -- docs/painel.html docs/index.html; then echo "No changes needed."; exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/painel.html
-          git commit -m "feat: show Asaas payment integration in owner panel"
+          git add docs/painel.html docs/index.html
+          git commit -m "feat: seller billing, client trials and renewals"
           git push
