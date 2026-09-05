@@ -3,3 +3,4 @@
 import './whatsapp-fila.js';
 import './configuracoes-whatsapp.js';
 import './equipe.js';
+import './equipe-controle.js';
