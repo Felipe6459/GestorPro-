@@ -33,6 +33,7 @@ jobs:
               '<script src="./owner-ui-fix.js?v=20260905"></script>',
               '<script type="module" src="./credit-finance-fix.js?v=20260905"></script>',
               '<script type="module" src="./asaas-painel.js?v=20260905"></script>',
+              '<script src="./asaas-tab-fix.js?v=20260905"></script>',
           ]
           for module in modules:
               filename = module.split('src="./',1)[1].split('?',1)[0]
