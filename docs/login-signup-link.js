@@ -1,1 +1,1 @@
-const v=document.getElementById('loginView');if(v&&!document.getElementById('gpVendorSignupLink')){const a=document.createElement('a');a.id='gpVendorSignupLink';a.className='link';a.href='./cadastro-vendedor.html';a.textContent='Criar minha conta de vendedor';v.appendChild(a)}
+// O cadastro de vendedores é feito exclusivamente pelo proprietário dentro do painel.
