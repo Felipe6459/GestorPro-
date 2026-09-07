@@ -16,10 +16,10 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p=Path('docs/painel.html'); t=p.read_text(encoding='utf-8')
-          mods=['configuracoes-whatsapp.js','vendedores.js','owner-enhancements.js','owner-ui-fix.js','credit-finance-fix.js','asaas-painel.js','asaas-tab-fix.js','vendor-client-billing.js','owner-billing-ui.js','seller-credits-dashboard.js','credit-scope-fix.js','panel-scope.js','credit-persistence.js','gestorpro-next-step.js']
+          mods=['configuracoes-whatsapp.js','vendedores.js','owner-enhancements.js','owner-ui-fix.js','credit-finance-fix.js','asaas-painel.js','asaas-tab-fix.js','vendor-client-billing.js','owner-billing-ui.js','seller-credits-dashboard.js','credit-scope-fix.js','panel-scope.js','credit-persistence.js','gestorpro-next-step.js','owner-aggregate.js']
           for f in mods:
               if f not in t:
-                  tag=('<script src="./'+f+'?v=20260906"></script>' if f=='owner-ui-fix.js' else '<script type="module" src="./'+f+'?v=20260906"></script>')
+                  tag=('<script src="./'+f+'?v=20260907"></script>' if f=='owner-ui-fix.js' else '<script type="module" src="./'+f+'?v=20260907"></script>')
                   t=t.replace('</body>',tag+'</body>',1)
           p.write_text(t,encoding='utf-8')
           PY
@@ -30,5 +30,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/painel.html
-          git commit -m "feat: credit accounting, vendor billing data and visual dashboard"
+          git commit -m "feat: consolidate owner dashboard and vendor credit accounting"
           git push
