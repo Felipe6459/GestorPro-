@@ -12,6 +12,9 @@ const initialState: AuthActionState = { error: null };
 
 export function LoginForm({ redirectTo }: { redirectTo?: string }) {
   const [state, formAction, pending] = useActionState(login, initialState);
+  const signupHref = redirectTo
+    ? `/signup?redirectTo=${encodeURIComponent(redirectTo)}`
+    : "/signup";
 
   return (
     <form action={formAction} className="space-y-4">
@@ -60,15 +63,17 @@ export function LoginForm({ redirectTo }: { redirectTo?: string }) {
         {pending ? "Signing in…" : "Sign in"}
       </Button>
 
-      <p className="text-center text-sm text-gray-600">
-        Don&apos;t have an account?{" "}
+      <div className="space-y-2 pt-2">
         <Link
-          href={redirectTo ? `/signup?redirectTo=${encodeURIComponent(redirectTo)}` : "/signup"}
-          className="rounded font-medium text-black hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
+          href={signupHref}
+          className="flex w-full items-center justify-center rounded-md border border-black px-4 py-2 text-sm font-semibold text-black transition hover:bg-black hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2"
         >
-          Sign up
+          Criar nova conta para testar
         </Link>
-      </p>
+        <p className="text-center text-xs text-gray-500">
+          Cadastro público, sem precisar de autorização do administrador.
+        </p>
+      </div>
     </form>
   );
 }
