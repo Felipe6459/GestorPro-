@@ -1,1 +1,28 @@
-<!doctype html><html lang="pt-BR"><head><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icon-192.svg"><link rel="manifest" href="manifest.json"><meta name="theme-color" content="#2563eb"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GestorPro</title><meta http-equiv="refresh" content="0;url=./"></head><body>Redirecionando para o GestorPro...<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}</script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache,no-store,must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>GestorPro</title>
+</head>
+<body style="margin:0;background:#0b0912;color:#fff;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh">
+  <div style="text-align:center">
+    <div style="font-size:28px;font-weight:700;color:#a78bfa">GestorPro</div>
+    <div style="margin-top:10px;color:#aaa">Abrindo o GestorPro...</div>
+  </div>
+  <script>
+    // Nunca use ./ aqui: em uma URL inexistente isso pode criar um loop
+    // /docs/painel.html -> /docs/ -> /docs/404.html -> ...
+    const base = new URL('./', document.baseURI);
+    const root = new URL(base.origin + base.pathname.replace(/\/[^/]*\/?$/, '/'));
+    // GitHub Pages deste projeto publica o conteúdo de /docs na raiz.
+    const target = new URL(root.href);
+    target.search = 'v=' + Date.now();
+    window.location.replace(target.href);
+  </script>
+  <noscript><meta http-equiv="refresh" content="0;url=./"></noscript>
+</body>
+</html>
