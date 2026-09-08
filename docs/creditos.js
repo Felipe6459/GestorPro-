@@ -8,3 +8,4 @@ import './owner-enhancements.js?v=20260906';
 import './credit-persistence.js?v=20260906';
 import './seller-credits-dashboard.js?v=20260906';
 import './credit-scope-fix.js?v=20260906';
+import './creditos-dashboard-v2.js?v=20260907';
