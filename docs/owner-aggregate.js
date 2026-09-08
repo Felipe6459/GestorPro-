@@ -1,3 +1,4 @@
-// GestorPro — desativado.
-// Os KPIs do dashboard não devem ser recalculados por um segundo módulo,
-// pois isso causava alternância entre fórmulas e valores.
+// GestorPro — carregador do cálculo financeiro corrigido.
+// Este arquivo já é carregado pelo painel; usamos ele apenas para iniciar
+// o módulo financeiro com isolamento por organização/vendedor.
+import('./dashboard-finance-fix.js?v=20260908').catch(err=>console.error('GestorPro financeiro:',err));
