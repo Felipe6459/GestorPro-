@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR">
-<head><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icon-192.svg"><link rel="manifest" href="manifest.json"><meta name="theme-color" content="#2563eb">
+<head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta http-equiv="Cache-Control" content="no-cache,no-store,must-revalidate">
@@ -14,15 +14,15 @@
     <div style="margin-top:10px;color:#aaa">Abrindo o GestorPro...</div>
   </div>
   <script>
-    // Nunca use ./ aqui: em uma URL inexistente isso pode criar um loop
-    // /docs/painel.html -> /docs/ -> /docs/404.html -> ...
-    const base = new URL('./', document.baseURI);
-    const root = new URL(base.origin + base.pathname.replace(/\/[^/]*\/?$/, '/'));
-    // GitHub Pages deste projeto publica o conteúdo de /docs na raiz.
-    const target = new URL(root.href);
+    // GitHub Pages publica este projeto em /GestorPro-/.
+    // O redirecionamento anterior removia o nome do repositório e levava para
+    // a raiz de github.io, causando o erro 404.
+    const target = new URL('/GestorPro-/', window.location.origin);
     target.search = 'v=' + Date.now();
     window.location.replace(target.href);
   </script>
-  <noscript><meta http-equiv="refresh" content="0;url=./"></noscript>
-<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}</script></body>
+  <noscript>
+    <meta http-equiv="refresh" content="0;url=/GestorPro-/">
+  </noscript>
+</body>
 </html>
