@@ -1,11 +1,4 @@
-// Integrações do GestorPro.
-import './whatsapp-fila.js';
-import './configuracoes-whatsapp.js';
-import './equipe.js';
-import './equipe-controle.js';
-import './owner-permissions.js';
-import './owner-enhancements.js?v=20260906';
-import './credit-persistence.js?v=20260906';
-import './seller-credits-dashboard.js?v=20260906';
-import './credit-scope-fix.js?v=20260906';
+// GestorPro — módulo único de créditos.
+// Os módulos antigos de créditos eram carregados em duplicidade pelo painel,
+// fazendo os cartões oscilarem. O painel agora usa somente o dashboard V2.
 import './creditos-dashboard-v2.js?v=20260907';
