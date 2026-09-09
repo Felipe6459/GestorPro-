@@ -18,6 +18,11 @@ jobs:
       - name: Baixar código
         uses: actions/checkout@v4
 
+      - name: Baixar ícone do GestorPro
+        run: |
+          mkdir -p android/app/src/main/res/drawable-nodpi
+          curl -fL --retry 3 "https://i.ibb.co/0jDSQW2h/file-000000003108820e83abd77a86d42c12.png" -o android/app/src/main/res/drawable-nodpi/gestorpro_icon.png
+
       - name: Configurar Java 17
         uses: actions/setup-java@v4
         with:
@@ -43,6 +48,6 @@ jobs:
           if git diff --cached --quiet; then
             echo 'APK sem alterações.'
           else
-            git commit -m 'Atualiza APK do GestorPro'
+            git commit -m 'Atualiza APK GestorPro com ícone'
             git push
           fi
