@@ -1,0 +1,1 @@
+console.log('GestorPro preços carregado');
