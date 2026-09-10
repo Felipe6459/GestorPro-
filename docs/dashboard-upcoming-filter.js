@@ -1,11 +1,9 @@
 // GestorPro — Próximos vencimentos
-// Filtra a seção sem deixar a lista antiga aparecer antes do filtro.
+// Filtra a seção sem permitir que a lista antiga apareça antes do resultado final.
 (function(){
   const DAYS_AHEAD = 7;
   const MAX_ITEMS = 7;
   const DATE_RE = /\b(\d{2})\/(\d{2})\/(\d{4})\b/;
-  let ready = false;
-  let timer = null;
 
   function dayStart(d){
     const x = new Date(d);
@@ -26,24 +24,18 @@
     return title ? (title.closest('.panel') || title.parentElement) : null;
   }
 
-  function rowsFrom(container){
-    if(!container) return [];
-    if(container.tagName === 'TABLE') return [...container.querySelectorAll('tbody tr')];
-    if(container.tagName === 'TBODY') return [...container.querySelectorAll('tr')];
-    return [...container.children];
-  }
-
   function filter(){
     const section = findSection();
-    if(!section) return false;
+    if(!section) return;
 
-    // Enquanto o Dashboard ainda está montando a tabela, ela fica invisível.
-    // Assim a lista completa não pisca na tela antes de ser filtrada.
-    if(!ready) section.style.visibility = 'hidden';
+    // Mantém a seção invisível durante a montagem da tabela.
+    section.style.visibility = 'hidden';
 
     const container = section.querySelector('#dashRows') || section.querySelector('tbody');
-    const rows = rowsFrom(container);
-    if(!rows.length) return false;
+    if(!container) return;
+
+    const rows = [...container.querySelectorAll('tr')];
+    if(!rows.length) return;
 
     const today = dayStart(new Date());
     const limit = new Date(today);
@@ -60,27 +52,20 @@
       x.row.style.display = keep.has(x.row) ? '' : 'none';
     });
 
+    // Só libera a seção depois de aplicar o filtro.
     section.style.visibility = 'visible';
-    ready = true;
-    return true;
-  }
-
-  function schedule(){
-    clearTimeout(timer);
-    timer = setTimeout(filter, 80);
   }
 
   function boot(){
-    // Esconde imediatamente a seção para impedir o flash da lista antiga.
     const section = findSection();
     if(section) section.style.visibility = 'hidden';
-    schedule();
-    setTimeout(filter, 350);
-    setTimeout(filter, 900);
+    filter();
   }
 
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded',boot);
   else boot();
 
-  new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true});
+  // MutationObserver executa o filtro imediatamente no mesmo ciclo de atualização,
+  // evitando o intervalo em que a lista antiga ficava visível.
+  new MutationObserver(filter).observe(document.body,{childList:true,subtree:true});
 })();
