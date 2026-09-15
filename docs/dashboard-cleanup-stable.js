@@ -1,6 +1,6 @@
 // GestorPro — versão estável da limpeza da Dashboard.
 import{createClient}from'https://esm.sh/@supabase/supabase-js@2';
-const sb=createClient('https://jbdjfmvdrwdfnuhqrprc.supabase.co','sb_publishable_3ABEFAwN_sWzmSu13EyVOwQ_h5Xfmz80',{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+const sb=createClient('https://jbdjfmvdrwdfnuhqrprc.supabase.co','sb_publishable_3ABEFAwN_wzmSu13EyVOwQ_h5Xfmz80',{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
 const esc=v=>String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
 const money=v=>'R$ '+Number(v||0).toFixed(2).replace('.',',');
 function dateOnly(v){const p=String(v||'').slice(0,10).split('-');if(p.length!==3)return null;const d=new Date(+p[0],+p[1]-1,+p[2]);d.setHours(0,0,0,0);return d}
