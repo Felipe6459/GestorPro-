@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>🌐 Site Cineplay</title>
+<style>
+:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#0d0a14;color:#eee;font-family:Arial,sans-serif}.wrap{max-width:900px;margin:0 auto;padding:24px 16px 50px}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}.top h1{margin:0;color:#a78bfa;font-size:24px}.card{background:#15111f;border:1px solid #302642;border-radius:16px;padding:18px;margin-bottom:16px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field{display:flex;flex-direction:column;gap:6px}.field.full{grid-column:1/-1}label{font-size:13px;color:#aaa}input,textarea{width:100%;border:1px solid #3a2f4e;border-radius:10px;background:#0f0c16;color:#fff;padding:11px;font:inherit}textarea{min-height:90px;resize:vertical}button{border:0;border-radius:10px;padding:11px 15px;font-weight:700;cursor:pointer}.primary{background:#7b2cff;color:#fff}.secondary{background:#282037;color:#ddd}.actions{display:flex;flex-wrap:wrap;gap:10px}.status{margin-top:10px;color:#aaa;font-size:13px}.ok{color:#86efac}.err{color:#fca5a5}@media(max-width:650px){.grid{grid-template-columns:1fr}.field.full{grid-column:auto}.top{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><h1>🌐 Site Cineplay</h1><button class="secondary" id="back">← Voltar</button></div>
+  <div class="card"><strong>Configurações do site</strong><div class="status">Somente Master/Dono pode alterar estas informações.</div></div>
+  <form id="form">
+    <div class="card"><h3>💰 Planos</h3><div class="grid">
+      <div class="field"><label>Mensal — 1 tela</label><input id="monthly_1"></div>
+      <div class="field"><label>Mensal — 2 telas</label><input id="monthly_2"></div>
+      <div class="field"><label>Mensal — 3 telas</label><input id="monthly_3"></div>
+      <div class="field"><label>Anual — 1 tela</label><input id="annual_1"></div>
+      <div class="field"><label>Anual — 2 telas</label><input id="annual_2"></div>
+      <div class="field"><label>Anual — 3 telas</label><input id="annual_3"></div>
+    </div></div>
+    <div class="card"><h3>🔗 Contatos e vídeo</h3><div class="grid">
+      <div class="field"><label>WhatsApp</label><input id="whatsapp"></div>
+      <div class="field"><label>Instagram</label><input id="instagram"></div>
+      <div class="field"><label>Chave Pix</label><input id="pix_key"></div>
+      <div class="field"><label>Link do YouTube</label><input id="youtube" placeholder="https://www.youtube.com/watch?v=..."></div>
+    </div></div>
+    <div class="card"><h3>📝 Textos</h3><div class="grid">
+      <div class="field full"><label>Título principal</label><input id="hero_title"></div>
+      <div class="field full"><label>Texto principal</label><textarea id="hero_text"></textarea></div>
+      <div class="field full"><label>Texto do teste grátis</label><textarea id="trial_text"></textarea></div>
+      <div class="field"><label>Quantidade de conteúdos</label><input id="content_count"></div>
+      <div class="field"><label>Qualidade</label><input id="quality_text"></div>
+      <div class="field full"><label>Compatibilidade</label><textarea id="compatibility"></textarea></div>
+    </div></div>
+    <div class="card"><h3>❓ Perguntas frequentes</h3><div class="grid">
+      <div class="field full"><label>FAQ 1</label><textarea id="faq1"></textarea></div>
+      <div class="field full"><label>FAQ 2</label><textarea id="faq2"></textarea></div>
+      <div class="field full"><label>FAQ 3</label><textarea id="faq3"></textarea></div>
+    </div></div>
+    <div class="card"><div class="actions"><button class="primary" type="submit" id="save">💾 Salvar alterações</button><button class="secondary" type="button" id="reload">↻ Recarregar</button><button class="secondary" type="button" id="openSite">🌐 Abrir site</button></div><div id="status" class="status"></div></div>
+  </form>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL='https://jbdjfmvdrwdfnuhqrprc.supabase.co';
+const SUPABASE_KEY='sb_publishable_3ABEFAwN_wzmSu13EyVOwQ_h5Xfmz80';
+const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+const ids=['monthly_1','monthly_2','monthly_3','annual_1','annual_2','annual_3','whatsapp','instagram','pix_key','youtube','hero_title','hero_text','trial_text','content_count','quality_text','compatibility','faq1','faq2','faq3'];
+const statusEl=document.getElementById('status');
+function status(msg,ok=false){statusEl.textContent=msg;statusEl.className='status '+(ok?'ok':'err')}
+function setFields(c){ids.forEach(id=>{document.getElementById(id).value=c?.[id]??''})}
+function getFields(){const c={};ids.forEach(id=>c[id]=document.getElementById(id).value.trim());return c}
+async function guard(){const {data:{user},error:e}=await supabase.auth.getUser();if(e||!user){location.href='./index.html';return null}const {data:p,error}=await supabase.from('profiles').select('role').eq('id',user.id).maybeSingle();if(error||!/master|owner|admin|dono/i.test(String(p?.role||''))){document.body.innerHTML='<div style="padding:40px;text-align:center;font-family:Arial">Acesso não autorizado.<br><br><button onclick="location.href=\'./painel.html\'">Voltar</button></div>';return null}return user}
+async function load(){status('Carregando...');const {data,error}=await supabase.from('cineplay_site_settings').select('content').eq('id',1).maybeSingle();if(error){status('Erro ao carregar: '+error.message);return}setFields(data?.content||{});status(data?'Configurações carregadas.':'Nenhuma configuração salva ainda.',!!data)}
+document.getElementById('form').addEventListener('submit',async e=>{e.preventDefault();const user=await guard();if(!user)return;document.getElementById('save').disabled=true;status('Salvando...');const {error}=await supabase.from('cineplay_site_settings').upsert({id:1,content:getFields(),updated_at:new Date().toISOString(),updated_by:user.id},{onConflict:'id'});document.getElementById('save').disabled=false;if(error)status('Erro ao salvar: '+error.message);else status('Alterações salvas com sucesso.',true)});
+document.getElementById('reload').onclick=load;document.getElementById('back').onclick=()=>location.href='./painel.html';document.getElementById('openSite').onclick=()=>window.open('https://www.cineplayftv.shop/','_blank');
+(async()=>{const user=await guard();if(user)await load()})();
+</script>
+</body>
+</html>
