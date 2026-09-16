@@ -2,7 +2,7 @@ const SUPABASE_URL='https://jbdjfmvdrwdfnuhqrprc.supabase.co';
 const SUPABASE_KEY='sb_publishable_3ABEFAwN_wzmSu13EyVOwQ_h5Xfmz80';
 const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
 
-const IDS=['monthly_1','monthly_2','monthly_3','annual_1','annual_2','annual_3','whatsapp','instagram','pix_key','youtube','hero_title','hero_text','trial_text','content_count','quality_text','compatibility','faq1','faq2','faq3'];
+const IDS=['site_name','monthly_1','monthly_2','monthly_3','annual_1','annual_2','annual_3','whatsapp','instagram','pix_key','youtube','hero_title','hero_text','trial_text','content_count','quality_text','compatibility','faq1','faq2','faq3'];
 const statusEl=()=>document.getElementById('status');
 const setStatus=(msg,ok=false)=>{const e=statusEl();if(e){e.textContent=msg;e.className='status '+(ok?'ok':'err')}};
 const val=id=>document.getElementById(id)?.value?.trim()||'';
@@ -15,7 +15,7 @@ function fill(c){IDS.forEach(id=>setVal(id,c?.[id]??''));renderPreview(c||{})}
 function renderPreview(c){
   const p=document.getElementById('sitePreview'); if(!p)return;
   const rows=[
-    ['Mensal 1 tela',money(c.monthly_1)],['Mensal 2 telas',money(c.monthly_2)],['Mensal 3 telas',money(c.monthly_3)],
+    ['Nome do site',c.site_name||'—'],['Mensal 1 tela',money(c.monthly_1)],['Mensal 2 telas',money(c.monthly_2)],['Mensal 3 telas',money(c.monthly_3)],
     ['Anual 1 tela',money(c.annual_1)],['Anual 2 telas',money(c.annual_2)],['Anual 3 telas',money(c.annual_3)],
     ['WhatsApp',c.whatsapp||'—'],['Instagram',c.instagram||'—'],['Pix',c.pix_key||'—'],['YouTube',c.youtube||'—'],
     ['Título',c.hero_title||'—'],['Texto principal',c.hero_text||'—'],['Teste grátis',c.trial_text||'—'],
