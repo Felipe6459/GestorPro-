@@ -14,6 +14,9 @@
   <div class="card"><strong>Configurações do site</strong><div class="status">Somente Master/Dono pode alterar estas informações.</div><div class="hint">Aqui você vê os valores que já estão cadastrados antes de editar. Depois de salvar, o site público <b>cineplayftv.shop</b> passa a buscar essas configurações.</div></div>
   <div class="card" id="sitePreview"><h3>👀 O que já está configurado no site</h3><div class="status">Carregando...</div></div>
   <form id="form">
+    <div class="card"><h3>🏷️ Identidade</h3><div class="grid">
+      <div class="field full"><label>Nome do site</label><input id="site_name" placeholder="Cine Player Pro"></div>
+    </div></div>
     <div class="card"><h3>💰 Planos</h3><div class="grid">
       <div class="field"><label>Mensal — 1 tela</label><input id="monthly_1" inputmode="decimal"></div>
       <div class="field"><label>Mensal — 2 telas</label><input id="monthly_2" inputmode="decimal"></div>
@@ -45,7 +48,7 @@
   </form>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./cineplay-site-admin.js?v=20260916.2"></script>
+<script src="./cineplay-site-admin.js?v=20260916.3"></script>
 <script>document.getElementById('back')?.addEventListener('click',()=>location.href='./painel.html');</script>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}</script></body>
 </html>
