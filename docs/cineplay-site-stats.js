@@ -1,6 +1,6 @@
 (()=>{
   const S='https://jbdjfmvdrwdfnuhqrprc.supabase.co';
-  const K='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpiZGpmbXZkcndmZHV4Y3R6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MTE3MzEsImV4cCI6MjEwMzA4NzczMX0.yofxMaRrQJkP7g9E8ML5vVbHPL51hrnbiTb42g396F8';
+  const K='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpiZGpmbXZkcndkZm51aHFycHJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MTE3MzEsImV4cCI6MjEwMzA4NzczMX0.yofxMaRrQJkP7g9E8ML5vVbHPL51hrnbiTb42g396F8';
   const adminRoles=['master','owner','admin','dono'];
   const moneyInt=v=>Number(v||0).toLocaleString('pt-BR');
   const pct=(a,b)=>b?((a/b)*100).toFixed(1)+'%':'0%';
