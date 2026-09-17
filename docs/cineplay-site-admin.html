@@ -15,8 +15,20 @@
 <div class="card"><h3>❓ Perguntas frequentes</h3><div class="grid"><div class="field full"><label>FAQ 1</label><textarea id="faq1"></textarea></div><div class="field full"><label>FAQ 2</label><textarea id="faq2"></textarea></div><div class="field full"><label>FAQ 3</label><textarea id="faq3"></textarea></div></div></div>
 <div class="card"><div class="actions"><button class="primary" type="submit" id="save">💾 Salvar alterações</button><button class="secondary" type="button" id="reload">↻ Recarregar</button><button class="secondary" type="button" id="openSite">🌐 Abrir site</button></div><div id="status" class="status"></div><div class="hint">Salvar grava no banco do GestorPro. Recarregar busca novamente o que está salvo. Abrir site abre a versão pública.</div></div></form></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./cineplay-site-admin.js?v=20260917.12" onload="window.__cineplayJsLoaded=true" onerror="window.__cineplayJsError=true"></script>
+<script src="./cineplay-site-admin.js?v=20260917.13" onload="window.__cineplayJsLoaded=true" onerror="window.__cineplayJsError=true"></script>
 <script>(function(){setTimeout(function(){if(window.__cineplayJsError){var s=document.getElementById("status"),p=document.getElementById("sitePreview");if(s)s.innerHTML="⚠️ Erro: o JavaScript do editor não foi carregado pelo GitHub Pages.";if(p)p.innerHTML="<h3>👀 O que já está configurado no site</h3><div class=\"status\">⚠️ O arquivo do editor não foi carregado. Verificando publicação...</div>";return}if(!window.__cineplayJsLoaded||!window.__cineplayEditorJsLoaded){var s=document.getElementById("status"),p=document.getElementById("sitePreview");if(s)s.innerHTML="⚠️ O JavaScript do editor foi entregue, mas não executou.";if(p)p.innerHTML="<h3>👀 O que já está configurado no site</h3><div class=\"status\">⚠️ O editor não conseguiu iniciar o JavaScript. Não altere os dados; o problema está no carregamento da página.</div>";}},1500)})})();</script>
 <script>document.getElementById('back')?.addEventListener('click',()=>location.href='./painel.html');</script>
-<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}</script>
+<script>
+/* O editor não deve ficar preso ao cache/PWA do painel. Uma única limpeza remove versões antigas que possam estar controlando esta página. */
+(function(){
+  if(!('serviceWorker' in navigator)) return;
+  if(sessionStorage.getItem('cineplay_cache_clean_20260917')) return;
+  sessionStorage.setItem('cineplay_cache_clean_20260917','1');
+  navigator.serviceWorker.getRegistrations()
+    .then(rs=>Promise.all(rs.map(r=>r.unregister())))
+    .then(()=>('caches' in window)?caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k)))):null)
+    .then(()=>location.reload())
+    .catch(()=>{});
+})();
+</script>
 </body></html>
