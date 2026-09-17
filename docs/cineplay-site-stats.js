@@ -2,18 +2,6 @@
   const S='https://jbdjfmvdrwdfnuhqrprc.supabase.co';
   const K='sb_publishable_3ABEFAwN_wzmSu13EyVOQ_h5Xfmz80';
   const adminRoles=['master','owner','admin','dono'];
-  let sb=null;
-
-  async function getClient(){
-    if(sb)return sb;
-    if(window.supabase?.createClient){
-      sb=window.supabase.createClient(S,K,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
-      return sb;
-    }
-    const m=await import('https://esm.sh/@supabase/supabase-js@2');
-    sb=m.createClient(S,K,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
-    return sb;
-  }
 
   const moneyInt=v=>Number(v||0).toLocaleString('pt-BR');
   const pct=(a,b)=>b?((a/b)*100).toFixed(1)+'%':'0%';
@@ -32,14 +20,38 @@
     return card;
   }
 
-  async function waitForSession(s){
-    for(let i=0;i<4;i++){
-      const r=await s.auth.getSession();
-      if(r?.data?.session?.user)return r.data.session.user;
-      await new Promise(resolve=>setTimeout(resolve,500));
+  function findStoredSession(){
+    try{
+      for(let i=0;i<localStorage.length;i++){
+        const key=localStorage.key(i)||'';
+        if(!key.startsWith('sb-')||!key.endsWith('-auth-token'))continue;
+        const raw=localStorage.getItem(key);
+        if(!raw)continue;
+        const parsed=JSON.parse(raw);
+        const session=parsed?.currentSession||parsed;
+        if(session?.access_token&&session?.user)return session;
+      }
+    }catch(e){console.warn('[Cineplay Stats] sessão local não pôde ser lida',e)}
+    return null;
+  }
+
+  async function getAccessToken(){
+    const stored=findStoredSession();
+    if(stored?.access_token)return stored.access_token;
+    if(window.supabase?.createClient){
+      const sb=window.supabase.createClient(S,K,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
+      const r=await sb.auth.getSession();
+      return r?.data?.session?.access_token||null;
     }
-    const r=await s.auth.getUser();
-    return r?.data?.user||null;
+    return null;
+  }
+
+  async function api(path,token){
+    const headers={apikey:K,Authorization:'Bearer '+(token||K)};
+    const r=await fetch(S+'/rest/v1/'+path,{headers,cache:'no-store'});
+    const text=await r.text();
+    if(!r.ok)throw new Error('HTTP '+r.status+(text?' — '+text:'') );
+    try{return JSON.parse(text)}catch{return text}
   }
 
   async function load(){
@@ -47,27 +59,23 @@
     const body=card.querySelector('#cineplayStatsBody')||document.getElementById('cineplayStatsBody');
     try{
       body.textContent='Verificando acesso...';
-      const s=await getClient();
-      const user=await waitForSession(s);
-      if(!user){
-        body.textContent='Sessão do GestorPro ainda não foi carregada. Recarregue esta página.';
+      const token=await getAccessToken();
+      if(!token){
+        body.textContent='Sessão do GestorPro não encontrada. Entre novamente no GestorPro e abra esta página.';
         return;
       }
 
-      const {data:p,error:pe}=await s.from('profiles').select('role').eq('id',user.id).maybeSingle();
-      if(pe)throw new Error('Erro ao verificar perfil: '+pe.message);
-      const role=String(p?.role||'').toLowerCase();
+      const profiles=await api('profiles?select=role&limit=1',token);
+      const role=String(profiles?.[0]?.role||'').toLowerCase();
       if(!adminRoles.includes(role)){
         body.textContent='Estatísticas disponíveis somente para Master/Dono.';
         return;
       }
 
       body.textContent='Buscando dados do site...';
-      const {data,error}=await s.from('cineplay_site_daily_stats').select('day,visits,clicks_total,clicks_trial').order('day',{ascending:false}).limit(30);
-      if(error)throw new Error('Erro ao consultar estatísticas: '+error.message);
-
-      const rows=data||[];
-      const totals=rows.reduce((a,r)=>({
+      const rows=await api('cineplay_site_daily_stats?select=day,visits,clicks_total,clicks_trial&order=day.desc&limit=30',token);
+      const data=Array.isArray(rows)?rows:[];
+      const totals=data.reduce((a,r)=>({
         visits:a.visits+Number(r.visits||0),
         clicks:a.clicks+Number(r.clicks_total||0),
         trial:a.trial+Number(r.clicks_trial||0)
@@ -81,7 +89,7 @@
       ];
 
       body.innerHTML='<div class="preview-grid">'+cards.map(x=>'<div class="preview-item"><span>'+x[0]+'</span><strong>'+esc(x[1])+'</strong></div>').join('')+'</div><div class="hint">Histórico dos últimos 30 dias. Não são armazenados nome, telefone, e-mail ou outros dados pessoais.</div>'+
-      (rows.length?'<div style="overflow:auto;margin-top:14px"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left;padding:9px;border-bottom:1px solid #302642">Dia</th><th style="padding:9px;border-bottom:1px solid #302642">Visitas</th><th style="padding:9px;border-bottom:1px solid #302642">Cliques</th><th style="padding:9px;border-bottom:1px solid #302642">Teste Grátis</th><th style="padding:9px;border-bottom:1px solid #302642">Conversão</th></tr></thead><tbody>'+rows.map(r=>'<tr><td style="padding:9px;border-bottom:1px solid #241d32">'+dayLabel(r.day)+'</td><td style="text-align:center;padding:9px;border-bottom:1px solid #241d32">'+moneyInt(r.visits)+'</td><td style="text-align:center;padding:9px;border-bottom:1px solid #241d32">'+moneyInt(r.clicks_total)+'</td><td style="text-align:center;padding:9px;border-bottom:1px solid #241d32">'+moneyInt(r.clicks_trial)+'</td><td style="text-align:center;padding:9px;border-bottom:1px solid #241d32">'+pct(Number(r.clicks_trial||0),Number(r.visits||0))+'</td></tr>').join('')+'</tbody></table></div>':'<div class="status">Ainda não há acessos registrados.</div>');
+      (data.length?'<div style="overflow:auto;margin-top:14px"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr><th style="text-align:left;padding:9px;border-bottom:1px solid #302642">Dia</th><th style="padding:9px;border-bottom:1px solid #302642">Visitas</th><th style="padding:9px;border-bottom:1px solid #302642">Cliques</th><th style="padding:9px;border-bottom:1px solid #302642">Teste Grátis</th><th style="padding:9px;border-bottom:1px solid #302642">Conversão</th></tr></thead><tbody>'+data.map(r=>'<tr><td style="padding:9px;border-bottom:1px solid #241d32">'+dayLabel(r.day)+'</td><td style="text-align:center;padding:9px;border-bottom:1px solid #241d32">'+moneyInt(r.visits)+'</td><td style="text-align:center;padding:9px;border-bottom:1px solid #241d32">'+moneyInt(r.clicks_total)+'</td><td style="text-align:center;padding:9px;border-bottom:1px solid #241d32">'+moneyInt(r.clicks_trial)+'</td><td style="text-align:center;padding:9px;border-bottom:1px solid #241d32">'+pct(Number(r.clicks_trial||0),Number(r.visits||0))+'</td></tr>').join('')+'</tbody></table></div>':'<div class="status">Ainda não há acessos registrados.</div>');
     }catch(e){
       body.textContent='Não foi possível carregar as estatísticas: '+(e?.message||e);
       console.error('[Cineplay Stats]',e);
