@@ -14,6 +14,19 @@
 <div class="card"><h3>📝 Textos</h3><div class="grid"><div class="field full"><label>Título principal</label><input id="hero_title"></div><div class="field full"><label>Texto principal</label><textarea id="hero_text"></textarea></div><div class="field full"><label>Texto do teste grátis</label><textarea id="trial_text"></textarea></div><div class="field"><label>Quantidade de conteúdos</label><input id="content_count"></div><div class="field"><label>Qualidade</label><input id="quality_text"></div><div class="field full"><label>Compatibilidade</label><textarea id="compatibility"></textarea></div></div></div>
 <div class="card"><h3>❓ Perguntas frequentes</h3><div class="grid"><div class="field full"><label>Pergunta FAQ 1</label><input id="faq_1_q"></div><div class="field full"><label>Resposta FAQ 1</label><textarea id="faq_1_a"></textarea></div><div class="field full"><label>Pergunta FAQ 2</label><input id="faq_2_q"></div><div class="field full"><label>Resposta FAQ 2</label><textarea id="faq_2_a"></textarea></div><div class="field full"><label>Pergunta FAQ 3</label><input id="faq_3_q"></div><div class="field full"><label>Resposta FAQ 3</label><textarea id="faq_3_a"></textarea></div></div><div class="hint">Esses campos correspondem diretamente às 3 perguntas e respostas exibidas na seção de Perguntas Frequentes do site.</div></div>
 <div class="card"><div class="actions"><button class="primary" type="submit" id="save">💾 Salvar alterações</button><button class="secondary" type="button" id="reload">↻ Recarregar</button><button class="secondary" type="button" id="openSite">🌐 Abrir site</button></div><div id="status" class="status"></div><div class="hint">Salvar grava no banco do GestorPro. Recarregar busca novamente o que está salvo. Abrir site abre a versão pública.</div></div></form></div>
+<script>
+/* Fallback visual: deixa os dados atuais visíveis mesmo antes do Supabase/JS terminar de carregar. */
+(function(){
+  const atuais={"site_name":"Cine Player Pro","monthly_1":"24.99","monthly_2":"34.99","monthly_3":"39.99","annual_1":"179.99","annual_2":"229.99","annual_3":"264.99","whatsapp":"5582996062108","instagram":"https://www.instagram.com/cineplayerpro","pix_key":"3c3a8735-4475-4340-8090-649f95432cfa","youtube":"https://www.youtube.com/embed/K3QLrvM39fw","hero_title":"Tudo em um só aplicativo","hero_text":"Filmes, séries e TV ao vivo em um só lugar, com uma só assinatura.","trial_text":"Teste grátis","content_count":"+100 mil conteúdos","quality_text":"HD e Full HD","compatibility":"Android, Smart TV, TV Box e Computador","faq_1_q":"","faq_1_a":"","faq_2_q":"","faq_2_a":"","faq_3_q":"","faq_3_a":""};
+  function mostrar(){
+    Object.keys(atuais).forEach(function(id){
+      const e=document.getElementById(id);
+      if(e && !e.value) e.value=atuais[id];
+    });
+  }
+  if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",mostrar,{once:true}); else mostrar();
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>window.__cineplayJsLoaded=true;
 window.__cineplayEditorJsLoaded=true;
