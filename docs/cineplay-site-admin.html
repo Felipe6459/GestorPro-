@@ -26,7 +26,24 @@
   </form>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./cineplay-site-admin.js?v=20260917.8"></script>
+<script src="./cineplay-site-admin.js?v=20260917.9"></script>
+<script>
+(function(){
+  function retryAdminScript(){
+    if(typeof window.salvarCineplay==='function') return;
+    var s=document.createElement('script');
+    s.src='./cineplay-site-admin.js?v=20260917.9-fallback-'+Date.now();
+    s.onload=function(){if(typeof window.salvarCineplay!=='function'){showLoadError('O arquivo do editor foi carregado, mas não iniciou.');}};
+    s.onerror=function(){showLoadError('Não foi possível carregar o JavaScript do editor.');};
+    document.head.appendChild(s);
+  }
+  function showLoadError(msg){
+    var b=document.getElementById('cineplayStatsBody');
+    if(b)b.innerHTML='<div class="status">⚠️ '+msg+'<br>Atualize a página e tente novamente.</div>';
+  }
+  setTimeout(retryAdminScript,1500);
+})();
+</script>
 <script>document.getElementById('back')?.addEventListener('click',()=>location.href='./painel.html');</script>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}</script>
 </body>
