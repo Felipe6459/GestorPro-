@@ -13,7 +13,7 @@
   <div class="top"><h1>🌐 Site Cineplay</h1><button class="secondary" id="back" type="button">← Voltar</button></div>
   <div class="card"><strong>Configurações do site</strong><div class="status">Somente Master/Dono pode alterar estas informações.</div><div class="hint">Aqui você vê os valores que já estão cadastrados antes de editar. Depois de salvar, o site público <b>cineplayftv.shop</b> passa a buscar essas configurações.</div></div>
   <div class="card" id="sitePreview"><h3>👀 O que já está configurado no site</h3><div class="status">Iniciando editor...</div></div>
-  <div class="card" id="cineplayStats"><h3>📊 Estatísticas do site Cineplay</h3><div id="cineplayStatsBody" class="status">Carregando estatísticas...</div></div>
+  <div class="card" id="cineplayStats"><h3>📊 Estatísticas do site Cineplay</h3><div id="cineplayStatsBody" class="status">🔄 Iniciando leitura das estatísticas...</div></div>
   <form id="form">
     <div class="card"><h3>🏷️ Identidade</h3><div class="grid"><div class="field full"><label>Nome do site</label><input id="site_name" placeholder="Cine Player Pro"></div></div></div>
     <div class="card"><h3>💰 Planos</h3><div class="grid">
@@ -26,7 +26,7 @@
   </form>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="./cineplay-site-admin.js?v=20260917.6"></script>
+<script src="./cineplay-site-admin.js?v=20260917.7"></script>
 <script>document.getElementById('back')?.addEventListener('click',()=>location.href='./painel.html');</script>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}</script>
 </body>
