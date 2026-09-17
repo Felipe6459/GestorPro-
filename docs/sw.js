@@ -1,5 +1,5 @@
 /* GestorPro — service worker leve para habilitar instalação PWA sem prender versões antigas. */
-const CACHE = 'gestorpro-pwa-20260908-2';
+const CACHE = 'gestorpro-pwa-20260917-3';
 const APP = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', event => {
