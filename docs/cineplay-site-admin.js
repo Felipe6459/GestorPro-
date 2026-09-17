@@ -1,6 +1,6 @@
 window.__cineplayEditorJsLoaded=true;
 const SUPABASE_URL='https://jbdjfmvdrwdfnuhqrprc.supabase.co';
-const SUPABASE_KEY='sb_publishable_3ABEFAwN_wzmSu13EyVOQ_h5Xfmz80';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpiZGpmbXZkcndkZm51aHFycHJjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1MTE3MzEsImV4cCI6MjEwMzA4NzczMX0.yofxMaRrQJkP7g9E8ML5vVbHPL51hrnbiTb42g396F8';
 const IDS=['site_name','monthly_1','monthly_2','monthly_3','annual_1','annual_2','annual_3','whatsapp','instagram','pix_key','youtube','hero_title','hero_text','trial_text','content_count','quality_text','compatibility','faq_1_q','faq_1_a','faq_2_q','faq_2_a','faq_3_q','faq_3_a'];
 let sb=null;
 const statusEl=()=>document.getElementById('status');
