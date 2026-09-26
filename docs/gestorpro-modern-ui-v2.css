@@ -115,3 +115,11 @@ td{color:#d5d0dc}tr:last-child td{border-bottom:0}tr:hover td{background:rgba(13
 @media(max-width:420px){
  .cards,.grid{grid-template-columns:1fr}.top>div:last-child button{padding:8px 9px}.brand{font-size:21px}
 }
+/* GestorPro visual v3: sidebar sempre visível no desktop */
+@media(min-width:681px){
+  .tabs{display:flex!important;visibility:visible!important;opacity:1!important;transform:none!important}
+  .wrap{padding-left:284px!important}
+}
+@media(max-width:680px){
+  .tabs{display:flex!important}
+}
