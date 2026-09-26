@@ -183,3 +183,25 @@ button{border-radius:10px!important;background:linear-gradient(135deg,#8b5cf6,#6
 /* status pills */
 .view [class*="status"],.view [class*="badge"],.view [class*="pill"]{border-radius:999px!important}
 @media(max-width:680px){.tabs button{min-height:38px!important}.view button{min-height:36px}.view .row>button{flex:0 1 auto}}
+
+
+/* ===== Exact dynamic module styling v7 ===== */
+#settings,#activeAutomation,#gpSupport,#gpVendorsView,#gpBillingView,#gpAsaasView{animation:gpIn .2s ease}
+#settings>.panel,#activeAutomation>.panel,#gpSupport>.panel,#gpVendorsView>.panel,#gpBillingView>.panel,#gpAsaasView>.panel{background:linear-gradient(145deg,#18141f 0%,#100e15 72%)!important;border:1px solid rgba(167,139,250,.12)!important;border-radius:18px!important;padding:22px!important;box-shadow:0 18px 50px rgba(0,0,0,.22)!important}
+#settings h3,#activeAutomation h3,#gpSupport h3,#gpVendorsView h2,#gpVendorsView h3,#gpBillingView h3,#gpAsaasView h3{font-size:18px!important;font-weight:780!important;color:#faf9ff!important;margin-bottom:8px!important}
+#settings .grid,#activeAutomation .grid,#gpSupport .grid,#gpVendorsView .grid,#gpBillingView .grid,#gpAsaasView .grid{gap:15px!important}
+#settings .field,#activeAutomation .field,#gpSupport .field,#gpVendorsView .field,#gpBillingView .field,#gpAsaasView .field{background:rgba(255,255,255,.018);padding:12px;border:1px solid rgba(255,255,255,.045);border-radius:12px}
+#settings input,#settings select,#settings textarea,#activeAutomation input,#activeAutomation select,#activeAutomation textarea,#gpSupport input,#gpSupport select,#gpSupport textarea,#gpVendorsView input,#gpVendorsView select,#gpVendorsView textarea,#gpBillingView input,#gpBillingView select,#gpBillingView textarea,#gpAsaasView input,#gpAsaasView select,#gpAsaasView textarea{background:#0a0910!important;border-color:#302a3c!important;border-radius:10px!important;min-height:42px!important}
+#settings .table,#activeAutomation .table,#gpSupport .table,#gpVendorsView .table,#gpBillingView .table,#gpAsaasView .table{border-radius:14px!important;border:1px solid rgba(255,255,255,.06)!important;background:#0b0910!important}
+#settings table,#activeAutomation table,#gpSupport table,#gpVendorsView table,#gpBillingView table,#gpAsaasView table{min-width:900px!important}
+#settings th,#activeAutomation th,#gpSupport th,#gpVendorsView th,#gpBillingView th,#gpAsaasView th{height:42px!important;color:#8f899d!important;background:#15121c!important;font-size:9px!important;letter-spacing:.09em!important;text-transform:uppercase!important}
+#settings td,#activeAutomation td,#gpSupport td,#gpVendorsView td,#gpBillingView td,#gpAsaasView td{padding:13px!important;color:#ded9e7!important}
+#settings .row,#activeAutomation .row,#gpSupport .row,#gpVendorsView .row,#gpBillingView .row,#gpAsaasView .row{gap:9px!important}
+#settings button,#activeAutomation button,#gpSupport button,#gpVendorsView button,#gpBillingView button,#gpAsaasView button{border-radius:10px!important}
+#settings .panel:before,#activeAutomation .panel:before,#gpSupport .panel:before,#gpVendorsView .panel:before,#gpBillingView .panel:before,#gpAsaasView .panel:before{content:"";display:block;width:74px;height:3px;margin:-22px 0 18px;background:linear-gradient(90deg,#8b5cf6,transparent);border-radius:3px}
+#gpVendorsView #gpVendorMetrics{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:12px!important}
+#gpVendorsView #gpVendorMetrics .card{background:linear-gradient(145deg,#1b1625,#100d15)!important;border-color:rgba(139,92,246,.15)!important}
+#gpAsaasView .gp-asaas-status{border:1px solid rgba(139,92,246,.16)!important;border-radius:12px!important;background:#0d0b13!important;padding:13px!important}
+#gpAsaasView .gp-pay-box{border-color:rgba(139,92,246,.13)!important;border-radius:13px!important;background:#0c0a11!important}
+#gpSupportNotice{border-radius:14px!important;background:linear-gradient(135deg,#27101b,#140d15)!important;border-color:#6d1f35!important}
+@media(max-width:680px){#gpVendorsView #gpVendorMetrics{grid-template-columns:1fr 1fr!important}#settings>.panel,#activeAutomation>.panel,#gpSupport>.panel,#gpVendorsView>.panel,#gpBillingView>.panel,#gpAsaasView>.panel{padding:15px!important}}
