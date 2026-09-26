@@ -233,3 +233,20 @@ button{border-radius:10px!important;background:linear-gradient(135deg,#8b5cf6,#6
 @media(max-width:1050px){#clients #clientForm .grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 @media(max-width:680px){#clients #clientForm .grid{grid-template-columns:1fr 1fr!important}#clients>.panel:nth-of-type(2)>h3{padding:16px 15px 3px!important}#clients #search{width:calc(100% - 30px)!important;margin:10px 15px 14px!important}}
 @media(max-width:420px){#clients #clientForm .grid{grid-template-columns:1fr!important}}
+
+/* ===== Clientes: alertas de vencimento ===== */
+#clients .client-status{display:inline-flex!important;align-items:center!important;gap:7px!important;padding:6px 10px!important;border-radius:999px!important;font-size:10px!important;font-weight:800!important;white-space:nowrap!important;border:1px solid transparent!important;letter-spacing:.01em!important}
+#clients .client-status i{width:7px!important;height:7px!important;border-radius:50%!important;display:block!important}
+#clients .client-status.active{color:#86efac!important;background:rgba(34,197,94,.11)!important;border-color:rgba(74,222,128,.22)!important}
+#clients .client-status.active i{background:#4ade80!important;box-shadow:0 0 8px rgba(74,222,128,.75)!important}
+#clients .client-status.soon{color:#fde68a!important;background:rgba(234,179,8,.12)!important;border-color:rgba(250,204,21,.25)!important}
+#clients .client-status.soon i{background:#facc15!important;box-shadow:0 0 8px rgba(250,204,21,.7)!important}
+#clients .client-status.expired{color:#fda4af!important;background:rgba(239,68,68,.12)!important;border-color:rgba(248,113,113,.26)!important}
+#clients .client-status.expired i{background:#f87171!important;box-shadow:0 0 8px rgba(248,113,113,.75)!important}
+#clients .client-status.inactive{color:#c4b5fd!important;background:rgba(139,92,246,.1)!important;border-color:rgba(167,139,250,.2)!important}
+#clients .client-status.inactive i{background:#a78bfa!important}
+#clients .client-row-expired td:first-child{border-left:3px solid #ef4444!important}
+#clients .client-row-soon td:first-child{border-left:3px solid #eab308!important}
+#clients .client-row-active td:first-child{border-left:3px solid #22c55e!important}
+#clients .client-row-expired{background:rgba(239,68,68,.025)!important}
+#clients .client-row-soon{background:rgba(234,179,8,.025)!important}
