@@ -76,7 +76,7 @@ async function data(){
   sb.from('servers').select('monthly_cost,purchase_cost,active').eq('organization_id',org)
  ]);
  const clients=c.data||[],expenses=e.data||[],servers=s.data||[];
- const active=clients.filter(x=>x.status==='active'),today=new Date();today.setHours(0,0,0,0);
+ const today=new Date();today.setHours(0,0,0,0);const active=clients.filter(x=>x.status==='active'&&x.due_date&&new Date(String(x.due_date).slice(0,10)+'T00:00:00')>=today);
  const soon=new Date(today);soon.setDate(soon.getDate()+7);
  const soonN=clients.filter(x=>x.due_date&&new Date(String(x.due_date).slice(0,10)+'T00:00:00')>=today&&new Date(String(x.due_date).slice(0,10)+'T00:00:00')<=soon).length;
  const expired=clients.filter(x=>x.due_date&&new Date(String(x.due_date).slice(0,10)+'T00:00:00')<today).length;
