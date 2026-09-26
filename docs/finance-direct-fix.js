@@ -102,7 +102,11 @@ async function loadFinanceDirect() {
     }, 0);
 
     const expense = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-    const profit = revenue - creditConsumed - expense;
+
+    const monthlyServerCost = servers.filter(s => s.active !== false).reduce((sum, s) => sum + Number(s.monthly_cost || 0), 0);
+    const purchaseCost = servers.filter(s => s.active !== false).reduce((sum, s) => sum + Number(s.purchase_cost || 0), 0);
+    const operatingProfit = revenue - monthlyServerCost - expense - creditConsumed;
+    const profit = operatingProfit - purchaseCost;
 
     // Estes são EXATAMENTE os IDs dos cards que aparecem na aba Financeiro.
     setValue('fRevenue', brl(revenue));
@@ -112,11 +116,9 @@ async function loadFinanceDirect() {
     setValue('fProfit', brl(profit));
 
     // Compatibilidade com a versão antiga da aba Financeiro, caso algum card exista.
-    const monthlyServerCost = servers.filter(s => s.active !== false).reduce((sum, s) => sum + Number(s.monthly_cost || 0), 0);
-    const purchaseCost = servers.filter(s => s.active !== false).reduce((sum, s) => sum + Number(s.purchase_cost || 0), 0);
     setValue('fServer', brl(monthlyServerCost));
     setValue('fPurchase', brl(purchaseCost));
-    setValue('fOperating', brl(revenue - monthlyServerCost - expense));
+    setValue('fOperating', brl(operatingProfit));
     const financeView = document.getElementById('finance');
     if (financeView) financeView.classList.add('gp-finance-ready');
 
