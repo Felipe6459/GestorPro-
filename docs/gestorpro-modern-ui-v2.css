@@ -343,3 +343,87 @@ button{border-radius:10px!important;background:linear-gradient(135deg,#8b5cf6,#6
   #whatsapp #templates{grid-template-columns:1fr}
   #whatsapp .gp-wa-header{padding:17px!important}
 }
+
+
+/* ===== GestorPro Configurações v1 ===== */
+#settings{max-width:100%!important}
+#settings>.panel{
+  position:relative;
+  overflow:hidden;
+  padding:22px!important;
+  background:linear-gradient(145deg,#17131f,#100e15)!important;
+  border:1px solid rgba(139,92,246,.18)!important;
+  box-shadow:0 12px 32px rgba(0,0,0,.18)!important;
+}
+#settings>.panel:before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:0;
+  width:110px;
+  height:2px;
+  background:linear-gradient(90deg,#8b5cf6,transparent);
+}
+#settings>.panel h2{margin:0 0 6px!important;font-size:21px!important}
+#settings>.panel h3{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:4px 0 7px!important;
+  font-size:16px!important;
+}
+#settings>.panel>p.muted{color:#8e879b!important}
+#settings .grid{gap:14px!important}
+#settings .field label{
+  color:#aaa1b7!important;
+  font-size:10px!important;
+  font-weight:700!important;
+  letter-spacing:.06em!important;
+  text-transform:uppercase;
+}
+#settings input,#settings select,#settings textarea{
+  background:#0d0b12!important;
+  border:1px solid #30283d!important;
+  border-radius:9px!important;
+  min-height:42px!important;
+  transition:border-color .18s,box-shadow .18s;
+}
+#settings input:focus,#settings select:focus,#settings textarea:focus{
+  border-color:#7650d9!important;
+  box-shadow:0 0 0 3px rgba(139,92,246,.11)!important;
+  outline:none!important;
+}
+#settings .row{gap:9px!important}
+#settings .row button{border-radius:9px!important;padding:10px 14px!important}
+#settings .table{
+  margin-top:14px!important;
+  border:1px solid #282230!important;
+  border-radius:11px!important;
+  background:#0d0b11!important;
+}
+#settings .table table{min-width:760px!important}
+#settings .table th{
+  padding:12px!important;
+  color:#777080!important;
+  background:#121018!important;
+  letter-spacing:.08em!important;
+  font-size:9px!important;
+}
+#settings .table td{
+  padding:10px 12px!important;
+  border-bottom:1px solid #211d29!important;
+}
+#settings #cfgStatus,#settings #cfgTestStatus,#settings #cfgTplStatus{
+  padding:10px 12px!important;
+  margin:14px 0 0!important;
+  border:1px solid #282230!important;
+  border-radius:9px!important;
+  background:#0d0b12!important;
+}
+#settings #cfgTplRows input,
+#settings #cfgTplRows textarea{min-height:38px!important}
+@media(max-width:680px){
+  #settings>.panel{padding:16px!important}
+  #settings .grid{grid-template-columns:1fr 1fr!important}
+  #settings .row button{width:100%}
+}
