@@ -250,3 +250,25 @@ button{border-radius:10px!important;background:linear-gradient(135deg,#8b5cf6,#6
 #clients .client-row-active td:first-child{border-left:3px solid #22c55e!important}
 #clients .client-row-expired{background:rgba(239,68,68,.025)!important}
 #clients .client-row-soon{background:rgba(234,179,8,.025)!important}
+
+/* ===== GestorPro Servidores v1 ===== */
+#servers{padding-top:2px}
+#servers>.panel:first-child{background:linear-gradient(145deg,#181420,#0f0d14)!important;border-color:rgba(167,139,250,.16)!important}
+#servers>.panel:first-child h3{font-size:18px!important;letter-spacing:-.02em!important}
+#servers>.panel:nth-child(2){background:linear-gradient(180deg,#14121a,#0e0d12)!important}
+#servers>.panel:nth-child(2) h3{display:flex;align-items:center;justify-content:space-between}
+#servers>.panel:nth-child(2) h3:after{content:'INFRAESTRUTURA';font-size:9px;letter-spacing:.14em;color:#716b7d;font-weight:800}
+#servers .table{border-radius:14px!important;border-color:rgba(255,255,255,.07)!important}
+#servers .table table{min-width:980px!important}
+#servers .table th{padding:14px 13px!important;background:#17141d!important;color:#777080!important;font-size:9px!important;letter-spacing:.1em!important}
+#servers .table td{padding:14px 13px!important;color:#ded9e7!important;vertical-align:middle!important}
+#servers .table tbody tr:hover td{background:rgba(139,92,246,.055)!important}
+#servers .server-status{display:inline-flex;align-items:center;gap:7px;padding:5px 9px;border-radius:999px;border:1px solid;font-size:10px;font-weight:800;white-space:nowrap}
+#servers .server-status:before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+#servers .server-status.active{color:#86efac;background:rgba(34,197,94,.10);border-color:rgba(74,222,128,.24)}
+#servers .server-status.inactive{color:#fda4af;background:rgba(239,68,68,.09);border-color:rgba(248,113,113,.22)}
+#servers .server-metric{font-weight:800;color:#fff}
+#servers .server-maintenance{font-size:11px;color:#aaa3b2}
+#servers .grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:13px!important}
+@media(max-width:900px){#servers .grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:680px){#servers>.panel{padding:15px!important}#servers .grid{grid-template-columns:1fr 1fr!important}}
