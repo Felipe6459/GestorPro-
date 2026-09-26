@@ -205,3 +205,31 @@ button{border-radius:10px!important;background:linear-gradient(135deg,#8b5cf6,#6
 #gpAsaasView .gp-pay-box{border-color:rgba(139,92,246,.13)!important;border-radius:13px!important;background:#0c0a11!important}
 #gpSupportNotice{border-radius:14px!important;background:linear-gradient(135deg,#27101b,#140d15)!important;border-color:#6d1f35!important}
 @media(max-width:680px){#gpVendorsView #gpVendorMetrics{grid-template-columns:1fr 1fr!important}#settings>.panel,#activeAutomation>.panel,#gpSupport>.panel,#gpVendorsView>.panel,#gpBillingView>.panel,#gpAsaasView>.panel{padding:15px!important}}
+
+/* ===== GestorPro Clientes v8 ===== */
+#clients{padding-top:2px}
+#clients>.panel:first-child{position:relative;overflow:hidden;background:linear-gradient(145deg,#181420,#0f0d14)!important}
+#clients>.panel:first-child:after{content:'CADASTRO';position:absolute;right:22px;top:20px;font-size:9px;letter-spacing:.14em;color:#6f687c;font-weight:800}
+#clients>.panel:first-child h3{font-size:20px!important;letter-spacing:-.4px!important}
+#clients #clientForm{margin-top:4px}
+#clients #clientForm .grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:13px!important}
+#clients #clientForm .field{min-height:70px!important}
+#clients #clientForm .field label{font-size:10px!important;text-transform:uppercase!important;letter-spacing:.07em!important;color:#81798e!important}
+#clients #clientForm input,#clients #clientForm select{height:42px!important}
+#clients #clientForm .row{margin-top:16px!important;padding-top:14px!important;border-top:1px solid rgba(255,255,255,.055)}
+#clients>.panel:nth-of-type(2){padding:0!important;overflow:hidden}
+#clients>.panel:nth-of-type(2)>h3{padding:20px 22px 5px!important;margin:0!important}
+#clients #search{display:block;width:calc(100% - 44px)!important;margin:12px 22px 16px!important;height:42px!important;background:#0a0910!important}
+#clients>.panel:nth-of-type(2) .table{margin:0!important;border:0!important;border-top:1px solid rgba(255,255,255,.06)!important;border-radius:0!important}
+#clients>.panel:nth-of-type(2) table{min-width:980px!important}
+#clients>.panel:nth-of-type(2) th{height:44px!important}
+#clients>.panel:nth-of-type(2) tbody tr{transition:background .15s ease}
+#clients>.panel:nth-of-type(2) tbody tr:hover{background:rgba(139,92,246,.045)!important}
+#clients>.panel:nth-of-type(2) td:first-child{font-weight:700!important;color:#f3eff8!important}
+#clients>.panel:nth-of-type(2) td:nth-child(5){font-weight:700!important;color:#c4b5fd!important}
+#clients>.panel:nth-of-type(2) td:nth-child(7){font-weight:700!important}
+#clients>.panel:nth-of-type(2) td:nth-child(9){white-space:nowrap!important}
+#clients>.panel:nth-of-type(2) td button{margin:2px 2px!important}
+@media(max-width:1050px){#clients #clientForm .grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:680px){#clients #clientForm .grid{grid-template-columns:1fr 1fr!important}#clients>.panel:nth-of-type(2)>h3{padding:16px 15px 3px!important}#clients #search{width:calc(100% - 30px)!important;margin:10px 15px 14px!important}}
+@media(max-width:420px){#clients #clientForm .grid{grid-template-columns:1fr!important}}
