@@ -59,4 +59,4 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 <script>(function(){setTimeout(function(){if(window.__cineplayJsError){var s=document.getElementById("status"),p=document.getElementById("sitePreview");if(s)s.innerHTML="⚠️ Erro: o JavaScript do editor não foi carregado pelo GitHub Pages.";if(p)p.innerHTML="<h3>👀 O que já está configurado no site</h3><div class=\"status\">⚠️ O arquivo do editor não foi carregado. Verificando publicação...</div>";return}if(!window.__cineplayJsLoaded||!window.__cineplayEditorJsLoaded){var s=document.getElementById("status"),p=document.getElementById("sitePreview");if(s)s.innerHTML="⚠️ Erro: o JavaScript do editor foi entregue, mas não executou.";if(p)p.innerHTML="<h3>👀 O que já está configurado no site</h3><div class=\"status\">⚠️ O editor não conseguiu iniciar o JavaScript.</div>";}},1500);})();</script>
 <script>document.getElementById('back')?.addEventListener('click',()=>location.href='./painel.html');</script>
 
-</body></html>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}</script></body></html>
