@@ -105,8 +105,8 @@ async function loadFinanceDirect() {
 
     const monthlyServerCost = servers.filter(s => s.active !== false).reduce((sum, s) => sum + Number(s.monthly_cost || 0), 0);
     const purchaseCost = servers.filter(s => s.active !== false).reduce((sum, s) => sum + Number(s.purchase_cost || 0), 0);
-    const operatingProfit = revenue - monthlyServerCost - expense - creditConsumed;
-    const profit = operatingProfit - purchaseCost;
+    const operatingProfit = revenue - monthlyServerCost - expense;
+    const profit = operatingProfit - creditConsumed;
 
     // Estes são EXATAMENTE os IDs dos cards que aparecem na aba Financeiro.
     setValue('fRevenue', brl(revenue));
@@ -141,8 +141,12 @@ loadFinanceDirect();
 
 document.addEventListener('click', event => {
   const button = event.target.closest('[data-v="finance"]');
-  if (button) setTimeout(loadFinanceDirect, 50);
-});
+  if (button) {
+    const finance = document.getElementById('finance');
+    if (finance) finance.classList.remove('gp-finance-ready');
+    setTimeout(loadFinanceDirect, 50);
+  }
+}, true);
 
 const financeObserver = new MutationObserver(runWhenFinanceIsVisible);
 const financeSection = document.getElementById('finance');
