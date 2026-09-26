@@ -54,7 +54,7 @@ async function loadFinanceDirect() {
       .eq('organization_id', scope.org);
     let serversQ = finSb
       .from('servers')
-      .select('credit_balance,credit_cost,organization_id,seller_user_id,active')
+      .select('credit_balance,credit_cost,monthly_cost,purchase_cost,organization_id,seller_user_id,active')
       .eq('organization_id', scope.org);
     let txQ = finSb
       .from('credit_transactions')
@@ -82,6 +82,9 @@ async function loadFinanceDirect() {
     const clients = clientsR.error ? [] : (clientsR.data || []);
     const servers = serversR.error ? [] : (serversR.data || []);
     const tx = txR.error ? [] : (txR.data || []);
+    // Compras/ajustes de créditos não são despesa de consumo. Só movimentos
+    // explicitamente marcados como "consumption" entram no custo do mês.
+    const consumptionTx = tx.filter(t => String(t.type || '').toLowerCase() === 'consumption');
     const expenses = expensesR.error ? [] : (expensesR.data || []);
 
     const revenue = clients
@@ -92,7 +95,7 @@ async function loadFinanceDirect() {
     const creditBalance = servers.reduce((sum, s) => sum + Number(s.credit_balance || 0), 0);
 
     // Custo dos créditos efetivamente consumidos no mês.
-    const creditConsumed = tx.reduce((sum, t) => {
+    const creditConsumed = consumptionTx.reduce((sum, t) => {
       const explicit = Number(t.total_cost);
       if (Number.isFinite(explicit) && explicit !== 0) return sum + explicit;
       return sum + (Number(t.quantity || 0) * Number(t.unit_cost || 0));
