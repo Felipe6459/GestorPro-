@@ -101,9 +101,8 @@ function render(d){
  const totalRevenue=d.months.reduce((a,x)=>a+x.revenue,0),statusTotal=Math.max(total,1);
  let angle=0;const activeDeg=active/statusTotal*360,expiredDeg=d.expired/statusTotal*360;const inactiveDeg=360-activeDeg-expiredDeg;
  const donut=`conic-gradient(#8b5cf6 0deg ${activeDeg}deg,#fb7185 ${activeDeg}deg ${activeDeg+expiredDeg}deg,#514b59 ${activeDeg+expiredDeg}deg 360deg)`;
- const upcoming=d.clients.filter(x=>x.due_date){return false};
  const today=new Date();today.setHours(0,0,0,0);const lim=new Date(today);lim.setDate(lim.getDate()+7);
- const up=d.clients.filter(x=>x.due_date){const dt=new Date(String(x.due_date).slice(0,10)+'T00:00:00');return dt>=today&&dt<=lim}.sort((a,b)=>new Date(a.due_date)-new Date(b.due_date)).slice(0,6);
+ const up=d.clients.filter(x=>{if(!x.due_date)return false;const dt=new Date(String(x.due_date).slice(0,10)+'T00:00:00');return dt>=today&&dt<=lim}).sort((a,b)=>new Date(a.due_date)-new Date(b.due_date)).slice(0,6);
  root.innerHTML=`
  <div class="gpm-head"><div><div class="gpm-eyebrow">Visão geral</div><div class="gpm-title">Dashboard</div><div class="gpm-sub">Acompanhe clientes, receita e desempenho do seu negócio em um só lugar.</div></div><div class="gpm-date">${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</div></div>
  <div class="gpm-kpis">
