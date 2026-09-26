@@ -272,3 +272,28 @@ button{border-radius:10px!important;background:linear-gradient(135deg,#8b5cf6,#6
 #servers .grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:13px!important}
 @media(max-width:900px){#servers .grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 @media(max-width:680px){#servers>.panel{padding:15px!important}#servers .grid{grid-template-columns:1fr 1fr!important}}
+
+/* ===== GestorPro Financeiro v1 ===== */
+#finance{padding-top:2px}
+#finance>.cards:first-child,#finance>.cards:nth-child(2){grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:14px!important}
+#finance>.cards .card{position:relative;overflow:hidden;min-height:108px!important;padding:19px!important}
+#finance>.cards .card:after{content:'';position:absolute;right:-22px;bottom:-30px;width:90px;height:90px;border-radius:50%;background:rgba(139,92,246,.06)}
+#finance>.cards:first-child .card:nth-child(1) .num{color:#86efac!important}
+#finance>.cards:first-child .card:nth-child(2) .num{color:#c4b5fd!important}
+#finance>.cards:first-child .card:nth-child(3) .num{color:#fbbf24!important}
+#finance>.cards:first-child .card:nth-child(4) .num{color:#fda4af!important}
+#finance>.cards:nth-child(2) .card:nth-child(1){border-color:rgba(74,222,128,.16)!important;background:linear-gradient(145deg,rgba(20,45,32,.75),#111016)!important}
+#finance>.cards:nth-child(2) .card:nth-child(2){border-color:rgba(167,139,250,.18)!important}
+#finance>.panel{background:linear-gradient(145deg,#17141e,#0f0d13)!important}
+#finance>.panel h3{display:flex;align-items:center;justify-content:space-between}
+#finance>.panel:nth-child(3) h3:after{content:'LANÇAMENTO';font-size:9px;letter-spacing:.14em;color:#716b7d;font-weight:800}
+#finance>.panel:nth-child(4) h3:after{content:'HISTÓRICO';font-size:9px;letter-spacing:.14em;color:#716b7d;font-weight:800}
+#finance .table{border-radius:14px!important;border-color:rgba(255,255,255,.07)!important}
+#finance .table th{padding:14px 13px!important;background:#17141d!important;color:#777080!important;font-size:9px!important;letter-spacing:.1em!important}
+#finance .table td{padding:14px 13px!important;color:#ded9e7!important}
+#finance .table tbody tr:hover td{background:rgba(139,92,246,.045)!important}
+#finance .table td:nth-child(3){font-weight:800;color:#f8f7fb!important}
+#finance .table td:nth-child(5) button{padding:7px 10px!important}
+@media(max-width:900px){#finance>.cards:first-child{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:680px){#finance>.cards:first-child,#finance>.cards:nth-child(2){grid-template-columns:1fr 1fr!important}#finance>.cards .card{min-height:92px!important;padding:14px!important}}
+@media(max-width:420px){#finance>.cards:first-child,#finance>.cards:nth-child(2){grid-template-columns:1fr!important}}
