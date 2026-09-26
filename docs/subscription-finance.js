@@ -13,7 +13,7 @@ async function calc(){if(!org)return null;const m=month();const [cr,pr,er,sr,tr]
  sb.from('credit_transactions').select('quantity,unit_cost,total_cost,type,created_at').eq('organization_id',org).gte('created_at',m.start.toISOString()).lt('created_at',m.end.toISOString())
 ]);const clients=cr.data||[],payments=pr.data||[],expenses=er.data||[],servers=sr.data||[],tx=tr.data||[];
 const received=payments.reduce((a,p)=>a+Number(p.amount||0),0);
-const dueThisMonth=clients.filter(c=>c.status==='active'&&c.due_date&&String(c.due_date).slice(0,7)===m.start.toISOString().slice(0,7));
+const ym=m.start.getFullYear()+'-'+String(m.start.getMonth()+1).padStart(2,'0');const dueThisMonth=clients.filter(c=>c.status==='active'&&c.due_date&&String(c.due_date).slice(0,7)===ym);
 const expectedRemaining=dueThisMonth.reduce((a,c)=>a+Number(c.value||0),0);
 const expectedTotal=received+expectedRemaining;
 const expense=expenses.reduce((a,e)=>a+Number(e.amount||0),0);
