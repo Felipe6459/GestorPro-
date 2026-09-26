@@ -58,17 +58,5 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 </script>
 <script>(function(){setTimeout(function(){if(window.__cineplayJsError){var s=document.getElementById("status"),p=document.getElementById("sitePreview");if(s)s.innerHTML="⚠️ Erro: o JavaScript do editor não foi carregado pelo GitHub Pages.";if(p)p.innerHTML="<h3>👀 O que já está configurado no site</h3><div class=\"status\">⚠️ O arquivo do editor não foi carregado. Verificando publicação...</div>";return}if(!window.__cineplayJsLoaded||!window.__cineplayEditorJsLoaded){var s=document.getElementById("status"),p=document.getElementById("sitePreview");if(s)s.innerHTML="⚠️ Erro: o JavaScript do editor foi entregue, mas não executou.";if(p)p.innerHTML="<h3>👀 O que já está configurado no site</h3><div class=\"status\">⚠️ O editor não conseguiu iniciar o JavaScript.</div>";}},1500);})();</script>
 <script>document.getElementById('back')?.addEventListener('click',()=>location.href='./painel.html');</script>
-<script>
-/* O editor não deve ficar preso ao cache/PWA do painel. Uma única limpeza remove versões antigas que possam estar controlando esta página. */
-(function(){
-  if(!('serviceWorker' in navigator)) return;
-  if(sessionStorage.getItem('cineplay_cache_clean_20260917')) return;
-  sessionStorage.setItem('cineplay_cache_clean_20260917','1');
-  navigator.serviceWorker.getRegistrations()
-    .then(rs=>Promise.all(rs.map(r=>r.unregister())))
-    .then(()=>('caches' in window)?caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k)))):null)
-    .then(()=>location.reload())
-    .catch(()=>{});
-})();
-</script>
+
 <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}</script></body></html>
