@@ -117,6 +117,8 @@ async function loadFinanceDirect() {
     setValue('fServer', brl(monthlyServerCost));
     setValue('fPurchase', brl(purchaseCost));
     setValue('fOperating', brl(revenue - monthlyServerCost - expense));
+    const financeView = document.getElementById('finance');
+    if (financeView) financeView.classList.add('gp-finance-ready');
 
     // Ajuda a diagnosticar no console sem bloquear a tela.
     const errors = [clientsR, serversR, txR, expensesR].filter(r => r.error).map(r => r.error.message);
