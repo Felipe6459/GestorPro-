@@ -124,7 +124,7 @@ function render(d){
    <div class="gpm-fin-item"><div class="gpm-fin-label">Lucro real</div><div class="gpm-fin-value green">${money(d.profit)}</div></div>
   </div></div>
  </div>`;
- document.querySelectorAll('#dash>.cards,#dash>.panel').forEach(x=>{if(x.id!=='gpDashboardModern')x.style.display='none'});
+ document.querySelectorAll('#dash>.cards,#dash>.panel').forEach(x=>{if(x.id!=='gpDashboardModern')x.style.display='none'});document.getElementById('dash')?.classList.add('gp-modern-ready');
 }
 async function boot(){
  style();org=await getOrg();if(!org)return;const d=await data();render(d);
