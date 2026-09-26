@@ -297,3 +297,49 @@ button{border-radius:10px!important;background:linear-gradient(135deg,#8b5cf6,#6
 @media(max-width:900px){#finance>.cards:first-child{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 @media(max-width:680px){#finance>.cards:first-child,#finance>.cards:nth-child(2){grid-template-columns:1fr 1fr!important}#finance>.cards .card{min-height:92px!important;padding:14px!important}}
 @media(max-width:420px){#finance>.cards:first-child,#finance>.cards:nth-child(2){grid-template-columns:1fr!important}}
+
+/* ===== GestorPro WhatsApp v1 ===== */
+#whatsapp{padding-bottom:30px!important}
+#whatsapp .gp-wa-header{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:18px;
+  padding:22px 22px 20px!important;margin-bottom:14px!important;
+  background:linear-gradient(135deg,#171326,#100f16)!important;
+  border:1px solid rgba(139,92,246,.22)!important;
+  border-radius:18px!important;box-shadow:0 14px 38px rgba(0,0,0,.18)!important
+}
+#whatsapp .gp-wa-title{font-size:20px;font-weight:800;letter-spacing:-.35px;color:#fff}
+#whatsapp .gp-wa-subtitle{margin-top:5px;color:#9691a5;font-size:12px;max-width:650px}
+#whatsapp .gp-wa-badge{
+  flex:0 0 auto;padding:7px 10px;border-radius:999px;
+  border:1px solid rgba(139,92,246,.28);background:rgba(139,92,246,.10);
+  color:#c4b5fd;font-size:9px;font-weight:800;letter-spacing:.12em
+}
+#whatsapp .gp-wa-editor{
+  background:linear-gradient(180deg,#15131b,#111016)!important;
+  border-color:#292530!important
+}
+#whatsapp #templates{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}
+#whatsapp #templates .gp-wa-template{
+  margin:0!important;padding:15px!important;border-radius:14px!important;
+  border:1px solid #292530!important;background:#0f0e14!important;
+  box-shadow:none!important;transition:border-color .16s,transform .16s,background .16s!important
+}
+#whatsapp #templates .gp-wa-template:hover{
+  border-color:rgba(139,92,246,.38)!important;background:#121019!important;transform:translateY(-1px)
+}
+#whatsapp .gp-wa-template-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+#whatsapp .gp-wa-template-name{font-size:12px;color:#f4f1f8;font-weight:750}
+#whatsapp .gp-wa-offset{
+  padding:4px 7px;border-radius:7px;background:#1b1727;color:#a78bfa;
+  border:1px solid #302947;font-size:9px;font-weight:800
+}
+#whatsapp #templates textarea{min-height:92px!important;margin:0!important;border-color:#292530!important}
+#whatsapp .gp-wa-actions{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  margin-top:16px;padding-top:15px;border-top:1px solid #25212d
+}
+#whatsapp .gp-wa-actions .muted{font-size:11px}
+@media(max-width:760px){
+  #whatsapp #templates{grid-template-columns:1fr}
+  #whatsapp .gp-wa-header{padding:17px!important}
+}
