@@ -44,8 +44,8 @@ function style(){
 #gpDashboardModern .gpm-donut-label{font-size:9px;color:#7d7785}
 #gpDashboardModern .gpm-legend{display:flex;flex-direction:column;gap:11px}
 #gpDashboardModern .gpm-legend-row{display:flex;align-items:center;gap:8px;font-size:11px;color:#a9a4af}
-#gpDashboardModern .gpm-dot{width:8px;height:8px;border-radius:50%;background:#8b5cf6}
-#gpDashboardModern .gpm-dot.green{background:#16a34a}.gpm-dot.red{background:#dc2626}.gpm-dot.gray{background:#64748b}
+#gpDashboardModern .gpm-dot{width:8px;height:8px;border-radius:50%;background:#64748b}
+#gpDashboardModern .gpm-dot.green{background:#16a34a!important}.gpm-dot.red{background:#dc2626!important}.gpm-dot.gray{background:#64748b!important}
 #gpDashboardModern .gpm-bottom{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,.8fr);gap:14px;margin-top:14px}
 #gpDashboardModern .gpm-list{display:flex;flex-direction:column;gap:5px}
 #gpDashboardModern .gpm-row{display:grid;grid-template-columns:1.5fr 1fr .8fr .7fr;align-items:center;gap:10px;padding:11px 10px;border-radius:10px}
