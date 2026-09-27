@@ -45,11 +45,13 @@ function ensureCss(){
  const s=document.createElement('style');s.id='gpCashCss';s.textContent=
  '#gpCashBox{margin-bottom:14px}#gpCashBox .gp-cash-head{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}#gpCashBox .gp-cash-title{font-size:17px;font-weight:800}#gpCashBox .gp-cash-sub{font-size:11px;color:#817a8d;margin-top:3px}#gpCashBox .gp-cash-period{font-weight:700;color:#c4b5fd}#gpCashBox .gp-cash-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:13px}#gpCashBox .gp-cash-grid>div{padding:13px;border:1px solid #2b253a;border-radius:11px;background:#100e15}#gpCashBox .gp-cash-grid span,#gpCashBox .gp-cash-grid small{display:block;color:#817a8d;font-size:10px}#gpCashBox .gp-cash-grid b{display:block;font-size:18px;margin:5px 0;color:#fff}#gpCashBox .ok{color:#6ee7b7!important}#gpCashBox .bad{color:#fb7185!important}.gp-cash-form{display:grid;grid-template-columns:1fr 1fr auto;gap:9px;align-items:end;margin-top:13px}.gp-cash-form label{display:block;color:#817a8d;font-size:10px;margin-bottom:4px}.gp-cash-form input{width:100%;box-sizing:border-box}.gp-cash-note{font-size:10px;color:#817a8d;margin:10px 0 0}.gp-cash-history{margin-top:12px}.gp-cash-history table{min-width:720px}.gp-cash-history .pos{color:#6ee7b7;font-weight:700}.gp-cash-history .neg{color:#fb7185;font-weight:700}.gp-cash-compare{font-size:10px;color:#817a8d;margin-top:8px}@media(max-width:700px){#gpCashBox .gp-cash-grid{grid-template-columns:1fr 1fr}.gp-cash-form{grid-template-columns:1fr 1fr}.gp-cash-form button{grid-column:1/-1}}';
  document.head.appendChild(s)
+ const f=$('finance');if(f)f.classList.add('gp-finance-loading');
 }
 function updateCards(d){
  const set=(id,v)=>{const x=$(id);if(x)x.textContent=money(v)};
  set('fRevenue',d.received);set('fExpense',d.expense);set('fServer',0);set('fPurchase',0);set('fCreditDiscount',d.credit);set('fOperating',d.received-d.expense);set('fProfit',d.result);
- set('revenue',d.received);set('expenseCost',d.expense);set('serverCost',0);set('serverPurchase',0);set('operatingProfit',d.received-d.expense);set('profit',d.result)
+ set('revenue',d.received);set('expenseCost',d.expense);set('serverCost',0);set('serverPurchase',0);set('operatingProfit',d.received-d.expense);set('profit',d.result);
+ $('finance')?.classList.remove('gp-finance-loading')
 }
 async function getHistory(){
  if(!org)return[];
