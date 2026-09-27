@@ -47,27 +47,13 @@ function ensureCss(){
  document.head.appendChild(s)
  const f=$('finance');if(f)f.classList.add('gp-finance-loading');\n protectFinanceCards();
 }
-let lastCardValues=null;
 function updateCards(d){
- lastCardValues={fRevenue:d.received,fExpense:d.expense,fServer:0,fPurchase:0,fOperating:d.received-d.expense,fProfit:d.result};
- const set=(id,v)=>{const x=$(id);if(x)x.textContent=money(v)};
- Object.entries(lastCardValues).forEach(([id,v])=>set(id,v));
+ const values={fRevenue:d.received,fExpense:d.expense,fServer:0,fPurchase:0,fOperating:d.received-d.expense,fProfit:d.result};
+ const set=(id,v)=>{const x=$(id);if(x){const next=money(v);if(x.textContent!==next)x.textContent=next}};
+ Object.entries(values).forEach(([id,v])=>set(id,v));
  set('fCreditDiscount',d.credit);
  set('revenue',d.received);set('expenseCost',d.expense);set('serverCost',0);set('serverPurchase',0);set('operatingProfit',d.received-d.expense);set('profit',d.result);
  $('finance')?.classList.remove('gp-finance-loading')
-}
-function protectFinanceCards(){
- const f=$('finance');if(!f||f.dataset.gpCardsProtected)return;
- f.dataset.gpCardsProtected='1';
- const sync=()=>{
-  if(!lastCardValues)return;
-  for(const [id,v] of Object.entries(lastCardValues)){
-   const x=$(id),want=money(v);
-   if(x&&x.textContent!==want)x.textContent=want;
-  }
- };
- const mo=new MutationObserver(sync);
- mo.observe(f,{subtree:true,childList:true,characterData:true});
 }
 
 async function getHistory(){
