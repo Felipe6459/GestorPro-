@@ -1,5 +1,5 @@
-// GestorPro — carregadores finais dos módulos financeiros.
-// O painel já carrega este arquivo; o módulo direto corrige especificamente
-// os cards da aba Financeiro, sem depender do Dashboard.
-import('./dashboard-finance-fix.js?v=20260926.1').catch(err=>console.error('GestorPro dashboard financeiro:',err));
-import('./finance-direct-fix.js?v=20260926.1').catch(err=>console.error('GestorPro financeiro:',err));
+// GestorPro — módulos financeiros
+// O fechamento de caixa (subscription-finance.js) é o único responsável
+// pelos cards da aba Financeiro. Os antigos loaders financeiros foram
+// desativados para impedir que valores antigos sobrescrevam os atuais.
+export{};
