@@ -1,7 +1,7 @@
 import{createClient}from'https://esm.sh/@supabase/supabase-js@2';
 const sb=createClient('https://jbdjfmvdrwdfnuhqrprc.supabase.co','sb_publishable_3ABEFAwN_wzmSu13EyVOwQ_h5Xfmz80',{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
 const $=id=>document.getElementById(id),money=v=>'R$ '+Number(v||0).toFixed(2).replace('.',','),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
-let org='',busy=false,stateStart=null;
+let org='',busy=false,stateStart=null,stateInitialized=false;
 
 function isoDate(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)}
 function fmtDate(v){if(!v)return'—';const s=String(v).slice(0,10);return s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4)}
@@ -19,6 +19,7 @@ async function getState(){
  if(!org)return null;
  const{data,error}=await sb.from('cash_register_state').select('current_start').eq('organization_id',org).maybeSingle();
  if(error){console.error('[GestorPro caixa state]',error);return null}
+ stateInitialized=!!data?.current_start;
  stateStart=data?.current_start||defaultStart();
  return stateStart
 }
@@ -68,10 +69,10 @@ function ensureCashBox(d,h){
 async function closeCash(){
  const start=$('gpCashStart')?.value,end=$('gpCashEnd')?.value;
  if(!start||!end){alert('Informe as duas datas.');return}
- if(start!==stateStart){alert('O caixa atual começa em '+fmtDate(stateStart)+'. Use essa data como início para manter os períodos sem buracos.');return}
+ if(stateInitialized&&start!==stateStart){alert('O caixa atual começa em '+fmtDate(stateStart)+'. Use essa data como início para manter os períodos sem buracos.');return}
  if(end>today()){alert('A data final não pode ser futura.');return}
  if(end<start){alert('A data final precisa ser igual ou posterior à inicial.');return}
- if(!confirm('Fechar o caixa de '+fmtDate(start)+' até '+fmtDate(end)+'?\n\nDepois disso, o próximo caixa começa em '+fmtDate(isoDate(new Date(end+'T00:00:00')))+'.'))return;
+ if(!confirm('Fechar o caixa de '+fmtDate(start)+' até '+fmtDate(end)+'?\n\nDepois disso, o próximo caixa começa em '+fmtDate((()=>{const d=new Date(end+'T00:00:00');d.setDate(d.getDate()+1);return isoDate(d)})())+'.'))return;
  const b=$('gpCloseCash2');if(b)b.disabled=true;
  const{data,error}=await sb.rpc('gestorpro_close_cash',{p_start:start,p_end:end});
  if(error||data?.error){alert('Não foi possível fechar: '+(error?.message||data?.error||'erro'));if(b)b.disabled=false;return}
