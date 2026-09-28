@@ -1,6 +1,6 @@
 const SUPABASE_URL = 'https://jbdjfmvdrwdfnuhqrprc.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_3ABEFAwN_wzmSu13EyVOwQ_h5Xfmz80';
-const VAPID_PUBLIC_KEY = 'BAtGuQFk0M7oQXetNHn59PTxyLOy-1t_gkILdJisfIhF09bsvrHRJKDB2H-fZO6p3fK3S3D7huVBl6Y8ZCBcD0Q';
+const VAPID_PUBLIC_KEY = 'BM1XnRQ3iaKGzm2ntDX0RA02K2peujTMetLZdBRVFIcHy_tFioDPP0DIJt3sDJSL65QqvtO319TUKJYEVp1vQ2s';
 const sb = window.supabase?.createClient ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 
 async function bootPushNotifications() {
@@ -133,7 +133,7 @@ async function bootPushNotifications() {
     if (permission !== 'granted') throw new Error('A permissão de notificações não foi concedida.');
     const registration = await navigator.serviceWorker.ready;
     let subscription = await registration.pushManager.getSubscription();
-    if (!subscription) {
+    if (subscription) {\n      await subscription.unsubscribe().catch(() => {});\n      subscription = null;\n    }\n    if (!subscription) {
       subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
