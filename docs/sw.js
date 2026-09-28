@@ -31,3 +31,36 @@ self.addEventListener('fetch', event => {
       .catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html')))
   );
 });
+
+
+self.addEventListener('push', event => {
+  event.waitUntil((async () => {
+    let data = {};
+    try { data = event.data ? event.data.json() : {}; } catch (_) {}
+    const title = data.title || 'GestorPro';
+    const body = data.body || 'Você tem um novo aviso.';
+    await self.registration.showNotification(title, {
+      body,
+      icon: './icon-192.svg',
+      badge: './icon-192.svg',
+      tag: data.tag || 'gestorpro',
+      renotify: true,
+      data: { url: data.url || './painel.html' }
+    });
+  })());
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  event.waitUntil((async () => {
+    const target = new URL(event.notification.data?.url || './painel.html', self.location.origin).href;
+    const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clientsList) {
+      if ('focus' in client) {
+        try { await client.navigate(target); } catch (_) {}
+        return client.focus();
+      }
+    }
+    return self.clients.openWindow(target);
+  })());
+});
