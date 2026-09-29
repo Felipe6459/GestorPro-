@@ -8,6 +8,8 @@ function fmtDate(v){if(!v)return'—';const s=String(v).slice(0,10);return s.sli
 function today(){return isoDate(new Date())}
 function defaultStart(){const d=new Date();d.setDate(1);return isoDate(d)}
 function getRangeEnd(){return today()}
+function localMidnightIso(dateStr){const p=String(dateStr).slice(0,10).split('-').map(Number);return new Date(p[0],p[1]-1,p[2],0,0,0,0).toISOString()}
+function nextLocalMidnightIso(dateStr){const p=String(dateStr).slice(0,10).split('-').map(Number);const d=new Date(p[0],p[1]-1,p[2],0,0,0,0);d.setDate(d.getDate()+1);return d.toISOString()}
 
 async function getOrg(){
  const q=await sb.auth.getSession(),u=q.data?.session?.user;if(!u)return null;
@@ -26,11 +28,11 @@ async function getState(){
 async function calc(){
  if(!org)return null;
  const start=stateStart||await getState(),end=getRangeEnd();
- const endNext=new Date(end+'T00:00:00');endNext.setDate(endNext.getDate()+1);const endExclusive=isoDate(endNext);
+ const startExclusive=localMidnightIso(start),endExclusive=nextLocalMidnightIso(end);
  const[pr,er,tr,cr]=await Promise.all([
-  sb.from('payments').select('id,client_id,amount,paid_at,payment_status').eq('organization_id',org).eq('payment_status','paid').gte('paid_at',start+'T00:00:00').lt('paid_at',endExclusive+'T00:00:00'),
+  sb.from('payments').select('id,client_id,amount,paid_at,payment_status').eq('organization_id',org).eq('payment_status','paid').gte('paid_at',startExclusive).lt('paid_at',endExclusive),
   sb.from('expenses').select('amount,incurred_at').eq('organization_id',org).gte('incurred_at',start).lte('incurred_at',end),
-  sb.from('credit_transactions').select('quantity,unit_cost,total_cost,type,created_at').eq('organization_id',org).gte('created_at',start+'T00:00:00').lt('created_at',endExclusive+'T00:00:00'),
+  sb.from('credit_transactions').select('quantity,unit_cost,total_cost,type,created_at').eq('organization_id',org).gte('created_at',startExclusive).lt('created_at',endExclusive),
   sb.from('clients').select('id,start_date').eq('organization_id',org).gte('start_date',start).lte('start_date',end)
  ]);
  const payments=pr.data||[],expenses=er.data||[],tx=tr.data||[],clients=cr.data||[];
