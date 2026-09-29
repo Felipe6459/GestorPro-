@@ -1,5 +1,5 @@
 /* GestorPro — service worker leve para habilitar instalação PWA sem prender versões antigas. */
-const CACHE = 'gestorpro-pwa-20260917-3';
+const CACHE = 'gestorpro-pwa-20260929-4';
 const APP = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', event => {
@@ -41,8 +41,8 @@ self.addEventListener('push', event => {
     const body = data.body || 'Você tem um novo aviso.';
     await self.registration.showNotification(title, {
       body,
-      icon: './icon-192.svg',
-      badge: './icon-192.svg',
+      icon: './gestorpro-notification.jpg?v=20260929-4',
+      badge: './gestorpro-notification.jpg?v=20260929-4',
       tag: data.tag || 'gestorpro',
       renotify: true,
       data: { url: data.url || './painel.html' }
