@@ -38,7 +38,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const state = uf => STATES.find(s => s[0] === uf);
   const getDDD = phone => {
-    let n = String(phone || '').replace(/\\D/g,'');
+    let n = String(phone || '').replace(/\D/g,'');
     if (n.startsWith('55') && n.length >= 12) n = n.slice(2);
     return n.length >= 10 ? n.slice(0,2) : '';
   };
