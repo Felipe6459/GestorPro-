@@ -179,7 +179,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
     const project=p=>[ox+(p[0]-minX)*scale, H-(oy+(p[1]-minY)*scale)];
     const paths=geoFeatures.map(f=>{
       const uf=f.properties._uf, count=counts[uf]||0;
-      const d=coordinates(f).map(poly=>poly.map(r=>r.map((p,i)=>{const q=project(p);return (i?'L':'M')+q[0].toFixed(1)+','+q[1].toFixed(1)}).join(' ')+' Z').join(' ')).join(' ');
+      const d=coordinates(f).map(ring=>ring.map((p,i)=>{const q=project(p);return (i?'L':'M')+q[0].toFixed(1)+','+q[1].toFixed(1)}).join(' ')+' Z').join(' ');
       return '<path class="gpcm-state '+(selectedUF===uf?'selected':'')+'" data-uf="'+uf+'" d="'+d+'" fill="'+(count?COLOR[uf]:'#292536')+'" opacity="'+(count?'.96':'.78')+'"><title>'+esc(state(uf)[1])+': '+count+' cliente(s)</title></path>';
     }).join('');
     $('gpcmMap').innerHTML='<svg class="gpcm-map" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Mapa do Brasil dividido por estado">'+paths+'</svg>';
@@ -189,7 +189,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
   function renderChart(counts) {
     const sorted=STATES.map(s=>({uf:s[0],name:s[1],count:counts[s[0]]||0})).sort((a,b)=>b.count-a.count||a.name.localeCompare(b.name,'pt-BR'));
     const max=Math.max(1,...sorted.map(s=>s.count));
-    $('gpcmChart').innerHTML=sorted.map(s=>'<div class="gpcm-bar-row"><strong>'+s.uf+'</strong><div class="gpcm-bar" title="'+esc(s.name)+'"><i style="width:'+(s.count/max*100)+'%;background:'+(s.count?COLOR[s.uf]:'#454052')+'"></i></div><span style="text-align:right">'+s.count+'</span></div>').join('');
+    $('gpcmChart').innerHTML=sorted.map(s=>'<div class="gpcm-bar-row" data-chart-uf="'+s.uf+'" style="cursor:pointer"><strong>'+s.uf+'</strong><div class="gpcm-bar" title="'+esc(s.name)+'"><i style="width:'+(s.count/max*100)+'%;background:'+(s.count?COLOR[s.uf]:'#454052')+'"></i></div><span style="text-align:right">'+s.count+'</span></div>').join('');
+    $('gpcmChart').querySelectorAll('[data-chart-uf]').forEach(el=>el.addEventListener('click',()=>selectState(el.dataset.chartUf)));
   }
 
   function render() {
