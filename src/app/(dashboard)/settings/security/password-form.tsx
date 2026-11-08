@@ -3,7 +3,7 @@
 import { useActionState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FormField, FormLabel } from "@/components/ui/form-field";
+import { FormField } from "@/components/ui/form-field";
 import { changePassword } from "./actions";
 import type { AuthActionState } from "@/types";
 
@@ -19,19 +19,16 @@ export function PasswordForm() {
 
   return (
     <form ref={formRef} action={formAction} className="space-y-5">
-      <FormField>
-        <FormLabel htmlFor="currentPassword">Senha atual</FormLabel>
+      <FormField label="Senha atual" htmlFor="currentPassword" required>
         <Input id="currentPassword" name="currentPassword" type="password" autoComplete="current-password" required />
       </FormField>
 
-      <FormField>
-        <FormLabel htmlFor="newPassword">Nova senha</FormLabel>
+      <FormField label="Nova senha" htmlFor="newPassword" required>
         <Input id="newPassword" name="newPassword" type="password" autoComplete="new-password" minLength={8} required />
         <p className="text-sm text-muted-foreground">Use pelo menos 8 caracteres.</p>
       </FormField>
 
-      <FormField>
-        <FormLabel htmlFor="confirmPassword">Confirmar nova senha</FormLabel>
+      <FormField label="Confirmar nova senha" htmlFor="confirmPassword" required>
         <Input id="confirmPassword" name="confirmPassword" type="password" autoComplete="new-password" minLength={8} required />
       </FormField>
 

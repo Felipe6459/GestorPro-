@@ -27,8 +27,8 @@ describe("getPlatformBranding", () => {
     const branding = getPlatformBranding();
 
     expect(branding).toEqual({
-      name: "Aqenra",
-      tagline: "A lightweight CRM for freelancers and small agencies to manage clients, projects, tasks, and invoices.",
+      name: "GestorPro",
+      tagline: "Plataforma SaaS para gerenciamento de clientes, planos, vencimentos, cobranças e pagamentos.",
       logoUrl: null,
       faviconUrl: null,
     });
@@ -54,7 +54,7 @@ describe("getPlatformBranding", () => {
 
     const branding = getPlatformBranding();
 
-    expect(branding.name).toBe("Aqenra");
+    expect(branding.name).toBe("GestorPro");
     expect(branding.logoUrl).toBeNull();
   });
 
