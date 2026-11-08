@@ -46,7 +46,6 @@ const consumerFiles = consumers
   .map((line) => line.split(":")[0]);
 const expectedConsumers = [
   "src/lib/supabase/server.ts",
-  "src/lib/supabase/middleware.ts",
   "src/lib/storage/attachments-storage.ts",
   "src/lib/storage/logo-storage.ts",
   "src/lib/storage/test-storage.ts",
