@@ -74,6 +74,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
       #gpClientMap button{border:0;border-radius:8px;padding:8px 11px;background:#8b5cf6;color:#fff;font-weight:700;cursor:pointer}
       #gpClientMap .gpcm-note{font-size:12px;color:#fbbf24;margin-top:8px}
       #gpClientMap .gpcm-empty{color:#aaa;padding:14px 0}
+      #gpClientMap .gpcm-selected-info{margin:10px 0;padding:11px 12px;border:1px solid #59418a;border-radius:9px;background:#211936;color:#fff;font-weight:700;min-height:20px}
+      #gpClientMap .gpcm-selected-info small{display:block;margin-top:3px;color:#c4b5fd;font-weight:400}
       @media(max-width:760px){#gpClientMap .gpcm-layout{grid-template-columns:1fr}#gpClientMap .gpcm-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
       @media(max-width:420px){#gpClientMap .gpcm-kpis{grid-template-columns:1fr 1fr}#gpClientMap .gpcm-card,#gpClientMap .gpcm-panel{padding:11px}}
     `;
@@ -101,7 +103,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
         <div class="gpcm-card">Sem estado identificado<div class="gpcm-number" id="gpcmUnknown">—</div></div>
       </div>
       <div class="gpcm-layout">
-        <div class="gpcm-panel"><h3 style="margin-top:0">Brasil por estado</h3><div id="gpcmMap" class="gpcm-empty">Carregando mapa geográfico…</div><div class="gpcm-muted">Estados com clientes aparecem coloridos. Toque em um estado para filtrar a lista.</div></div>
+        <div class="gpcm-panel"><h3 style="margin-top:0">Brasil por estado</h3><div id="gpcmMap" class="gpcm-empty">Carregando mapa geográfico…</div><div id="gpcmMapSelectedInfo" class="gpcm-selected-info" aria-live="polite">Toque em qualquer estado do mapa para ver o nome.</div><div class="gpcm-muted">Estados com clientes aparecem coloridos. Toque em um estado para ver o nome e filtrar a lista.</div></div>
         <div class="gpcm-panel"><h3 style="margin-top:0">Clientes por estado</h3><div id="gpcmChart"></div></div>
       </div>
       <div class="gpcm-panel" style="margin-top:12px">
@@ -200,6 +202,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
     $('gpcmStates').textContent=Object.keys(counts).length;
     $('gpcmUnknown').textContent=unknown;
     renderMap(counts); renderChart(counts); renderClients();
+    const selectedInfo = $('gpcmMapSelectedInfo');
+    if (selectedInfo) selectedInfo.innerHTML = selectedUF ? esc(state(selectedUF)[1])+' ('+esc(selectedUF)+')<small>'+(counts[selectedUF]||0)+' cliente(s) identificado(s) neste estado</small>' : 'Toque em qualquer estado do mapa para ver o nome.';
   }
 
   function selectState(uf) {
