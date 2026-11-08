@@ -73,7 +73,9 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
       #gpClientMap select,#gpClientMap input{width:100%;box-sizing:border-box;background:#0f0c18;color:#fff;border:1px solid #40365c;border-radius:7px;padding:8px}
       #gpClientMap button{border:0;border-radius:8px;padding:8px 11px;background:#8b5cf6;color:#fff;font-weight:700;cursor:pointer}
       #gpClientMap .gpcm-note{font-size:12px;color:#fbbf24;margin-top:8px}
-      #gpClientMap .gpcm-empty{color:#aaa;padding:14px 0}\n      #gpClientMap .gpcm-selected-info{margin:10px 0;padding:11px 12px;border:1px solid #59418a;border-radius:9px;background:#211936;color:#fff;font-weight:700;min-height:20px}\n      #gpClientMap .gpcm-selected-info small{display:block;margin-top:3px;color:#c4b5fd;font-weight:400}
+      #gpClientMap .gpcm-empty{color:#aaa;padding:14px 0}
+      #gpClientMap .gpcm-selected-info{margin:10px 0;padding:11px 12px;border:1px solid #59418a;border-radius:9px;background:#211936;color:#fff;font-weight:700;min-height:20px}
+      #gpClientMap .gpcm-selected-info small{display:block;margin-top:3px;color:#c4b5fd;font-weight:400}
       @media(max-width:760px){#gpClientMap .gpcm-layout{grid-template-columns:1fr}#gpClientMap .gpcm-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
       @media(max-width:420px){#gpClientMap .gpcm-kpis{grid-template-columns:1fr 1fr}#gpClientMap .gpcm-card,#gpClientMap .gpcm-panel{padding:11px}}
     `;
@@ -199,7 +201,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
     $('gpcmTotal').textContent=rows.length;
     $('gpcmStates').textContent=Object.keys(counts).length;
     $('gpcmUnknown').textContent=unknown;
-    renderMap(counts); renderChart(counts); renderClients();\n    const selectedInfo = $('gpcmMapSelectedInfo');\n    if (selectedInfo) selectedInfo.innerHTML = selectedUF ? esc(state(selectedUF)[1])+' ('+esc(selectedUF)+')<small>'+(counts[selectedUF]||0)+' cliente(s) identificado(s) neste estado</small>' : 'Toque em qualquer estado do mapa para ver o nome.';
+    renderMap(counts); renderChart(counts); renderClients();
+    const selectedInfo = $('gpcmMapSelectedInfo');\n    if (selectedInfo) selectedInfo.innerHTML = selectedUF ? esc(state(selectedUF)[1])+' ('+esc(selectedUF)+')<small>'+(counts[selectedUF]||0)+' cliente(s) identificado(s) neste estado</small>' : 'Toque em qualquer estado do mapa para ver o nome.';
   }
 
   function selectState(uf) {
