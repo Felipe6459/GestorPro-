@@ -202,7 +202,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
     $('gpcmStates').textContent=Object.keys(counts).length;
     $('gpcmUnknown').textContent=unknown;
     renderMap(counts); renderChart(counts); renderClients();
-    const selectedInfo = $('gpcmMapSelectedInfo');\n    if (selectedInfo) selectedInfo.innerHTML = selectedUF ? esc(state(selectedUF)[1])+' ('+esc(selectedUF)+')<small>'+(counts[selectedUF]||0)+' cliente(s) identificado(s) neste estado</small>' : 'Toque em qualquer estado do mapa para ver o nome.';
+    const selectedInfo = $('gpcmMapSelectedInfo');
+    if (selectedInfo) selectedInfo.innerHTML = selectedUF ? esc(state(selectedUF)[1])+' ('+esc(selectedUF)+')<small>'+(counts[selectedUF]||0)+' cliente(s) identificado(s) neste estado</small>' : 'Toque em qualquer estado do mapa para ver o nome.';
   }
 
   function selectState(uf) {
