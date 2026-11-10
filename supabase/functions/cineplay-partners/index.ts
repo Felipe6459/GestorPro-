@@ -197,7 +197,7 @@ async function loadAdminDashboard(organizationId: string, settings: any) {
       pending_subscription_amount: initialPending,
       renewal_due_amount: renewalDue,
       renewal_next_amount: renewalNext,
-      available_amount: initialPending + renewalNext,
+      available_amount: initialPending + renewalDue,
       received_amount: received,
       waiting_renewal_count: activeReferralCount,
       waiting_renewal_amount: activeReferralCount * Number(settings.commission_renewal || 5),
