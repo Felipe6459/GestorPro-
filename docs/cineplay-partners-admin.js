@@ -80,6 +80,7 @@ function addView() {
       '<div class="panel gp-pa-section"><h3>👥 Parceiros cadastrados</h3><div class="table gp-pa-table"><table><thead><tr><th>Parceiro</th><th>Código</th><th>Clientes</th><th>Próximo fechamento</th><th>Já recebido</th><th>Chave Pix</th><th>Status</th><th>Ações</th></tr></thead><tbody id="gpPaPartnerRows"><tr><td colspan="8">Carregando...</td></tr></tbody></table></div></div>' +
       '<div class="panel gp-pa-section"><h3>💸 Comissões de novas assinaturas</h3><p class="gp-pa-muted">Essas comissões são pagas individualmente após a confirmação do primeiro pagamento do cliente.</p><div class="table gp-pa-table"><table><thead><tr><th>Parceiro</th><th>Cliente</th><th>Data</th><th>Comissão</th><th>Chave Pix</th><th>Ação</th></tr></thead><tbody id="gpPaInitialRows"><tr><td colspan="6">Carregando...</td></tr></tbody></table></div></div>' +
       '<div class="panel gp-pa-section"><h3>🔁 Comissões de renovações</h3><p class="gp-pa-muted">Veja quais renovações já estão liberadas para o fechamento, quais entram no próximo e quais ainda aguardam completar 30 dias.</p><div class="table gp-pa-table"><table><thead><tr><th>Parceiro</th><th>Cliente</th><th>Renovou em</th><th>Elegível em</th><th>Comissão</th><th>Situação</th></tr></thead><tbody id="gpPaRenewalRows"><tr><td colspan="6">Carregando...</td></tr></tbody></table></div></div>' +
+      '<div class="panel gp-pa-section"><h3>📜 Histórico de pagamentos realizados</h3><div class="table gp-pa-table"><table><thead><tr><th>Parceiro</th><th>Tipo</th><th>Período</th><th>Data do Pix</th><th>Valor</th><th>Chave utilizada</th></tr></thead><tbody id="gpPaPayoutRows"><tr><td colspan="6">Carregando...</td></tr></tbody></table></div></div>' +
     '</section>'
   );
   $("gpPaReload").onclick = load;
@@ -173,6 +174,13 @@ function render(data) {
       '<td>' + esc(date(c.earned_at)) + '</td><td>' + esc(date(c.eligible_at)) + '</td>' +
       '<td><b>' + money(c.amount) + '</b></td><td>' + state + '</td></tr>';
   }).join("") || '<tr><td colspan="6">Nenhuma comissão de renovação pendente.</td></tr>';
+
+  $("gpPaPayoutRows").innerHTML = (data.payouts || []).map((p) => {
+    const type = p.payout_type === "subscription" ? "Nova assinatura" : "Fechamento de renovações";
+    const period = p.period_start ? date(p.period_start) + " a " + date(p.period_end) : "Pagamento individual";
+    return '<tr><td>' + esc(p.partner_name) + '</td><td>' + type + '</td><td>' + esc(period) + '</td>' +
+      '<td>' + esc(date(p.paid_at)) + '</td><td><b>' + money(p.amount) + '</b></td><td>' + esc(p.pix_key_snapshot) + '</td></tr>';
+  }).join("") || '<tr><td colspan="6">Nenhum pagamento registrado até o momento.</td></tr>';
 
   bindRows();
 }
