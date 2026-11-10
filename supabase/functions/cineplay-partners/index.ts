@@ -55,6 +55,16 @@ async function getManagerContext(userId: string) {
     organizationId = membership.organization_id;
   }
 
+  if (!organizationId && role === "owner") {
+    const { data: membership } = await admin
+      .from("organization_members")
+      .select("organization_id,role,status")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .eq("role", "owner")
+      .maybeSingle();
+    organizationId = membership?.organization_id || null;
+  }
   if (!organizationId) return null;
   return { userId, organizationId, role };
 }
@@ -177,7 +187,7 @@ async function loadAdminDashboard(organizationId: string, settings: any) {
     const activeReferralCount = ownReferrals.filter((referral: any) => {
       if (!referral.first_paid_at) return false;
       const client = clientMap.get(referral.client_id);
-      return !client || ["active", "expiring"].includes(String(client.status || "").toLowerCase());
+      return !!client && ["active", "expiring"].includes(String(client.status || "").toLowerCase());
     }).length;
     return {
       ...partner,
@@ -311,7 +321,7 @@ async function loadPartnerDashboard(partner: any, settings: any) {
   const activeReferrals = referrals.filter((referral: any) => {
     if (!referral.first_paid_at) return false;
     const client = clientMap.get(referral.client_id);
-    return !client || ["active", "expiring"].includes(String(client.status || "").toLowerCase());
+    return !!client && ["active", "expiring"].includes(String(client.status || "").toLowerCase());
   });
 
   return {
