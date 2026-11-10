@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#21143b">
+<title>Área do Parceiro · Cine Player Pro</title>
+<style>
+:root{color-scheme:dark;--bg:#0c0a12;--panel:#171320;--line:#30264a;--muted:#a39ab3;--violet:#8b5cf6;--green:#34d399;--white:#f8f6ff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 20% 0%,#2c1b4d 0,#0c0a12 42%);color:var(--white);font:15px Inter,system-ui,Arial,sans-serif;min-height:100vh}
+a{color:#c4b5fd}.wrap{width:min(1120px,100%);margin:auto;padding:24px 18px 56px}.brand{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px}.brand b{letter-spacing:.08em}.brand small{display:block;color:var(--muted);margin-top:4px}.pill{border:1px solid #4c3672;background:#24183a;border-radius:99px;padding:7px 12px;color:#d9ccff;font-size:12px}
+.card{background:linear-gradient(145deg,#1d172b,#15111f);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 16px 45px #0004}.login{width:min(440px,100%);margin:8vh auto}.login h1{font-size:25px;margin:0 0 7px}.muted{color:var(--muted);line-height:1.5}.field{display:grid;gap:7px;margin:14px 0}.field label{font-size:12px;color:#c9c1d7}.field input,.field select{width:100%;border:1px solid #403456;border-radius:10px;background:#0f0c17;color:white;padding:12px;font:inherit;outline:none}.field input:focus,.field select:focus{border-color:#9b7af7}
+button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(135deg,#8b5cf6,#6d3bd0);color:white;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.secondary{background:#29213a;border:1px solid #493a64}.full{width:100%}.msg{font-size:12px;min-height:18px;color:#fca5a5}.msg.ok{color:#86efac}
+.hidden{display:none!important}.wallet{background:linear-gradient(130deg,#38205f,#21143b 70%);border:1px solid #6849a0;border-radius:22px;padding:22px;position:relative;overflow:hidden}.wallet:after{content:"";position:absolute;width:210px;height:210px;border:1px solid #ffffff17;border-radius:50%;right:-70px;top:-80px;box-shadow:0 0 0 22px #ffffff08,0 0 0 48px #ffffff05}.wallet small{color:#d6c8f5}.wallet .amount{font-size:38px;font-weight:800;letter-spacing:-.04em;margin:10px 0}.wallet .sub{font-size:12px;color:#d6c8f5}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}.metric{background:#171320;border:1px solid var(--line);border-radius:15px;padding:16px}.metric small{display:block;color:var(--muted);font-size:12px}.metric b{display:block;font-size:25px;margin:8px 0}.metric p{font-size:11px;color:var(--muted);margin:0;line-height:1.4}.metric.green b{color:var(--green)}.metric.gold b{color:#fbbf24}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}.section-title{font-size:17px;margin:0 0 12px}.share{display:flex;gap:8px;align-items:center;margin-top:12px}.share input{flex:1;min-width:0;background:#0f0c17;border:1px solid #403456;border-radius:10px;color:#ddd;padding:11px;font-size:12px}.tag{font-size:11px;color:#c4b5fd;background:#2b2040;border-radius:99px;padding:5px 8px;display:inline-block}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}table{width:100%;border-collapse:collapse;min-width:540px;font-size:12px}th,td{text-align:left;padding:11px;border-bottom:1px solid #30283d}th{color:#b6acc7;background:#15111f;font-weight:600}td{color:#eee}tr:last-child td{border-bottom:0}.status{font-size:11px;color:#c4b5fd}.status.paid{color:#86efac}.pix-form{display:grid;grid-template-columns:1fr 2fr;gap:10px}.pix-form .wide{grid-column:1/-1}.top-actions{display:flex;gap:8px;align-items:center}.top-actions button{padding:9px 12px;font-size:12px}
+@media(max-width:760px){.grid{grid-template-columns:1fr 1fr}.two{grid-template-columns:1fr}.wallet .amount{font-size:32px}}
+@media(max-width:420px){.grid{grid-template-columns:1fr}.brand{align-items:flex-start;flex-direction:column}.share{flex-direction:column;align-items:stretch}.pix-form{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="brand">
+    <div><b>CINE PLAYER PRO</b><small>Área exclusiva de parceiros</small></div>
+    <div class="top-actions"><span class="pill" id="partnerBadge">Acesso seguro</span><button id="logoutBtn" class="secondary hidden" type="button">Sair</button></div>
+  </header>
+
+  <section id="loginCard" class="card login">
+    <span class="tag">PAINEL DO PARCEIRO</span>
+    <h1>Bem-vindo!</h1>
+    <p class="muted">Entre para acompanhar suas indicações, comissões, renovações e pagamentos.</p>
+    <form id="loginForm">
+      <div class="field"><label for="email">E-mail</label><input id="email" type="email" autocomplete="username" required></div>
+      <div class="field"><label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" required></div>
+      <button class="full" type="submit" id="loginBtn">Entrar na minha carteira</button>
+    </form>
+    <p id="loginMsg" class="msg"></p>
+    <button id="forgotBtn" type="button" class="secondary full">Esqueci minha senha</button>
+  </section>
+
+  <section id="resetCard" class="card login hidden">
+    <span class="tag">SEGURANÇA DA CONTA</span>
+    <h1>Crie uma nova senha</h1>
+    <p class="muted">Escolha uma senha nova para acessar sua carteira de parceiro.</p>
+    <form id="resetForm">
+      <div class="field"><label for="newPassword">Nova senha</label><input id="newPassword" type="password" minlength="8" autocomplete="new-password" required></div>
+      <div class="field"><label for="confirmPassword">Confirmar nova senha</label><input id="confirmPassword" type="password" minlength="8" autocomplete="new-password" required></div>
+      <button class="full" type="submit" id="resetBtn">Salvar nova senha</button>
+    </form>
+    <p id="resetMsg" class="msg"></p>
+  </section>
+
+  <main id="dashboard" class="hidden">
+    <div class="brand" style="margin-bottom:14px">
+      <div><h1 id="welcome" style="margin:0;font-size:24px">Olá!</h1><small class="muted">Acompanhe seus resultados como parceiro.</small></div>
+      <span class="pill" id="partnerCode">Código</span>
+    </div>
+
+    <section class="wallet">
+      <small>DISPONÍVEL PARA PAGAMENTO</small>
+      <div class="amount" id="availableAmount">R$ 0,00</div>
+      <div class="sub">Comissões liberadas para receber. Próximo fechamento: <b id="nextClose">—</b></div>
+      <div class="sub" style="margin-top:12px" id="commissionRules">R$ 10,00 por nova assinatura · R$ 5,00 por renovação</div>
+    </section>
+
+    <section class="grid">
+      <div class="metric gold"><small>Aguardando renovação</small><b id="waitingAmount">R$ 0,00</b><p id="waitingCount">Potencial de futuras renovações. Ainda não é comissão liberada.</p></div>
+      <div class="metric green"><small>Já recebido</small><b id="receivedAmount">R$ 0,00</b><p>Total de comissões que já foram pagas.</p></div>
+      <div class="metric"><small>Renovações no próximo fechamento</small><b id="nextAmount">R$ 0,00</b><p>Somente renovações confirmadas e elegíveis após o ciclo de 30 dias. <span id="nextCloseNote"></span></p></div>
+    </section>
+
+    <section class="two">
+      <div class="card">
+        <h2 class="section-title">🔗 Meu link de indicação</h2>
+        <p class="muted">Compartilhe seu link. A mensagem enviada ao atendimento levará seu código de parceiro.</p>
+        <div class="share"><input id="referralUrl" readonly><button id="copyLink" type="button">Copiar link</button></div>
+        <p class="muted" style="font-size:11px">Quando o cliente for cadastrado no GestorPro, o atendimento vinculará a indicação ao seu código.</p>
+      </div>
+      <div class="card">
+        <h2 class="section-title">💠 Minha chave Pix</h2>
+        <p class="muted">Mantenha seus dados atualizados para receber as comissões.</p>
+        <form id="pixForm" class="pix-form">
+          <div class="field"><label for="pixType">Tipo de chave</label><select id="pixType"><option value="cpf">CPF</option><option value="cnpj">CNPJ</option><option value="email">E-mail</option><option value="phone">Telefone</option><option value="random">Aleatória</option></select></div>
+          <div class="field"><label for="pixKey">Chave Pix</label><input id="pixKey" required></div>
+          <div class="field wide"><label for="pixHolder">Nome do titular</label><input id="pixHolder" required></div>
+          <div class="wide"><button type="submit" id="savePixBtn">Salvar chave Pix</button><span id="pixMsg" class="msg"></span></div>
+        </form>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:14px">
+      <h2 class="section-title">👥 Meus clientes indicados</h2>
+      <div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Situação</th><th>Vencimento</th><th>Indicado em</th></tr></thead><tbody id="clientRows"><tr><td colspan="4">Carregando...</td></tr></tbody></table></div>
+    </section>
+
+    <section class="card" style="margin-top:14px">
+      <h2 class="section-title">📊 Histórico de comissões</h2>
+      <div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Tipo</th><th>Valor</th><th>Gerada em</th><th>Situação</th><th>Pagamento</th></tr></thead><tbody id="commissionRows"><tr><td colspan="6">Carregando...</td></tr></tbody></table></div>
+    </section>
+  </main>
+</div>
+
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+const sb = createClient("https://jbdjfmvdrwdfnuhqrprc.supabase.co", "sb_publishable_3ABEFAwN_wzmSu13EyVOwQ_h5Xfmz80", { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+const $ = (id) => document.getElementById(id);
+const money = (v) => "R$ " + Number(v || 0).toFixed(2).replace(".", ",");
+const fmt = (v) => v ? String(v).slice(8,10) + "/" + String(v).slice(5,7) + "/" + String(v).slice(0,4) : "—";
+const statusLabel = (v) => ({active:"Ativo",expiring:"Próximo do vencimento",expired:"Vencido",inactive:"Inativo",cancelled:"Cancelado"})[String(v||"").toLowerCase()] || String(v||"—");
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[c]));
+function msg(target, text, ok=false){$(target).textContent=text||"";$(target).className="msg"+(ok?" ok":"");}
+async function api(action,payload={}) {
+  const {data,error}=await sb.functions.invoke("cineplay-partners",{body:{action,...payload}});
+  if(error){let detail="";try{if(error.context){const b=await error.context.json();detail=b?.error||""}}catch(_){}throw new Error(detail||error.message||"Erro ao carregar carteira.");}
+  if(data?.error)throw new Error(data.error);
+  return data||{};
+}
+function showLogin(){ $("loginCard").classList.remove("hidden");$("resetCard").classList.add("hidden");$("dashboard").classList.add("hidden");$("logoutBtn").classList.add("hidden"); }
+function showReset(){ $("loginCard").classList.add("hidden");$("dashboard").classList.add("hidden");$("resetCard").classList.remove("hidden");$("logoutBtn").classList.add("hidden"); }
+function showDashboard(){ $("loginCard").classList.add("hidden");$("dashboard").classList.remove("hidden");$("logoutBtn").classList.remove("hidden"); }
+function render(data){
+  const p=data.partner,s=data.summary||{};
+  $("welcome").textContent="Olá, "+p.full_name+"!";
+  $("partnerCode").textContent="Código "+p.referral_code;
+  $("availableAmount").textContent=money(s.available_amount);
+  $("waitingAmount").textContent=money(s.waiting_renewal_amount);
+  $("waitingCount").textContent=String(s.waiting_renewal_count||0)+" cliente(s) com potencial de novas renovações. Valor estimado, não liberado.";
+  $("receivedAmount").textContent=money(s.received_amount);
+  $("nextAmount").textContent=money(s.next_close_amount);
+  $("nextClose").textContent=fmt(data.dates?.nextClose);
+  $("nextCloseNote").textContent="Fechamento em "+fmt(data.dates?.nextClose)+ ".";
+  $("commissionRules").textContent=money(data.settings?.commission_subscription)+" por nova assinatura · "+money(data.settings?.commission_renewal)+" por renovação";
+  $("referralUrl").value=p.referral_url;
+  $("pixType").value=p.pix_key_type||"cpf";
+  $("pixKey").value=p.pix_key||"";
+  $("pixHolder").value=p.pix_holder_name||"";
+  $("clientRows").innerHTML=(data.clients||[]).map(c=>"<tr><td>"+esc(c.name)+"</td><td>"+esc(statusLabel(c.status))+"</td><td>"+fmt(c.due_date)+"</td><td>"+fmt(c.referred_at)+"</td></tr>").join("")||'<tr><td colspan="4">Você ainda não possui clientes vinculados.</td></tr>';
+  $("commissionRows").innerHTML=(data.commissions||[]).map(c=>{
+    const type=c.type==="subscription"?"Nova assinatura":"Renovação";
+    const notEligible=c.type==="renewal" && c.eligible_at && Date.parse(c.eligible_at)>Date.now();
+    const state=c.status==="paid"?"Pago":(notEligible?"Aguardando completar 30 dias":(c.type==="renewal"?"Aguardando fechamento":"Aguardando pagamento"));
+    const payment=c.paid_at?fmt(c.paid_at):"—";
+    return "<tr><td>"+esc(c.client_name)+"</td><td>"+type+"</td><td>"+money(c.amount)+"</td><td>"+fmt(c.earned_at)+"</td><td><span class='status "+(c.status==="paid"?"paid":"")+"'>"+state+"</span></td><td>"+payment+"</td></tr>";
+  }).join("")||'<tr><td colspan="6">Nenhuma comissão registrada ainda.</td></tr>';
+}
+async function loadDashboard(){
+  try{const data=await api("partner_dashboard");render(data);showDashboard();}
+  catch(error){showLogin();msg("loginMsg",error.message);}
+}
+$("loginForm").addEventListener("submit",async(e)=>{
+  e.preventDefault();$("loginBtn").disabled=true;msg("loginMsg","Entrando...");
+  const {error}=await sb.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});
+  if(error){msg("loginMsg",error.message);$("loginBtn").disabled=false;return;}
+  await loadDashboard();$("loginBtn").disabled=false;
+});
+$("forgotBtn").onclick=async()=>{
+  const email=$("email").value.trim();
+  if(!email){msg("loginMsg","Informe seu e-mail para receber o link de recuperação.");return;}
+  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+  msg("loginMsg",error?error.message:"Se o e-mail estiver cadastrado, você receberá as instruções de recuperação.",!error);
+};
+$("logoutBtn").onclick=async()=>{await sb.auth.signOut();showLogin();};
+$("copyLink").onclick=async()=>{
+  try{await navigator.clipboard.writeText($("referralUrl").value);$("copyLink").textContent="Copiado!";setTimeout(()=>$("copyLink").textContent="Copiar link",1800);}
+  catch(_){$("referralUrl").select();msg("pixMsg","Selecione e copie o link manualmente.");}
+};
+$("pixForm").addEventListener("submit",async(e)=>{
+  e.preventDefault();$("savePixBtn").disabled=true;msg("pixMsg","Salvando...");
+  try{
+    await api("save_pix",{pix_key_type:$("pixType").value,pix_key:$("pixKey").value.trim(),pix_holder_name:$("pixHolder").value.trim()});
+    msg("pixMsg","Chave Pix salva com sucesso.",true);await loadDashboard();
+  }catch(error){msg("pixMsg",error.message);}
+  finally{$("savePixBtn").disabled=false;}
+});
+$("resetForm").addEventListener("submit",async(e)=>{
+  e.preventDefault();
+  const a=$("newPassword").value,b=$("confirmPassword").value;
+  if(a.length<8||a!==b){msg("resetMsg","As senhas precisam ser iguais e ter pelo menos 8 caracteres.");return;}
+  $("resetBtn").disabled=true;
+  const {error}=await sb.auth.updateUser({password:a});
+  if(error){msg("resetMsg",error.message);$("resetBtn").disabled=false;return;}
+  msg("resetMsg","Senha alterada. Faça login com sua nova senha.",true);
+  await sb.auth.signOut();
+  $("resetForm").reset();showLogin();$("resetBtn").disabled=false;
+});
+sb.auth.onAuthStateChange((event)=>{
+  if(event==="PASSWORD_RECOVERY")showReset();
+});
+sb.auth.getSession().then(({data})=>{
+  if(location.hash.includes("type=recovery"))showReset();
+  else if(data.session)loadDashboard();
+  else showLogin();
+});
+
+</script>
+</body>
+</html>
