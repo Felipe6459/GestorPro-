@@ -79,6 +79,7 @@ function addView() {
       '<div class="field" style="justify-content:end"><button type="submit">Vincular indicação</button></div></form></div>' +
       '<div class="panel gp-pa-section"><h3>👥 Parceiros cadastrados</h3><div class="table gp-pa-table"><table><thead><tr><th>Parceiro</th><th>Código</th><th>Clientes</th><th>Próximo fechamento</th><th>Já recebido</th><th>Chave Pix</th><th>Status</th><th>Ações</th></tr></thead><tbody id="gpPaPartnerRows"><tr><td colspan="8">Carregando...</td></tr></tbody></table></div></div>' +
       '<div class="panel gp-pa-section"><h3>💸 Comissões de novas assinaturas</h3><p class="gp-pa-muted">Essas comissões são pagas individualmente após a confirmação do primeiro pagamento do cliente.</p><div class="table gp-pa-table"><table><thead><tr><th>Parceiro</th><th>Cliente</th><th>Data</th><th>Comissão</th><th>Chave Pix</th><th>Ação</th></tr></thead><tbody id="gpPaInitialRows"><tr><td colspan="6">Carregando...</td></tr></tbody></table></div></div>' +
+      '<div class="panel gp-pa-section"><h3>🔁 Comissões de renovações</h3><p class="gp-pa-muted">Veja quais renovações já estão liberadas para o fechamento, quais entram no próximo e quais ainda aguardam completar 30 dias.</p><div class="table gp-pa-table"><table><thead><tr><th>Parceiro</th><th>Cliente</th><th>Renovou em</th><th>Elegível em</th><th>Comissão</th><th>Situação</th></tr></thead><tbody id="gpPaRenewalRows"><tr><td colspan="6">Carregando...</td></tr></tbody></table></div></div>' +
     '</section>'
   );
   $("gpPaReload").onclick = load;
@@ -164,6 +165,14 @@ function render(data) {
     (c.pix_key ? '<button type="button" class="gpPaPayInitial" data-id="' + esc(c.id) + '" data-amount="' + Number(c.amount) + '">Marcar como pago</button>' :
       '<button type="button" disabled>Pix pendente</button>') + '</td></tr>'
   ).join("") || '<tr><td colspan="6">Nenhuma comissão de nova assinatura aguardando pagamento.</td></tr>';
+
+  $("gpPaRenewalRows").innerHTML = (data.pending_renewals || []).map((c) => {
+    const state = c.eligible_for_current_close ? "Liberada para fechamento" :
+      (c.eligible_for_next_close ? "Prevista para " + date(data.dates?.nextClose) : "Aguardando ciclo de 30 dias");
+    return '<tr><td>' + esc(c.partner_name) + '</td><td>' + esc(c.client_name) + '</td>' +
+      '<td>' + esc(date(c.earned_at)) + '</td><td>' + esc(date(c.eligible_at)) + '</td>' +
+      '<td><b>' + money(c.amount) + '</b></td><td>' + state + '</td></tr>';
+  }).join("") || '<tr><td colspan="6">Nenhuma comissão de renovação pendente.</td></tr>';
 
   bindRows();
 }
