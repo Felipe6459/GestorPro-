@@ -212,6 +212,26 @@ async function loadAdminDashboard(organizationId: string, settings: any) {
       };
     });
 
+  const pendingRenewals = commissions
+    .filter((commission: any) => commission.status === "pending" && commission.commission_type === "renewal")
+    .map((commission: any) => {
+      const referral = referralMap.get(commission.referral_id);
+      const partner = partnerMap.get(commission.partner_id);
+      const client = clientMap.get(commission.client_id);
+      const eligibleAt = Date.parse(commission.eligible_at);
+      return {
+        id: commission.id,
+        partner_id: commission.partner_id,
+        partner_name: partner?.full_name || "Parceiro",
+        client_name: client?.name || referral?.client_name_snapshot || "Cliente",
+        amount: commission.amount,
+        earned_at: commission.earned_at,
+        eligible_at: commission.eligible_at,
+        eligible_for_current_close: eligibleAt < currentCutoff,
+        eligible_for_next_close: eligibleAt < nextCutoff,
+      };
+    });
+
   const renewalDueTotal = sum(commissions, (c) =>
     c.status === "pending" && c.commission_type === "renewal" && Date.parse(c.eligible_at) < currentCutoff
   );
@@ -236,6 +256,7 @@ async function loadAdminDashboard(organizationId: string, settings: any) {
     },
     partners: partnerRows,
     pending_subscriptions: pendingSubscriptions,
+    pending_renewals: pendingRenewals,
     unassigned_clients: clients
       .filter((client: any) => !assignedClientIds.has(client.id))
       .map((client: any) => ({
