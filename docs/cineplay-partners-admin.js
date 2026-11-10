@@ -73,10 +73,11 @@ function addView() {
       '<div class="field"><label>E-mail de acesso</label><input id="gpPaEmail" type="email" required></div>' +
       '<div class="field"><label>Senha inicial (mínimo 8 caracteres)</label><input id="gpPaPassword" type="password" minlength="8" required autocomplete="new-password"></div>' +
       '<div class="row" style="grid-column:1/-1;margin-top:0"><button type="submit">Criar parceiro</button></div></form><div id="gpPaCreated" class="gp-pa-status"></div></div>' +
-      '<div class="panel gp-pa-section"><h3>🔗 Vincular cliente indicado</h3><p class="gp-pa-muted">Quando o cliente entrar em contato pelo link do parceiro e for cadastrado no GestorPro, selecione aqui o parceiro responsável. O sistema sincroniza pagamentos já confirmados desse cliente.</p>' +
+      '<div class="panel gp-pa-section"><h3>🔗 Vincular cliente indicado</h3><p class="gp-pa-muted">Quando o cliente entrar em contato pelo link do parceiro e for cadastrado no GestorPro, selecione o parceiro e informe quando a indicação aconteceu. Pagamentos anteriores a esse momento não geram comissão.</p>' +
       '<form id="gpPaReferralForm" class="gp-pa-form"><div class="field"><label>Parceiro</label><select id="gpPaReferralPartner" required></select></div>' +
       '<div class="field"><label>Cliente ainda não vinculado</label><select id="gpPaReferralClient" required></select></div>' +
-      '<div class="field" style="justify-content:end"><button type="submit">Vincular indicação</button></div></form></div>' +
+      '<div class="field"><label>Data e hora em que recebeu a indicação</label><input id="gpPaReferralDate" type="datetime-local" required></div>' +
+      '<div class="row" style="grid-column:1/-1;margin-top:0"><button type="submit">Vincular indicação</button></div></form></div>' +
       '<div class="panel gp-pa-section"><h3>👥 Parceiros cadastrados</h3><div class="table gp-pa-table"><table><thead><tr><th>Parceiro</th><th>Código</th><th>Clientes</th><th>Próximo fechamento</th><th>Já recebido</th><th>Chave Pix</th><th>Status</th><th>Ações</th></tr></thead><tbody id="gpPaPartnerRows"><tr><td colspan="8">Carregando...</td></tr></tbody></table></div></div>' +
       '<div class="panel gp-pa-section"><h3>💸 Comissões de novas assinaturas</h3><p class="gp-pa-muted">Essas comissões são pagas individualmente após a confirmação do primeiro pagamento do cliente.</p><div class="table gp-pa-table"><table><thead><tr><th>Parceiro</th><th>Cliente</th><th>Data</th><th>Comissão</th><th>Chave Pix</th><th>Ação</th></tr></thead><tbody id="gpPaInitialRows"><tr><td colspan="6">Carregando...</td></tr></tbody></table></div></div>' +
       '<div class="panel gp-pa-section"><h3>🔁 Comissões de renovações</h3><p class="gp-pa-muted">Veja quais renovações já estão liberadas para o fechamento, quais entram no próximo e quais ainda aguardam completar 30 dias.</p><div class="table gp-pa-table"><table><thead><tr><th>Parceiro</th><th>Cliente</th><th>Renovou em</th><th>Elegível em</th><th>Comissão</th><th>Situação</th></tr></thead><tbody id="gpPaRenewalRows"><tr><td colspan="6">Carregando...</td></tr></tbody></table></div></div>' +
@@ -87,6 +88,8 @@ function addView() {
   $("gpPaSettingsForm").onsubmit = saveSettings;
   $("gpPaCreateForm").onsubmit = createPartner;
   $("gpPaReferralForm").onsubmit = assignReferral;
+  const now = new Date();
+  $("gpPaReferralDate").value = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
 }
 
 function openView() {
@@ -272,8 +275,10 @@ async function assignReferral(event) {
   const clientId = $("gpPaReferralClient").value;
   if (!partnerId || !clientId) { status("Selecione um parceiro e um cliente."); return; }
   try {
-    const result = await call("assign_referral", { partner_id: partnerId, client_id: clientId });
-    status("Cliente vinculado. " + (result.generated_commissions || []).length + " comissão(ões) identificada(s) no histórico de pagamentos.", true);
+    const referralDate = $("gpPaReferralDate").value;
+    const referredAt = referralDate ? new Date(referralDate).toISOString() : new Date().toISOString();
+    const result = await call("assign_referral", { partner_id: partnerId, client_id: clientId, referred_at: referredAt });
+    status("Cliente vinculado. " + (result.generated_commissions || []).length + " comissão(ões) elegíveis identificada(s) a partir da data da indicação.", true);
     await load();
   } catch (error) { status("Erro ao vincular cliente: " + error.message); }
 }
