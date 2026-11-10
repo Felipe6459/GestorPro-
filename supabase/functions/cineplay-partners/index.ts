@@ -181,7 +181,8 @@ async function loadAdminDashboard(organizationId: string, settings: any) {
       c.status === "pending" && c.commission_type === "renewal" && Date.parse(c.eligible_at) < currentCutoff
     );
     const renewalNext = sum(ownCommissions, (c) =>
-      c.status === "pending" && c.commission_type === "renewal" && Date.parse(c.eligible_at) < nextCutoff
+      c.status === "pending" && c.commission_type === "renewal" &&
+      Date.parse(c.eligible_at) >= currentCutoff && Date.parse(c.eligible_at) < nextCutoff
     );
     const received = sum(ownCommissions, (c) => c.status === "paid");
     const activeReferralCount = ownReferrals.filter((referral: any) => {
@@ -238,7 +239,7 @@ async function loadAdminDashboard(organizationId: string, settings: any) {
         earned_at: commission.earned_at,
         eligible_at: commission.eligible_at,
         eligible_for_current_close: eligibleAt < currentCutoff,
-        eligible_for_next_close: eligibleAt < nextCutoff,
+        eligible_for_next_close: eligibleAt >= currentCutoff && eligibleAt < nextCutoff,
       };
     });
 
@@ -246,7 +247,8 @@ async function loadAdminDashboard(organizationId: string, settings: any) {
     c.status === "pending" && c.commission_type === "renewal" && Date.parse(c.eligible_at) < currentCutoff
   );
   const renewalNextTotal = sum(commissions, (c) =>
-    c.status === "pending" && c.commission_type === "renewal" && Date.parse(c.eligible_at) < nextCutoff
+    c.status === "pending" && c.commission_type === "renewal" &&
+    Date.parse(c.eligible_at) >= currentCutoff && Date.parse(c.eligible_at) < nextCutoff
   );
   const paidTotal = sum(commissions, (c) => c.status === "paid");
   const pendingInitialTotal = sum(commissions, (c) =>
@@ -315,7 +317,8 @@ async function loadPartnerDashboard(partner: any, settings: any) {
     c.status === "pending" && c.commission_type === "renewal" && Date.parse(c.eligible_at) < currentCutoff
   );
   const renewalNext = sum(commissions, (c) =>
-    c.status === "pending" && c.commission_type === "renewal" && Date.parse(c.eligible_at) < nextCutoff
+    c.status === "pending" && c.commission_type === "renewal" &&
+    Date.parse(c.eligible_at) >= currentCutoff && Date.parse(c.eligible_at) < nextCutoff
   );
   const received = sum(commissions, (c) => c.status === "paid");
   const activeReferrals = referrals.filter((referral: any) => {
