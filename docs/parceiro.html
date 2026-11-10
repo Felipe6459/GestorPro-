@@ -95,6 +95,7 @@ const sb = createClient("https://jbdjfmvdrwdfnuhqrprc.supabase.co", "sb_publisha
 const $ = (id) => document.getElementById(id);
 const money = (v) => "R$ " + Number(v || 0).toFixed(2).replace(".", ",");
 const fmt = (v) => v ? String(v).slice(8,10) + "/" + String(v).slice(5,7) + "/" + String(v).slice(0,4) : "—";
+const statusLabel = (v) => ({active:"Ativo",expiring:"Próximo do vencimento",expired:"Vencido",inactive:"Inativo",cancelled:"Cancelado"})[String(v||"").toLowerCase()] || String(v||"—");
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[c]));
 function msg(target, text, ok=false){$(target).textContent=text||"";$(target).className="msg"+(ok?" ok":"");}
 async function api(action,payload={}) {
@@ -120,10 +121,11 @@ function render(data){
   $("pixType").value=p.pix_key_type||"cpf";
   $("pixKey").value=p.pix_key||"";
   $("pixHolder").value=p.pix_holder_name||"";
-  $("clientRows").innerHTML=(data.clients||[]).map(c=>"<tr><td>"+esc(c.name)+"</td><td>"+esc(c.status)+"</td><td>"+fmt(c.due_date)+"</td><td>"+fmt(c.referred_at)+"</td></tr>").join("")||'<tr><td colspan="4">Você ainda não possui clientes vinculados.</td></tr>';
+  $("clientRows").innerHTML=(data.clients||[]).map(c=>"<tr><td>"+esc(c.name)+"</td><td>"+esc(statusLabel(c.status))+"</td><td>"+fmt(c.due_date)+"</td><td>"+fmt(c.referred_at)+"</td></tr>").join("")||'<tr><td colspan="4">Você ainda não possui clientes vinculados.</td></tr>';
   $("commissionRows").innerHTML=(data.commissions||[]).map(c=>{
     const type=c.type==="subscription"?"Nova assinatura":"Renovação";
-    const state=c.status==="paid"?"Pago":(c.type==="renewal"?"Aguardando fechamento":"Aguardando pagamento");
+    const notEligible=c.type==="renewal" && c.eligible_at && Date.parse(c.eligible_at)>Date.now();
+    const state=c.status==="paid"?"Pago":(notEligible?"Aguardando completar 30 dias":(c.type==="renewal"?"Aguardando fechamento":"Aguardando pagamento"));
     const payment=c.paid_at?fmt(c.paid_at):"—";
     return "<tr><td>"+esc(c.client_name)+"</td><td>"+type+"</td><td>"+money(c.amount)+"</td><td>"+fmt(c.earned_at)+"</td><td><span class='status "+(c.status==="paid"?"paid":"")+"'>"+state+"</span></td><td>"+payment+"</td></tr>";
   }).join("")||'<tr><td colspan="6">Nenhuma comissão registrada ainda.</td></tr>';
@@ -158,7 +160,7 @@ $("pixForm").addEventListener("submit",async(e)=>{
   finally{$("savePixBtn").disabled=false;}
 });
 sb.auth.getSession().then(({data})=>{if(data.session)loadDashboard();else showLogin();});
-sb.auth.onAuthStateChange((_event,session)=>{if(session)loadDashboard();else showLogin();});
+
 </script>
 </body>
 </html>
