@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR">
-<head>
+<head><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icon-192.svg"><link rel="manifest" href="manifest.json"><meta name="theme-color" content="#2563eb">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#21143b">
@@ -194,5 +194,5 @@ sb.auth.getSession().then(({data})=>{
 });
 
 </script>
-</body>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}</script></body>
 </html>

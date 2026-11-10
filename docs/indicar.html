@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="pt-BR">
-<head>
+<head><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="icon-192.svg"><link rel="manifest" href="manifest.json"><meta name="theme-color" content="#2563eb">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#24143f">
@@ -34,5 +34,5 @@ document.getElementById("refCode").textContent = code || "Sem código";
 if (!code) document.getElementById("codeWrap").classList.add("hidden");
 document.getElementById("whatsappBtn").href = "https://wa.me/5582996062108?text=" + encodeURIComponent(text);
 </script>
-</body>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}</script></body>
 </html>
