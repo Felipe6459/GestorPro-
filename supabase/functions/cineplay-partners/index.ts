@@ -542,6 +542,9 @@ async function handleRequest(req: Request) {
   if (action === "mark_subscription_paid") {
     const commissionId = String(body.commission_id || "");
     if (!commissionId) return json({ error: "Comissão não informada." }, 400);
+    const scopeCheck = await admin.from("cineplay_partner_commissions").select("id")
+      .eq("id", commissionId).eq("organization_id", organizationId).maybeSingle();
+    if (scopeCheck.error || !scopeCheck.data) return json({ error: "Comissão não encontrada nesta organização." }, 404);
     const { data, error } = await admin.rpc("cineplay_partner_mark_subscription_paid", {
       p_commission_id: commissionId,
       p_actor_id: user.id,
@@ -554,6 +557,9 @@ async function handleRequest(req: Request) {
   if (action === "pay_monthly_renewals") {
     const partnerId = String(body.partner_id || "");
     if (!partnerId) return json({ error: "Parceiro não informado." }, 400);
+    const scopeCheck = await admin.from("cineplay_partners").select("id")
+      .eq("id", partnerId).eq("organization_id", organizationId).maybeSingle();
+    if (scopeCheck.error || !scopeCheck.data) return json({ error: "Parceiro não encontrado nesta organização." }, 404);
     const settings = await ensureSettings(organizationId);
     const dates = closeDates(Number(settings.monthly_close_day || 10), settings.timezone || "America/Maceio");
     const { data, error } = await admin.rpc("cineplay_partner_pay_monthly_renewals", {
