@@ -71,7 +71,7 @@ function addView() {
       '<div class="panel gp-pa-section"><h3>➕ Cadastrar parceiro</h3><p class="gp-pa-muted">Crie o acesso individual. O parceiro cadastra a própria chave Pix depois de entrar no painel.</p>' +
       '<form id="gpPaCreateForm" class="gp-pa-form"><div class="field"><label>Nome completo</label><input id="gpPaName" required></div>' +
       '<div class="field"><label>E-mail de acesso</label><input id="gpPaEmail" type="email" required></div>' +
-      '<div class="field"><label>Senha inicial (mínimo 8 caracteres)</label><input id="gpPaPassword" type="text" minlength="8" required autocomplete="new-password"></div>' +
+      '<div class="field"><label>Senha inicial (mínimo 8 caracteres)</label><input id="gpPaPassword" type="password" minlength="8" required autocomplete="new-password"></div>' +
       '<div class="row" style="grid-column:1/-1;margin-top:0"><button type="submit">Criar parceiro</button></div></form><div id="gpPaCreated" class="gp-pa-status"></div></div>' +
       '<div class="panel gp-pa-section"><h3>🔗 Vincular cliente indicado</h3><p class="gp-pa-muted">Quando o cliente entrar em contato pelo link do parceiro e for cadastrado no GestorPro, selecione aqui o parceiro responsável. O sistema sincroniza pagamentos já confirmados desse cliente.</p>' +
       '<form id="gpPaReferralForm" class="gp-pa-form"><div class="field"><label>Parceiro</label><select id="gpPaReferralPartner" required></select></div>' +
@@ -245,7 +245,13 @@ async function createPartner(event) {
       email: $("gpPaEmail").value.trim(),
       password: $("gpPaPassword").value,
     });
-    status("Parceiro criado. Painel: " + result.partner_portal_url + " · Link de indicação: " + result.referral_url, true, "gpPaCreated");
+    const createdNode = $("gpPaCreated");
+    createdNode.className = "gp-pa-status ok";
+    createdNode.innerHTML = 'Parceiro criado. <a href="' + esc(result.partner_portal_url) + '" target="_blank" rel="noopener">Abrir painel do parceiro</a> · <button type="button" class="secondary" id="gpPaCopyNewReferral">Copiar link de indicação</button><br><span class="gp-pa-muted">' + esc(result.referral_url) + '</span>';
+    $("gpPaCopyNewReferral").onclick = async () => {
+      try { await navigator.clipboard.writeText(result.referral_url); status("Link de indicação copiado.", true, "gpPaCreated"); }
+      catch (_) { status("Não foi possível copiar o link.", false, "gpPaCreated"); }
+    };
     $("gpPaCreateForm").reset();
     await load();
   } catch (error) { status("Erro ao criar parceiro: " + error.message, false, "gpPaCreated"); }
