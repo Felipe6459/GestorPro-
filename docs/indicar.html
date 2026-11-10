@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#24143f">
+<meta property="og:title" content="Conheça o Cine Player Pro">
+<meta property="og:description" content="Uma indicação especial para você conhecer o Cine Player Pro.">
+<title>Convite · Cine Player Pro</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:22px;background:radial-gradient(circle at 50% 0,#4b2876 0,#171020 48%,#0c0912 100%);color:#fff;font:16px system-ui,Arial,sans-serif}.card{width:min(520px,100%);padding:30px 24px;border:1px solid #5a3d7b;border-radius:24px;background:linear-gradient(145deg,#241832,#15101e);box-shadow:0 24px 70px #0008;text-align:center}.mark{width:68px;height:68px;margin:0 auto 16px;border-radius:20px;display:grid;place-items:center;background:linear-gradient(135deg,#9b6cf7,#512b88);font-size:28px;font-weight:900}.eyebrow{font-size:11px;letter-spacing:.18em;color:#c8b5ee;font-weight:800}.card h1{font-size:30px;line-height:1.12;margin:10px 0}.card p{color:#c7bfd3;line-height:1.6;font-size:14px}.code{display:inline-block;margin:8px 0 18px;padding:9px 14px;border:1px dashed #9870d5;border-radius:10px;background:#211630;color:#e6d9ff;font:700 13px ui-monospace,monospace}.actions{display:grid;gap:10px;margin-top:10px}a{display:block;padding:14px 16px;border-radius:12px;text-decoration:none;font-weight:800}.primary{background:linear-gradient(135deg,#8b5cf6,#6d3bd0);color:white}.secondary{background:#2c233a;border:1px solid #514064;color:#eee}.fine{font-size:11px!important;color:#958aa5!important;margin-top:18px}
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="mark">▶</div>
+  <div class="eyebrow">VOCÊ RECEBEU UM CONVITE</div>
+  <h1>Conheça o Cine Player Pro</h1>
+  <p>Quer saber mais sobre nossas assinaturas? Fale com nosso atendimento e tire suas dúvidas.</p>
+  <div id="codeWrap" class="code">Código de indicação: <span id="refCode">—</span></div>
+  <div class="actions">
+    <a id="whatsappBtn" class="primary" href="#" rel="noopener">Falar com o atendimento pelo WhatsApp</a>
+    <a class="secondary" href="https://www.cineplayftv.shop/" target="_blank" rel="noopener">Conhecer o Cine Player Pro</a>
+  </div>
+  <p class="fine">Ao falar com o atendimento, o código de indicação será enviado na mensagem para identificar o parceiro responsável.</p>
+</main>
+<script>
+const params = new URLSearchParams(location.search);
+const code = (params.get("ref") || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0,32);
+const text = code
+  ? "Olá! Tenho interesse em conhecer o Cine Player Pro. Fui indicado(a) pelo parceiro " + code + ". Gostaria de receber mais informações."
+  : "Olá! Tenho interesse em conhecer o Cine Player Pro. Gostaria de receber mais informações.";
+document.getElementById("refCode").textContent = code || "Sem código";
+if (!code) document.getElementById("codeWrap").classList.add("hidden");
+document.getElementById("whatsappBtn").href = "https://wa.me/5582996062108?text=" + encodeURIComponent(text);
+</script>
+</body>
+</html>
