@@ -449,6 +449,11 @@ async function handleRequest(req: Request) {
     }
 
     const userId = created.data.user.id;
+    const profileCheck = await admin.from("profiles").select("role,organization_id").eq("id", userId).maybeSingle();
+    if (profileCheck.error || !profileCheck.data || profileCheck.data.role !== "staff" || profileCheck.data.organization_id) {
+      await admin.auth.admin.deleteUser(userId);
+      return json({ error: "A conta não recebeu o perfil restrito de parceiro. Nenhum acesso foi criado." }, 500);
+    }
     const referralCode = generateReferralCode();
     const inserted = await admin
       .from("cineplay_partners")
