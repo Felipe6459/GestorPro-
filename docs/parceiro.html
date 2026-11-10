@@ -58,16 +58,16 @@ button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(
     </div>
 
     <section class="wallet">
-      <small>DISPONÍVEL / PREVISÃO PARA O PRÓXIMO FECHAMENTO</small>
+      <small>DISPONÍVEL PARA PAGAMENTO</small>
       <div class="amount" id="availableAmount">R$ 0,00</div>
-      <div class="sub">Fechamento previsto para <b id="nextClose">—</b></div>
+      <div class="sub">Comissões liberadas para receber. Próximo fechamento: <b id="nextClose">—</b></div>
       <div class="sub" style="margin-top:12px" id="commissionRules">R$ 10,00 por nova assinatura · R$ 5,00 por renovação</div>
     </section>
 
     <section class="grid">
       <div class="metric gold"><small>Aguardando renovação</small><b id="waitingAmount">R$ 0,00</b><p id="waitingCount">Potencial de futuras renovações. Ainda não é comissão liberada.</p></div>
       <div class="metric green"><small>Já recebido</small><b id="receivedAmount">R$ 0,00</b><p>Total de comissões que já foram pagas.</p></div>
-      <div class="metric"><small>Renovações no próximo fechamento</small><b id="nextAmount">R$ 0,00</b><p>Somente renovações confirmadas e elegíveis após o ciclo de 30 dias.</p></div>
+      <div class="metric"><small>Renovações no próximo fechamento</small><b id="nextAmount">R$ 0,00</b><p>Somente renovações confirmadas e elegíveis após o ciclo de 30 dias. <span id="nextCloseNote"></span></p></div>
     </section>
 
     <section class="two">
@@ -129,6 +129,7 @@ function render(data){
   $("receivedAmount").textContent=money(s.received_amount);
   $("nextAmount").textContent=money(s.next_close_amount);
   $("nextClose").textContent=fmt(data.dates?.nextClose);
+  $("nextCloseNote").textContent="Fechamento em "+fmt(data.dates?.nextClose)+ ".";
   $("commissionRules").textContent=money(data.settings?.commission_subscription)+" por nova assinatura · "+money(data.settings?.commission_renewal)+" por renovação";
   $("referralUrl").value=p.referral_url;
   $("pixType").value=p.pix_key_type||"cpf";
