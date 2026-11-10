@@ -136,7 +136,7 @@ function shareUrl(code: string) {
 }
 
 async function loadAdminDashboard(organizationId: string, settings: any) {
-  const [partnersQ, referralsQ, commissionsQ, clientsQ] = await Promise.all([
+  const [partnersQ, referralsQ, commissionsQ, clientsQ, payoutsQ] = await Promise.all([
     admin.from("cineplay_partners")
       .select("id,user_id,full_name,email,referral_code,status,pix_key_type,pix_key,pix_holder_name,created_at")
       .eq("organization_id", organizationId)
@@ -154,9 +154,14 @@ async function loadAdminDashboard(organizationId: string, settings: any) {
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: false })
       .limit(1000),
+    admin.from("cineplay_partner_payouts")
+      .select("id,partner_id,payout_type,period_start,period_end,amount,pix_key_snapshot,paid_at")
+      .eq("organization_id", organizationId)
+      .order("paid_at", { ascending: false })
+      .limit(500),
   ]);
 
-  for (const result of [partnersQ, referralsQ, commissionsQ, clientsQ]) {
+  for (const result of [partnersQ, referralsQ, commissionsQ, clientsQ, payoutsQ]) {
     if (result.error) throw result.error;
   }
 
@@ -164,6 +169,7 @@ async function loadAdminDashboard(organizationId: string, settings: any) {
   const referrals = referralsQ.data || [];
   const commissions = commissionsQ.data || [];
   const clients = clientsQ.data || [];
+  const payouts = payoutsQ.data || [];
   const clientMap = new Map(clients.map((client: any) => [client.id, client]));
   const partnerMap = new Map(partners.map((partner: any) => [partner.id, partner]));
   const referralMap = new Map(referrals.map((referral: any) => [referral.id, referral]));
@@ -202,6 +208,20 @@ async function loadAdminDashboard(organizationId: string, settings: any) {
       received_amount: received,
       waiting_renewal_count: activeReferralCount,
       waiting_renewal_amount: activeReferralCount * Number(settings.commission_renewal || 5),
+    };
+  });
+
+  const payoutRows = payouts.map((payout: any) => {
+    const partner = partnerMap.get(payout.partner_id);
+    return {
+      id: payout.id,
+      partner_name: partner?.full_name || "Parceiro",
+      payout_type: payout.payout_type,
+      period_start: payout.period_start,
+      period_end: payout.period_end,
+      amount: payout.amount,
+      pix_key_snapshot: payout.pix_key_snapshot,
+      paid_at: payout.paid_at,
     };
   });
 
@@ -269,6 +289,7 @@ async function loadAdminDashboard(organizationId: string, settings: any) {
     partners: partnerRows,
     pending_subscriptions: pendingSubscriptions,
     pending_renewals: pendingRenewals,
+    payouts: payoutRows,
     unassigned_clients: clients
       .filter((client: any) => !assignedClientIds.has(client.id))
       .map((client: any) => ({
