@@ -542,6 +542,11 @@ async function handleRequest(req: Request) {
     const partnerId = String(body.partner_id || "");
     const clientId = String(body.client_id || "");
     if (!partnerId || !clientId) return json({ error: "Selecione o parceiro e o cliente." }, 400);
+    const referredAtDate = body.referred_at ? new Date(String(body.referred_at)) : new Date();
+    if (Number.isNaN(referredAtDate.getTime()) || referredAtDate.getTime() > Date.now() + 5 * 60 * 1000) {
+      return json({ error: "Informe uma data e hora válidas para a indicação." }, 400);
+    }
+    const referredAt = referredAtDate.toISOString();
 
     const [partnerQ, clientQ, existingQ] = await Promise.all([
       admin.from("cineplay_partners").select("id,status").eq("id", partnerId).eq("organization_id", organizationId).maybeSingle(),
@@ -561,6 +566,7 @@ async function handleRequest(req: Request) {
       partner_id: partnerId,
       client_id: clientId,
       client_name_snapshot: clientQ.data.name || "Cliente",
+      referred_at: referredAt,
       created_by: user.id,
     }).select("id").single();
     if (inserted.error || !inserted.data) return json({ error: inserted.error?.message || "Não foi possível vincular a indicação." }, 400);
