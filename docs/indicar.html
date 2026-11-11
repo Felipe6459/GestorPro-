@@ -20,7 +20,7 @@
   <div id="codeWrap" class="code">Código de indicação: <span id="refCode">—</span></div>
   <div class="actions">
     <a id="whatsappBtn" class="primary" href="#" rel="noopener">Falar com o atendimento pelo WhatsApp</a>
-    <a class="secondary" href="https://www.cineplayftv.shop/" target="_blank" rel="noopener">Conhecer o Cine Player Pro</a>
+    <a id="siteBtn" class="secondary" href="https://www.cineplayftv.shop/" target="_blank" rel="noopener">Conhecer o Cine Player Pro</a>
   </div>
   <p class="fine">Ao falar com o atendimento, o código de indicação será enviado na mensagem para identificar o parceiro responsável.</p>
 </main>
@@ -32,7 +32,7 @@ const text = code
   : "Olá! Tenho interesse em conhecer o Cine Player Pro. Gostaria de receber mais informações.";
 document.getElementById("refCode").textContent = code || "Sem código";
 if (!code) document.getElementById("codeWrap").classList.add("hidden");
-document.getElementById("whatsappBtn").href = "https://wa.me/5582996062108?text=" + encodeURIComponent(text);
+document.getElementById("whatsappBtn").href = "https://wa.me/5582996062108?text=" + encodeURIComponent(text);\ndocument.getElementById("siteBtn").href = "https://www.cineplayftv.shop/" + (code ? "?ref=" + encodeURIComponent(code) : "");
 </script>
 <script>if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}</script></body>
 </html>
