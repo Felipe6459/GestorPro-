@@ -37,6 +37,20 @@ button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(
     </form>
     <p id="loginMsg" class="msg"></p>
     <button id="forgotBtn" type="button" class="secondary full">Esqueci minha senha</button>
+    <button id="showSignupBtn" type="button" class="full" style="margin-top:10px;background:#302246;border:1px solid #60448b">Quero ser parceiro · Fazer cadastro</button>
+  </section>
+  <section id="signupCard" class="card login hidden">
+    <span class="tag">SEJA UM PARCEIRO</span><h1>Faça seu cadastro</h1>
+    <p class="muted">Preencha seus dados. Seu acesso será liberado depois da aprovação do Master/Dono.</p>
+    <form id="signupForm">
+      <div class="field"><label for="signupName">Nome completo</label><input id="signupName" autocomplete="name" required minlength="3"></div>
+      <div class="field"><label for="signupWhatsapp">WhatsApp com DDD</label><input id="signupWhatsapp" type="tel" autocomplete="tel" placeholder="(82) 99999-9999" required></div>
+      <div class="field"><label for="signupEmail">E-mail</label><input id="signupEmail" type="email" autocomplete="email" required></div>
+      <div class="field"><label for="signupPassword">Criar senha (mínimo 8 caracteres)</label><input id="signupPassword" type="password" minlength="8" autocomplete="new-password" required></div>
+      <button class="full" type="submit" id="signupBtn">Enviar cadastro para aprovação</button>
+    </form>
+    <p id="signupMsg" class="msg"></p>
+    <button id="backLoginBtn" type="button" class="secondary full">Já tenho cadastro · Voltar ao login</button>
   </section>
 
   <section id="resetCard" class="card login hidden">
@@ -119,8 +133,9 @@ async function api(action,payload={}) {
   if(data?.error)throw new Error(data.error);
   return data||{};
 }
-function showLogin(){ $("loginCard").classList.remove("hidden");$("resetCard").classList.add("hidden");$("dashboard").classList.add("hidden");$("logoutBtn").classList.add("hidden"); }
-function showReset(){ $("loginCard").classList.add("hidden");$("dashboard").classList.add("hidden");$("resetCard").classList.remove("hidden");$("logoutBtn").classList.add("hidden"); }
+function showLogin(){ $("loginCard").classList.remove("hidden");$("signupCard").classList.add("hidden");$("resetCard").classList.add("hidden");$("dashboard").classList.add("hidden");$("logoutBtn").classList.add("hidden"); }
+function showSignup(){ $("loginCard").classList.add("hidden");$("signupCard").classList.remove("hidden");$("resetCard").classList.add("hidden");$("dashboard").classList.add("hidden");$("logoutBtn").classList.add("hidden"); }
+function showReset(){ $("loginCard").classList.add("hidden");$("signupCard").classList.add("hidden");$("dashboard").classList.add("hidden");$("resetCard").classList.remove("hidden");$("logoutBtn").classList.add("hidden"); }
 function showDashboard(){ $("loginCard").classList.add("hidden");$("dashboard").classList.remove("hidden");$("logoutBtn").classList.remove("hidden"); }
 function render(data){
   const p=data.partner,s=data.summary||{};
@@ -149,14 +164,43 @@ function render(data){
   }).join("")||'<tr><td colspan="6">Nenhuma comissão registrada ainda.</td></tr>';
 }
 async function loadDashboard(){
-  try{const data=await api("partner_dashboard");render(data);showDashboard();}
-  catch(error){showLogin();msg("loginMsg",error.message);}
+  try{
+    const {data:userData}=await sb.auth.getUser();
+    const authUser=userData?.user;
+    if(authUser?.user_metadata?.account_type==="cineplay_partner"){
+      const registration=await api("register_partner");
+      if(registration.status==="pending"){
+        showLogin();
+        msg("loginMsg","Seu cadastro foi recebido! Assim que o Master/Dono aprovar, você poderá entrar na sua carteira.",true);
+        return;
+      }
+    }
+    const data=await api("partner_dashboard");render(data);showDashboard();
+  }catch(error){showLogin();msg("loginMsg",error.message);}
 }
 $("loginForm").addEventListener("submit",async(e)=>{
   e.preventDefault();$("loginBtn").disabled=true;msg("loginMsg","Entrando...");
   const {error}=await sb.auth.signInWithPassword({email:$("email").value.trim(),password:$("password").value});
   if(error){msg("loginMsg",error.message);$("loginBtn").disabled=false;return;}
   await loadDashboard();$("loginBtn").disabled=false;
+});
+$("showSignupBtn").onclick=showSignup;
+$("backLoginBtn").onclick=showLogin;
+$("signupForm").addEventListener("submit",async(e)=>{
+  e.preventDefault();
+  const button=$("signupBtn");button.disabled=true;button.textContent="Enviando...";
+  msg("signupMsg","Criando seu cadastro...");
+  const fullName=$("signupName").value.trim(),whatsapp=$("signupWhatsapp").value.trim();
+  const email=$("signupEmail").value.trim().toLowerCase(),password=$("signupPassword").value;
+  if(fullName.length<3||whatsapp.replace(/\D/g,"").length<10||password.length<8){
+    msg("signupMsg","Confira o nome, WhatsApp com DDD e senha de pelo menos 8 caracteres.");
+    button.disabled=false;button.textContent="Enviar cadastro para aprovação";return;
+  }
+  const {data,error}=await sb.auth.signUp({email,password,options:{data:{full_name:fullName,whatsapp,account_type:"cineplay_partner"},emailRedirectTo:location.origin+location.pathname}});
+  if(error){msg("signupMsg",error.message);}
+  else if(data.session){await loadDashboard();}
+  else{$("signupForm").reset();showLogin();msg("loginMsg","Cadastro iniciado! Confira seu e-mail e confirme o endereço. Depois volte aqui para entrar e aguardar a aprovação.",true);}
+  button.disabled=false;button.textContent="Enviar cadastro para aprovação";
 });
 $("forgotBtn").onclick=async()=>{
   const email=$("email").value.trim();
