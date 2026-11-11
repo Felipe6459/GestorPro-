@@ -118,10 +118,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
   }
 
   function openView() {
-    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
-    $(ROOT).classList.add('active');
-    document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
-    $('gpClientMapTab').classList.add('active');
+    if (window.GestorProActivateView) window.GestorProActivateView(ROOT, $('gpClientMapTab'));
+    else {
+      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+      $(ROOT).classList.add('active');
+      document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('active', b === $('gpClientMapTab')));
+    }
     load();
   }
 
