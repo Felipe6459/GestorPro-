@@ -61,7 +61,7 @@ function addView() {
   const root = document.querySelector(".wrap") || document.body;
   root.insertAdjacentHTML("beforeend",
     '<section id="gpPartnersAdminView" class="view">' +
-      '<div class="panel"><div class="gp-pa-head"><div><h2 style="margin:0">🤝 Gestão de Parceiros</h2><p class="muted">Controle de indicações, comissões, chaves Pix e pagamentos do Cine Player Pro.</p></div><button id="gpPaReload" class="secondary" type="button">Atualizar</button></div>' +
+      '<div class="panel"><div class="gp-pa-head"><div><h2 style="margin:0">🤝 Gestão de Parceiros</h2><p class="muted">Controle de indicações, comissões, chaves Pix e pagamentos do Cine Player Pro. Somente Master/Dono cadastra clientes e confirma vínculos; parceiros apenas divulgam e acompanham seus próprios resultados.</p></div><button id="gpPaReload" class="secondary" type="button">Atualizar</button></div>' +
       '<div id="gpPaStatus" class="gp-pa-status"></div><div id="gpPaKpis" class="gp-pa-kpis"></div></div>' +
       '<div class="panel gp-pa-section"><h3>⚙️ Regras de comissão</h3><p class="gp-pa-muted">As alterações valem para novas comissões. Lançamentos já gerados preservam o valor original.</p>' +
       '<form id="gpPaSettingsForm" class="gp-pa-form"><div class="field"><label>Nova assinatura (R$)</label><input id="gpPaCommissionNew" type="number" min="0" step="0.01" required></div>' +
