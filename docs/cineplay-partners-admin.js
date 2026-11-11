@@ -153,8 +153,8 @@ function render(data) {
     const monthlyButton = p.renewal_due_amount > 0 && p.pix_key
       ? '<button type="button" class="gpPaPayRenewals" data-id="' + esc(p.id) + '" data-amount="' + Number(p.renewal_due_amount) + '">Pagar renovações</button>'
       : '<button type="button" class="secondary" disabled title="Sem comissões liberadas ou sem chave Pix">Pagar renovações</button>';
-    const statusLabel = p.status === "pending" ? "Aguardando aprovação" : (p.status === "active" ? "Ativo" : "Suspenso");
-    const actionLabel = p.status === "pending" ? "Aprovar cadastro" : (p.status === "active" ? "Suspender" : "Ativar");
+    const statusLabel = p.status === "active" ? "Ativo" : "Suspenso";
+    const actionLabel = p.status === "active" ? "Suspender" : "Ativar";
     return '<tr><td><b>' + esc(p.full_name) + '</b><br><span class="gp-pa-muted">' + esc(p.email) + '</span><br><span class="gp-pa-muted">' + esc(p.whatsapp || "WhatsApp não informado") + '</span></td>'
       '<td><span class="gp-pa-code">' + esc(p.referral_code) + '</span><br><button type="button" class="secondary gpPaCopyLink" data-url="' + esc(p.referral_url) + '">Copiar link</button></td>' +
       '<td>' + Number(p.referrals_count || 0) + '<br><span class="gp-pa-muted">' + Number(p.active_clients || 0) + ' ativos</span></td>' +
