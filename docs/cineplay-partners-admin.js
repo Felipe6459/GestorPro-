@@ -93,10 +93,12 @@ function addView() {
 }
 
 function openView() {
-  document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
-  $("gpPartnersAdminView")?.classList.add("active");
-  document.querySelectorAll(".tabs button").forEach((button) => button.classList.remove("active"));
-  $("gpPartnersTab")?.classList.add("active");
+  if (window.GestorProActivateView) window.GestorProActivateView("gpPartnersAdminView", $("gpPartnersTab"));
+  else {
+    document.querySelectorAll(".view").forEach((view) => view.classList.remove("active"));
+    $("gpPartnersAdminView")?.classList.add("active");
+    document.querySelectorAll(".tabs button").forEach((button) => button.classList.toggle("active", button === $("gpPartnersTab")));
+  }
   load();
 }
 
