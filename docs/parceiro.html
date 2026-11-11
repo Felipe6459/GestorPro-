@@ -13,7 +13,7 @@ a{color:#c4b5fd}.wrap{width:min(1120px,100%);margin:auto;padding:24px 18px 56px}
 button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(135deg,#8b5cf6,#6d3bd0);color:white;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.secondary{background:#29213a;border:1px solid #493a64}.full{width:100%}.msg{font-size:12px;min-height:18px;color:#fca5a5}.msg.ok{color:#86efac}
 .hidden{display:none!important}.wallet{background:linear-gradient(130deg,#38205f,#21143b 70%);border:1px solid #6849a0;border-radius:22px;padding:22px;position:relative;overflow:hidden}.wallet:after{content:"";position:absolute;width:210px;height:210px;border:1px solid #ffffff17;border-radius:50%;right:-70px;top:-80px;box-shadow:0 0 0 22px #ffffff08,0 0 0 48px #ffffff05}.wallet small{color:#d6c8f5}.wallet .amount{font-size:38px;font-weight:800;letter-spacing:-.04em;margin:10px 0}.wallet .sub{font-size:12px;color:#d6c8f5}
 .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}.metric{background:#171320;border:1px solid var(--line);border-radius:15px;padding:16px}.metric small{display:block;color:var(--muted);font-size:12px}.metric b{display:block;font-size:25px;margin:8px 0}.metric p{font-size:11px;color:var(--muted);margin:0;line-height:1.4}.metric.green b{color:var(--green)}.metric.gold b{color:#fbbf24}
-.two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}.section-title{font-size:17px;margin:0 0 12px}.share{display:flex;gap:8px;align-items:center;margin-top:12px}.share input{flex:1;min-width:0;background:#0f0c17;border:1px solid #403456;border-radius:10px;color:#ddd;padding:11px;font-size:12px}.tag{font-size:11px;color:#c4b5fd;background:#2b2040;border-radius:99px;padding:5px 8px;display:inline-block}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}.section-title{font-size:17px;margin:0 0 12px}.share{display:flex;gap:8px;align-items:center;margin-top:12px}.share input{flex:1;min-width:0;background:#0f0c17;border:1px solid #403456;border-radius:10px;color:#ddd;padding:11px;font-size:12px}.qr-wrap{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px}.qr-code{background:#fff;padding:10px;border-radius:12px;min-width:150px;min-height:150px;display:grid;place-items:center}.qr-code img,.qr-code canvas{max-width:100%;height:auto}.tag{font-size:11px;color:#c4b5fd;background:#2b2040;border-radius:99px;padding:5px 8px;display:inline-block}
 .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}table{width:100%;border-collapse:collapse;min-width:540px;font-size:12px}th,td{text-align:left;padding:11px;border-bottom:1px solid #30283d}th{color:#b6acc7;background:#15111f;font-weight:600}td{color:#eee}tr:last-child td{border-bottom:0}.status{font-size:11px;color:#c4b5fd}.status.paid{color:#86efac}.pix-form{display:grid;grid-template-columns:1fr 2fr;gap:10px}.pix-form .wide{grid-column:1/-1}.top-actions{display:flex;gap:8px;align-items:center}.top-actions button{padding:9px 12px;font-size:12px}
 @media(max-width:760px){.grid{grid-template-columns:1fr 1fr}.two{grid-template-columns:1fr}.wallet .amount{font-size:32px}}
 @media(max-width:420px){.grid{grid-template-columns:1fr}.brand{align-items:flex-start;flex-direction:column}.share{flex-direction:column;align-items:stretch}.pix-form{grid-template-columns:1fr}}
@@ -57,6 +57,8 @@ button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(
       <span class="pill" id="partnerCode">Código</span>
     </div>
 
+    <section class="card" style="margin-bottom:14px;border-color:#5a4380"><b>Como funciona sua parceria</b><p class="muted" style="margin:7px 0 0">Você divulga o link e acompanha suas comissões. O cadastro de clientes e a confirmação das indicações são feitos exclusivamente pelo Master/Dono. Este painel não vende créditos e não permite cadastrar, editar ou excluir clientes.</p></section>
+
     <section class="wallet">
       <small>DISPONÍVEL PARA PAGAMENTO</small>
       <div class="amount" id="availableAmount">R$ 0,00</div>
@@ -75,7 +77,7 @@ button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(
         <h2 class="section-title">🔗 Meu link de indicação</h2>
         <p class="muted">Compartilhe seu link. A mensagem enviada ao atendimento levará seu código de parceiro.</p>
         <div class="share"><input id="referralUrl" readonly><button id="copyLink" type="button">Copiar link</button></div>
-        <p class="muted" style="font-size:11px">Quando o cliente for cadastrado no GestorPro, o atendimento vinculará a indicação ao seu código.</p>
+        <div class="qr-wrap"><div id="referralQr" class="qr-code" aria-label="QR Code do link de indicação"></div><div><b>QR Code de indicação</b><p class="muted" style="font-size:11px">O visitante pode apontar a câmera do celular para abrir seu link.</p><button id="shareReferral" class="secondary" type="button">Compartilhar link</button></div></div><p class="muted" style="font-size:11px;margin-top:12px">O site guarda a primeira indicação neste navegador por 30 dias e inclui seu código quando o visitante abre o WhatsApp pelo site. O cadastro e o vínculo do cliente continuam exclusivos do Master/Dono.</p>
       </div>
       <div class="card">
         <h2 class="section-title">💠 Minha chave Pix</h2>
@@ -101,6 +103,7 @@ button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(
   </main>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script type="module">
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const sb = createClient("https://jbdjfmvdrwdfnuhqrprc.supabase.co", "sb_publishable_3ABEFAwN_wzmSu13EyVOwQ_h5Xfmz80", { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
@@ -132,6 +135,7 @@ function render(data){
   $("nextCloseNote").textContent="Fechamento em "+fmt(data.dates?.nextClose)+ ".";
   $("commissionRules").textContent=money(data.settings?.commission_subscription)+" por nova assinatura · "+money(data.settings?.commission_renewal)+" por renovação";
   $("referralUrl").value=p.referral_url;
+  const qr=$("referralQr"); if(qr){qr.innerHTML=""; if(window.QRCode){new QRCode(qr,{text:p.referral_url,width:150,height:150,colorDark:"#21143b",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.M});}else{qr.textContent="QR Code indisponível no momento";}}
   $("pixType").value=p.pix_key_type||"cpf";
   $("pixKey").value=p.pix_key||"";
   $("pixHolder").value=p.pix_holder_name||"";
@@ -161,6 +165,7 @@ $("forgotBtn").onclick=async()=>{
   msg("loginMsg",error?error.message:"Se o e-mail estiver cadastrado, você receberá as instruções de recuperação.",!error);
 };
 $("logoutBtn").onclick=async()=>{await sb.auth.signOut();showLogin();};
+$("shareReferral").onclick=async()=>{try{if(navigator.share){await navigator.share({title:"Cine Player Pro",text:"Conheça o Cine Player Pro pelo meu link:",url:$("referralUrl").value});}else{await navigator.clipboard.writeText($("referralUrl").value);msg("pixMsg","Link copiado para compartilhar.",true);}}catch(error){if(error?.name!=="AbortError")msg("pixMsg","Não foi possível compartilhar o link.");}};
 $("copyLink").onclick=async()=>{
   try{await navigator.clipboard.writeText($("referralUrl").value);$("copyLink").textContent="Copiado!";setTimeout(()=>$("copyLink").textContent="Copiar link",1800);}
   catch(_){$("referralUrl").select();msg("pixMsg","Selecione e copie o link manualmente.");}
