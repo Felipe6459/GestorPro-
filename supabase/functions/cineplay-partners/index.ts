@@ -138,7 +138,7 @@ function shareUrl(code: string) {
 async function loadAdminDashboard(organizationId: string, settings: any) {
   const [partnersQ, referralsQ, commissionsQ, clientsQ, payoutsQ] = await Promise.all([
     admin.from("cineplay_partners")
-      .select("id,user_id,full_name,email,referral_code,status,pix_key_type,pix_key,pix_holder_name,created_at")
+      .select("id,user_id,full_name,email,whatsapp,referral_code,status,pix_key_type,pix_key,pix_holder_name,created_at")
       .eq("organization_id", organizationId)
       .order("created_at", { ascending: false }),
     admin.from("cineplay_partner_referrals")
@@ -280,6 +280,7 @@ async function loadAdminDashboard(organizationId: string, settings: any) {
     dates,
     summary: {
       partners_count: partners.length,
+      pending_partner_count: partners.filter((partner: any) => partner.status === "pending").length,
       referrals_count: referrals.length,
       pending_subscriptions: pendingInitialTotal,
       renewals_due: renewalDueTotal,
@@ -414,6 +415,30 @@ async function handleRequest(req: Request) {
   const body = await req.json().catch(() => ({}));
   const action = String(body.action || "partner_dashboard");
 
+  if (action === "register_partner") {
+    const metadata = user.user_metadata || {};
+    if (metadata.account_type !== "cineplay_partner") return json({ error: "Esta conta não foi criada pelo cadastro de parceiros." }, 403);
+    const profile = await admin.from("profiles").select("role,organization_id").eq("id", user.id).maybeSingle();
+    if (profile.error || !profile.data || String(profile.data.role).toLowerCase() !== "staff" || profile.data.organization_id) {
+      return json({ error: "Esta conta não possui o perfil restrito de parceiro." }, 403);
+    }
+    const existing = await admin.from("cineplay_partners").select("id,status,referral_code").eq("user_id", user.id).maybeSingle();
+    if (existing.error) return json({ error: existing.error.message }, 400);
+    if (existing.data) return json({ ok: true, status: existing.data.status, partner: existing.data });
+    const master = await admin.from("profiles").select("organization_id").eq("role", "master").not("organization_id", "is", null).maybeSingle();
+    if (master.error || !master.data?.organization_id) return json({ error: "Não foi possível localizar a organização principal. Entre em contato com o suporte." }, 503);
+    const fullName = String(metadata.full_name || body.full_name || user.email || "").trim();
+    const whatsapp = String(metadata.whatsapp || body.whatsapp || "").trim();
+    if (fullName.length < 3 || whatsapp.replace(/\D/g, "").length < 10) return json({ error: "Complete seu nome e WhatsApp no cadastro para continuar." }, 400);
+    const inserted = await admin.from("cineplay_partners").insert({
+      organization_id: master.data.organization_id, user_id: user.id, full_name: fullName,
+      email: String(user.email || "").trim().toLowerCase(), whatsapp,
+      referral_code: generateReferralCode(), status: "pending",
+    }).select("id,status").single();
+    if (inserted.error || !inserted.data) return json({ error: inserted.error?.message || "Não foi possível registrar sua solicitação." }, 400);
+    return json({ ok: true, status: "pending", partner: inserted.data }, 201);
+  }
+
   if (action === "partner_dashboard" || action === "save_pix") {
     const { data: partner, error } = await admin
       .from("cineplay_partners")
@@ -421,6 +446,7 @@ async function handleRequest(req: Request) {
       .eq("user_id", user.id)
       .maybeSingle();
     if (error || !partner) return json({ error: "Esta conta não possui acesso ao painel de parceiros." }, 403);
+    if (partner.status === "pending") return json({ error: "Seu cadastro foi recebido e está aguardando aprovação. Você poderá acessar sua carteira assim que o Master/Dono liberar seu acesso." }, 403);
     if (partner.status !== "active") return json({ error: "Seu acesso está suspenso. Entre em contato com o suporte." }, 403);
 
     if (action === "save_pix") {
