@@ -128,7 +128,6 @@ function render(data) {
   const s = data.summary || {};
   const kpis = [
     ["Parceiros", s.partners_count || 0],
-    ["Aguardando aprovação", s.pending_partner_count || 0],
     ["Clientes indicados", s.referrals_count || 0],
     ["Renovações para pagar no fechamento", money(s.renewals_due || 0)],
     ["Total já recebido pelos parceiros", money(s.paid_total || 0)],
