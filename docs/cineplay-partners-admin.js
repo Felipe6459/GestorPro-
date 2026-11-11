@@ -128,6 +128,7 @@ function render(data) {
   const s = data.summary || {};
   const kpis = [
     ["Parceiros", s.partners_count || 0],
+    ["Aguardando aprovação", s.pending_partner_count || 0],
     ["Clientes indicados", s.referrals_count || 0],
     ["Renovações para pagar no fechamento", money(s.renewals_due || 0)],
     ["Total já recebido pelos parceiros", money(s.paid_total || 0)],
@@ -153,16 +154,18 @@ function render(data) {
     const monthlyButton = p.renewal_due_amount > 0 && p.pix_key
       ? '<button type="button" class="gpPaPayRenewals" data-id="' + esc(p.id) + '" data-amount="' + Number(p.renewal_due_amount) + '">Pagar renovações</button>'
       : '<button type="button" class="secondary" disabled title="Sem comissões liberadas ou sem chave Pix">Pagar renovações</button>';
-    return '<tr><td><b>' + esc(p.full_name) + '</b><br><span class="gp-pa-muted">' + esc(p.email) + '</span></td>' +
+    const statusLabel = p.status === "pending" ? "Aguardando aprovação" : (p.status === "active" ? "Ativo" : "Suspenso");
+    const actionLabel = p.status === "pending" ? "Aprovar cadastro" : (p.status === "active" ? "Suspender" : "Ativar");
+    return '<tr><td><b>' + esc(p.full_name) + '</b><br><span class="gp-pa-muted">' + esc(p.email) + '</span><br><span class="gp-pa-muted">' + esc(p.whatsapp || "WhatsApp não informado") + '</span></td>'
       '<td><span class="gp-pa-code">' + esc(p.referral_code) + '</span><br><button type="button" class="secondary gpPaCopyLink" data-url="' + esc(p.referral_url) + '">Copiar link</button></td>' +
       '<td>' + Number(p.referrals_count || 0) + '<br><span class="gp-pa-muted">' + Number(p.active_clients || 0) + ' ativos</span></td>' +
       '<td><b>' + money(p.renewal_next_amount) + '</b><br><span class="gp-pa-muted">Fechamento ' + esc(date(data.dates?.nextClose)) + '</span></td>' +
       '<td>' + money(p.received_amount) + '</td><td>' + esc(pixLabel) + '<br>' +
       (p.pix_key ? '<button type="button" class="secondary gpPaCopyPix" data-pix="' + esc(p.pix_key) + '">Copiar Pix</button>' : '') + '</td>' +
-      '<td>' + (p.status === "active" ? "Ativo" : "Suspenso") + '</td>' +
+      '<td>' + esc(statusLabel) + '</td>' +
       '<td><div class="gp-pa-actions">' + monthlyButton +
       '<button type="button" class="secondary gpPaToggle" data-id="' + esc(p.id) + '" data-status="' + esc(p.status) + '">' +
-      (p.status === "active" ? "Suspender" : "Ativar") + '</button></div></td></tr>';
+      actionLabel + '</button></div></td></tr>';
   }).join("") || '<tr><td colspan="8">Nenhum parceiro cadastrado.</td></tr>';
 
   $("gpPaInitialRows").innerHTML = (data.pending_subscriptions || []).map((c) =>
