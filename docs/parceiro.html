@@ -169,10 +169,8 @@ async function loadDashboard(){
     const authUser=userData?.user;
     if(authUser?.user_metadata?.account_type==="cineplay_partner"){
       const registration=await api("register_partner");
-      if(registration.status==="pending"){
-        showLogin();
-        msg("loginMsg","Seu cadastro foi recebido! Assim que o Master/Dono aprovar, você poderá entrar na sua carteira.",true);
-        return;
+      if(registration.status!=="active"){
+        throw new Error("Seu cadastro ainda não está ativo. Entre em contato com o suporte.");
       }
     }
     const data=await api("partner_dashboard");render(data);showDashboard();
@@ -194,13 +192,13 @@ $("signupForm").addEventListener("submit",async(e)=>{
   const email=$("signupEmail").value.trim().toLowerCase(),password=$("signupPassword").value;
   if(fullName.length<3||whatsapp.replace(/\D/g,"").length<10||password.length<8){
     msg("signupMsg","Confira o nome, WhatsApp com DDD e senha de pelo menos 8 caracteres.");
-    button.disabled=false;button.textContent="Enviar cadastro para aprovação";return;
+    button.disabled=false;button.textContent="Criar minha conta de parceiro";return;
   }
   const {data,error}=await sb.auth.signUp({email,password,options:{data:{full_name:fullName,whatsapp,account_type:"cineplay_partner"},emailRedirectTo:location.origin+location.pathname}});
   if(error){msg("signupMsg",error.message);}
   else if(data.session){await loadDashboard();}
-  else{$("signupForm").reset();showLogin();msg("loginMsg","Cadastro iniciado! Confira seu e-mail e confirme o endereço. Depois volte aqui para entrar e aguardar a aprovação.",true);}
-  button.disabled=false;button.textContent="Enviar cadastro para aprovação";
+  else{$("signupForm").reset();showLogin();msg("loginMsg","Cadastro criado! Confira seu e-mail se for solicitado e depois entre para acessar sua carteira de parceiro.",true);}
+  button.disabled=false;button.textContent="Criar minha conta de parceiro";
 });
 $("forgotBtn").onclick=async()=>{
   const email=$("email").value.trim();
