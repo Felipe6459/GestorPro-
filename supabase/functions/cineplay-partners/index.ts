@@ -17,7 +17,7 @@ const admin = createClient(url, serviceKey, { auth: { persistSession: false } })
 
 const allowedPixTypes = ["cpf", "cnpj", "email", "phone", "random"];
 const paidStatuses = ["paid", "received", "confirmed", "payment_received", "succeeded", "approved"];
-const landingBase = "https://felipe6459.github.io/GestorPro-/indicar.html?ref=";
+const landingBase = "https://www.cineplayftv.shop/?ref=";
 const partnerPortalUrl = "https://felipe6459.github.io/GestorPro-/parceiro.html";
 
 async function getUser(req: Request) {
