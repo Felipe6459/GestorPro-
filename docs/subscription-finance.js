@@ -1,10 +1,10 @@
 import{createClient}from'https://esm.sh/@supabase/supabase-js@2';
 const sb=createClient('https://jbdjfmvdrwdfnuhqrprc.supabase.co','sb_publishable_3ABEFAwN_wzmSu13EyVOwQ_h5Xfmz80',{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}});
 const $=id=>document.getElementById(id),money=v=>'R$ '+Number(v||0).toFixed(2).replace('.',','),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
-let org='',busy=false,stateStart=null,stateInitialized=false;
+let org='',uid='',busy=false,stateStart=null,stateInitialized=false,cashHistory=[];
 
 function isoDate(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)}
-function fmtDate(v){if(!v)return'—';const s=String(v).slice(0,10);return s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4)}
+function fmtDate(v){if(!v)return'—';const s=String(v).slice(0,10);return s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4)}\nfunction fmtDateTime(v){if(!v)return'—';return new Date(v).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}\nfunction localInput(v){const d=new Date(v);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16)}\nfunction inputIso(v){return new Date(v).toISOString()}
 function today(){return isoDate(new Date())}
 function defaultStart(){const d=new Date();d.setDate(1);return isoDate(d)}
 function getRangeEnd(){return today()}
@@ -12,35 +12,34 @@ function localMidnightIso(dateStr){const p=String(dateStr).slice(0,10).split('-'
 function nextLocalMidnightIso(dateStr){const p=String(dateStr).slice(0,10).split('-').map(Number);const d=new Date(p[0],p[1]-1,p[2],0,0,0,0);d.setDate(d.getDate()+1);return d.toISOString()}
 
 async function getOrg(){
- const q=await sb.auth.getSession(),u=q.data?.session?.user;if(!u)return null;
+ const q=await sb.auth.getSession(),u=q.data?.session?.user;if(!u)return null;uid=u.id;
  const{data:p,error}=await sb.from('profiles').select('organization_id').eq('id',u.id).maybeSingle();
  if(error){console.error('[GestorPro caixa]',error);return null}
  return p?.organization_id||null
 }
 async function getState(){
  if(!org)return null;
- const{data,error}=await sb.from('cash_register_state').select('current_start').eq('organization_id',org).maybeSingle();
- if(error){console.error('[GestorPro caixa state]',error);return null}
- stateInitialized=!!data?.current_start;
- stateStart=data?.current_start||defaultStart();
+ const{data,error}=await sb.rpc('gestorpro_get_seller_cash_state');
+ if(error||data?.error){console.error('[GestorPro caixa state]',error||data?.error);return null}
+ stateInitialized=!!data?.current_start_at;stateStart=data?.current_start_at||new Date().toISOString();
+ cashHistory=Array.isArray(data?.history)?data.history:[];
  return stateStart
 }
 async function calc(){
  if(!org)return null;
- const start=stateStart||await getState(),end=getRangeEnd();
- const startExclusive=localMidnightIso(start),endExclusive=nextLocalMidnightIso(end);
+ const start=stateStart||await getState(),end=new Date().toISOString();
  const[pr,er,tr,cr]=await Promise.all([
-  sb.from('payments').select('id,client_id,amount,paid_at,payment_status').eq('organization_id',org).eq('payment_status','paid').gte('paid_at',startExclusive).lt('paid_at',endExclusive),
-  sb.from('expenses').select('amount,incurred_at').eq('organization_id',org).gte('incurred_at',start).lte('incurred_at',end),
-  sb.from('credit_transactions').select('quantity,unit_cost,total_cost,type,created_at').eq('organization_id',org).gte('created_at',startExclusive).lt('created_at',endExclusive),
-  sb.from('clients').select('id,start_date').eq('organization_id',org).gte('start_date',start).lte('start_date',end)
+  sb.from('payments').select('id,client_id,amount,paid_at,payment_status').eq('organization_id',org).eq('seller_user_id',uid).eq('payment_status','paid').gte('paid_at',start).lt('paid_at',end),
+  sb.from('expenses').select('amount,created_at').eq('organization_id',org).eq('seller_user_id',uid).gte('created_at',start).lt('created_at',end),
+  sb.from('credit_transactions').select('quantity,unit_cost,total_cost,type,created_at').eq('organization_id',org).eq('seller_user_id',uid).gte('created_at',start).lt('created_at',end),
+  sb.from('clients').select('id,created_at').eq('organization_id',org).eq('seller_user_id',uid).gte('created_at',start).lt('created_at',end)
  ]);
+ const errors=[pr,er,tr,cr].filter(x=>x.error);if(errors.length)console.error('[GestorPro caixa seller]',errors);
  const payments=pr.data||[],expenses=er.data||[],tx=tr.data||[],clients=cr.data||[];
  const received=payments.reduce((a,p)=>a+Number(p.amount||0),0);
  const expense=expenses.reduce((a,e)=>a+Number(e.amount||0),0);
  const credit=tx.filter(t=>String(t.type||'').toLowerCase()==='consumption').reduce((a,t)=>a+(Number(t.total_cost)||Math.abs(Number(t.quantity||0))*Number(t.unit_cost||0)),0);
- const result=received-expense-credit;
- return{start,end,received,expense,credit,result,paymentCount:payments.length,clientCount:new Set(payments.map(p=>p.client_id).filter(Boolean)).size,newClients:clients.length}
+ return{start,end,received,expense,credit,result:received-expense-credit,paymentCount:payments.length,clientCount:new Set(payments.map(p=>p.client_id).filter(Boolean)).size,newClients:clients.length}
 }
 function ensureCss(){
  if($('gpCashCss'))return;
@@ -58,33 +57,28 @@ function updateCards(d){
  $('finance')?.classList.remove('gp-finance-loading')
 }
 
-async function getHistory(){
- if(!org)return[];
- const{data,error}=await sb.from('cash_closings').select('id,period_start,period_end,closed_at,revenue,expenses,credit_cost,net_profit,payment_count,renewal_count,new_client_count,client_count').eq('organization_id',org).order('period_end',{ascending:false}).limit(24);
- if(error){console.error('[GestorPro histórico]',error);return[]}return data||[]
-}
+async function getHistory(){return cashHistory||[]}
 function ensureCashBox(d,h){
  const f=$('finance');if(!f)return;
  let p=$('gpCashBox');if(!p){p=document.createElement('div');p.id='gpCashBox';p.className='panel';f.insertBefore(p,f.firstChild)}
- const rows=h.map((x,i)=>'<tr><td>'+fmtDate(x.period_start)+' → '+fmtDate(x.period_end)+'</td><td>'+money(x.revenue)+'</td><td>'+x.payment_count+'</td><td>'+x.new_client_count+'</td><td class="'+(Number(x.net_profit)>=0?'pos':'neg')+'">'+money(x.net_profit)+'</td><td>'+fmtDate(x.closed_at)+'</td></tr>').join('');
- const prev=h[1],last=h[0];
- let compare='';if(prev&&last){const a=Number(prev.payment_count||0),b=Number(last.payment_count||0);compare=a===0?(b>0?'Crescimento: novo período com pagamentos registrados.':'Sem pagamentos nos dois períodos.'):'Variação de assinaturas pagas vs. último fechamento: '+(((b-a)/a)*100).toFixed(1).replace('.',',')+'%'}
- p.innerHTML='<div class="gp-cash-head"><div><div class="gp-cash-title">💰 Fechamento de caixa</div><div class="gp-cash-sub">O período atual começa em <span class="gp-cash-period">'+fmtDate(d.start)+'</span> e vai até hoje.</div></div><button id="gpCloseCash" class="secondary">Fechar caixa</button></div><div class="gp-cash-grid"><div><span>Recebido no período</span><b>'+money(d.received)+'</b><small>'+d.paymentCount+' pagamento(s) · '+d.clientCount+' cliente(s)</small></div><div><span>Despesas</span><b>'+money(d.expense)+'</b></div><div><span>Créditos consumidos</span><b>'+money(d.credit)+'</b></div><div><span>Resultado do caixa</span><b class="'+(d.result>=0?'ok':'bad')+'">'+money(d.result)+'</b></div></div><div class="gp-cash-form"><div><label>Data inicial</label><input id="gpCashStart" type="date" value="'+d.start+'"></div><div><label>Data final</label><input id="gpCashEnd" type="date" value="'+d.end+'"></div><button id="gpCloseCash2">Fechar período</button></div><p class="gp-cash-note">Ao fechar, os valores deste período ficam gravados no histórico e o caixa começa novamente no dia seguinte. Nada é apagado das movimentações.</p><div class="gp-cash-history"><h3>📚 Histórico de fechamentos</h3><div class="table"><table><thead><tr><th>Período</th><th>Recebido</th><th>Pagamentos</th><th>Novas assinaturas</th><th>Resultado</th><th>Fechado em</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">Nenhum fechamento realizado ainda.</td></tr>')+'</tbody></table></div><div class="gp-cash-compare">'+esc(compare)+'</div></div>';
+ const rows=h.map(x=>'<tr><td>'+fmtDateTime(x.period_start_at||x.period_start)+' → '+fmtDateTime(x.period_end_at||x.period_end)+'</td><td>'+money(x.revenue)+'</td><td>'+x.payment_count+'</td><td>'+x.new_client_count+'</td><td class="'+(Number(x.net_profit)>=0?'pos':'neg')+'">'+money(x.net_profit)+'</td><td>'+fmtDateTime(x.closed_at)+'</td></tr>').join('');
+ const prev=h[1],last=h[0];let compare='';if(prev&&last){const a=Number(prev.payment_count||0),b=Number(last.payment_count||0);compare=a===0?(b>0?'Crescimento: novo período com pagamentos registrados.':'Sem pagamentos nos dois períodos.'):'Variação de pagamentos vs. último fechamento: '+(((b-a)/a)*100).toFixed(1).replace('.',',')+'%'}
+ p.innerHTML='<div class="gp-cash-head"><div><div class="gp-cash-title">💰 Meu fechamento de caixa</div><div class="gp-cash-sub">Caixa individual deste vendedor · período iniciado em <span class="gp-cash-period">'+fmtDateTime(d.start)+'</span>.</div></div><button id="gpCloseCash" class="secondary">Fechar meu caixa</button></div><div class="gp-cash-grid"><div><span>Recebido no período</span><b>'+money(d.received)+'</b><small>'+d.paymentCount+' pagamento(s) · '+d.clientCount+' cliente(s)</small></div><div><span>Despesas</span><b>'+money(d.expense)+'</b></div><div><span>Créditos consumidos</span><b>'+money(d.credit)+'</b></div><div><span>Resultado do caixa</span><b class="'+(d.result>=0?'ok':'bad')+'">'+money(d.result)+'</b></div></div><div class="gp-cash-form"><div><label>Início do período</label><input id="gpCashStart" type="datetime-local" value="'+localInput(d.start)+'" readonly></div><div><label>Fechar até (data e hora)</label><input id="gpCashEnd" type="datetime-local" value="'+localInput(d.end)+'" max="'+localInput(d.end)+'"></div><button id="gpCloseCash2">Fechar período</button></div><p class="gp-cash-note">O fechamento é individual. Ao fechar, os valores ficam no histórico e um novo período começa exatamente no horário escolhido. O saldo de créditos disponíveis não é alterado.</p><div class="gp-cash-history"><h3>📚 Meu histórico de fechamentos</h3><div class="table"><table><thead><tr><th>Período</th><th>Recebido</th><th>Pagamentos</th><th>Novos clientes</th><th>Resultado</th><th>Fechado em</th></tr></thead><tbody>'+(rows||'<tr><td colspan="6">Nenhum fechamento realizado ainda.</td></tr>')+'</tbody></table></div><div class="gp-cash-compare">'+esc(compare)+'</div></div>';
  $('gpCloseCash').onclick=()=>document.getElementById('gpCashEnd')?.focus();
  $('gpCloseCash2').onclick=closeCash;
 }
 async function closeCash(){
  const start=$('gpCashStart')?.value,end=$('gpCashEnd')?.value;
- if(!start||!end){alert('Informe as duas datas.');return}
- if(stateInitialized&&start!==stateStart){alert('O caixa atual começa em '+fmtDate(stateStart)+'. Use essa data como início para manter os períodos sem buracos.');return}
- if(end>today()){alert('A data final não pode ser futura.');return}
- if(end<start){alert('A data final precisa ser igual ou posterior à inicial.');return}
- if(!confirm('Fechar o caixa de '+fmtDate(start)+' até '+fmtDate(end)+'?\n\nDepois disso, o próximo caixa começa em '+fmtDate((()=>{const d=new Date(end+'T00:00:00');d.setDate(d.getDate()+1);return isoDate(d)})())+'.'))return;
+ if(!start||!end){alert('Informe a data e a hora do fechamento.');return}
+ const startIso=inputIso(start),endIso=inputIso(end);
+ if(new Date(startIso).getTime()!==new Date(stateStart).getTime()){alert('O início do caixa é controlado pelo último fechamento.');return}
+ if(new Date(endIso)>new Date()||new Date(endIso)<=new Date(startIso)){alert('O horário final deve ser posterior ao início e não pode ser futuro.');return}
+ if(!confirm('Fechar seu caixa até '+fmtDateTime(endIso)+'?\n\nSomente seus lançamentos serão considerados. O próximo período começará nesse horário.'))return;
  const b=$('gpCloseCash2');if(b)b.disabled=true;
- const{data,error}=await sb.rpc('gestorpro_close_cash',{p_start:start,p_end:end});
+ const{data,error}=await sb.rpc('gestorpro_close_cash',{p_start_at:startIso,p_end_at:endIso});
  if(error||data?.error){alert('Não foi possível fechar: '+(error?.message||data?.error||'erro'));if(b)b.disabled=false;return}
- alert('Caixa fechado com sucesso. Próximo período: '+fmtDate(data.next_start));
- stateStart=data.next_start;
+ alert('Seu caixa foi fechado. O próximo período começa em '+fmtDateTime(data.next_start_at)+'.');
+ stateStart=data.next_start_at;
  await refresh(true);
 }
 async function refresh(force=false){
