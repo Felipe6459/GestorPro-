@@ -70,8 +70,7 @@ function ensureCashBox(d,h){
 async function closeCash(){
  const start=$('gpCashStart')?.value,end=$('gpCashEnd')?.value;
  if(!start||!end){alert('Informe a data e a hora do fechamento.');return}
- const startIso=inputIso(start),endIso=inputIso(end);
- if(new Date(startIso).getTime()!==new Date(stateStart).getTime()){alert('O início do caixa é controlado pelo último fechamento.');return}
+ const startIso=stateStart,endIso=inputIso(end);
  if(new Date(endIso)>new Date()||new Date(endIso)<=new Date(startIso)){alert('O horário final deve ser posterior ao início e não pode ser futuro.');return}
  if(!confirm('Fechar seu caixa até '+fmtDateTime(endIso)+'?\n\nSomente seus lançamentos serão considerados. O próximo período começará nesse horário.'))return;
  const b=$('gpCloseCash2');if(b)b.disabled=true;
@@ -79,13 +78,14 @@ async function closeCash(){
  if(error||data?.error){alert('Não foi possível fechar: '+(error?.message||data?.error||'erro'));if(b)b.disabled=false;return}
  alert('Seu caixa foi fechado. O próximo período começa em '+fmtDateTime(data.next_start_at)+'.');
  stateStart=data.next_start_at;
+ await getState();
  await refresh(true);
 }
 async function refresh(force=false){
  if(busy&&!force)return;busy=true;
  try{
   if(!org)org=await getOrg();if(!org)return;
-  if(!stateStart)stateStart=await getState();if(!stateStart)return;
+  stateStart=await getState();if(!stateStart)return;
   const d=await calc(),h=await getHistory();ensureCss();ensureCashBox(d,h);updateCards(d);
  }catch(e){console.error('[GestorPro caixa]',e)}finally{busy=false}
 }
