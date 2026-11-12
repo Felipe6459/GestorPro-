@@ -12,7 +12,7 @@ a{color:#c4b5fd}.wrap{width:min(1120px,100%);margin:auto;padding:24px 18px 56px}
 .card{background:linear-gradient(145deg,#1d172b,#15111f);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 16px 45px #0004}.login{width:min(440px,100%);margin:8vh auto}.login h1{font-size:25px;margin:0 0 7px}.muted{color:var(--muted);line-height:1.5}.field{display:grid;gap:7px;margin:14px 0}.field label{font-size:12px;color:#c9c1d7}.field input,.field select{width:100%;border:1px solid #403456;border-radius:10px;background:#0f0c17;color:white;padding:12px;font:inherit;outline:none}.field input:focus,.field select:focus{border-color:#9b7af7}
 button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(135deg,#8b5cf6,#6d3bd0);color:white;font-weight:700;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.secondary{background:#29213a;border:1px solid #493a64}.full{width:100%}.msg{font-size:12px;min-height:18px;color:#fca5a5}.msg.ok{color:#86efac}
 .hidden{display:none!important}.wallet{background:linear-gradient(130deg,#38205f,#21143b 70%);border:1px solid #6849a0;border-radius:22px;padding:22px;position:relative;overflow:hidden}.wallet:after{content:"";position:absolute;width:210px;height:210px;border:1px solid #ffffff17;border-radius:50%;right:-70px;top:-80px;box-shadow:0 0 0 22px #ffffff08,0 0 0 48px #ffffff05}.wallet small{color:#d6c8f5}.wallet .amount{font-size:38px;font-weight:800;letter-spacing:-.04em;margin:10px 0}.wallet .sub{font-size:12px;color:#d6c8f5}
-.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}.metric{background:#171320;border:1px solid var(--line);border-radius:15px;padding:16px}.metric small{display:block;color:var(--muted);font-size:12px}.metric b{display:block;font-size:25px;margin:8px 0}.metric p{font-size:11px;color:var(--muted);margin:0;line-height:1.4}.metric.green b{color:var(--green)}.metric.gold b{color:#fbbf24}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:14px}.metric{background:#171320;border:1px solid var(--line);border-radius:15px;padding:16px}.metric small{display:block;color:var(--muted);font-size:12px}.metric b{display:block;font-size:25px;margin:8px 0}.metric p{font-size:11px;color:var(--muted);margin:0;line-height:1.4}.metric.green b{color:var(--green)}.metric.gold b{color:#fbbf24}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}.section-title{font-size:17px;margin:0 0 12px}.share{display:flex;gap:8px;align-items:center;margin-top:12px}.share input{flex:1;min-width:0;background:#0f0c17;border:1px solid #403456;border-radius:10px;color:#ddd;padding:11px;font-size:12px}.qr-wrap{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px}.qr-code{background:#fff;padding:10px;border-radius:12px;min-width:150px;min-height:150px;display:grid;place-items:center}.qr-code img,.qr-code canvas{max-width:100%;height:auto}.tag{font-size:11px;color:#c4b5fd;background:#2b2040;border-radius:99px;padding:5px 8px;display:inline-block}
 .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}table{width:100%;border-collapse:collapse;min-width:540px;font-size:12px}th,td{text-align:left;padding:11px;border-bottom:1px solid #30283d}th{color:#b6acc7;background:#15111f;font-weight:600}td{color:#eee}tr:last-child td{border-bottom:0}.status{font-size:11px;color:#c4b5fd}.status.paid{color:#86efac}.pix-form{display:grid;grid-template-columns:1fr 2fr;gap:10px}.pix-form .wide{grid-column:1/-1}.top-actions{display:flex;gap:8px;align-items:center}.top-actions button{padding:9px 12px;font-size:12px}
 @media(max-width:760px){.grid{grid-template-columns:1fr 1fr}.two{grid-template-columns:1fr}.wallet .amount{font-size:32px}}
@@ -81,9 +81,10 @@ button{border:0;border-radius:10px;padding:11px 15px;background:linear-gradient(
     </section>
 
     <section class="grid">
-      <div class="metric gold"><small>Aguardando renovação</small><b id="waitingAmount">R$ 0,00</b><p id="waitingCount">Potencial de futuras renovações. Ainda não é comissão liberada.</p></div>
-      <div class="metric green"><small>Já recebido</small><b id="receivedAmount">R$ 0,00</b><p>Total de comissões que já foram pagas.</p></div>
-      <div class="metric"><small>Renovações no próximo fechamento</small><b id="nextAmount">R$ 0,00</b><p>Somente renovações confirmadas e elegíveis após o ciclo de 30 dias. <span id="nextCloseNote"></span></p></div>
+      <div class="metric green"><small>Renovações confirmadas neste ciclo</small><b id="confirmedAmount">R$ 0,00</b><p id="confirmedCount">Pagamentos de renovação confirmados desde o último fechamento.</p></div>
+      <div class="metric gold"><small>Previsão até o fechamento</small><b id="forecastAmount">R$ 0,00</b><p id="forecastCount">Estimativa baseada nos vencimentos dos clientes ativos. Não é comissão liberada.</p></div>
+      <div class="metric"><small>Total previsto no ciclo</small><b id="cycleAmount">R$ 0,00</b><p>Renovações confirmadas + previsão restante até <span id="nextCloseNote">o próximo fechamento</span>.</p></div>
+      <div class="metric"><small>Já recebido</small><b id="receivedAmount">R$ 0,00</b><p>Total de comissões que já foram pagas.</p></div>
     </section>
 
     <section class="two">
@@ -142,10 +143,12 @@ function render(data){
   $("welcome").textContent="Olá, "+p.full_name+"!";
   $("partnerCode").textContent="Código "+p.referral_code;
   $("availableAmount").textContent=money(s.available_amount);
-  $("waitingAmount").textContent=money(s.waiting_renewal_amount);
-  $("waitingCount").textContent=String(s.waiting_renewal_count||0)+" cliente(s) com potencial de novas renovações. Valor estimado, não liberado.";
+  $("confirmedAmount").textContent=money(s.confirmed_renewal_amount);
+  $("confirmedCount").textContent=String(s.confirmed_renewal_count||0)+" renovação(ões) confirmada(s) desde o último fechamento.";
+  $("forecastAmount").textContent=money(s.forecast_renewal_amount);
+  $("forecastCount").textContent=String(s.forecast_renewal_count||0)+" vencimento(s) previsto(s) entre hoje e o próximo fechamento. "+String(s.active_client_count||0)+" cliente(s) ativo(s) no total.";
+  $("cycleAmount").textContent=money(s.cycle_estimated_total);
   $("receivedAmount").textContent=money(s.received_amount);
-  $("nextAmount").textContent=money(s.next_close_amount);
   $("nextClose").textContent=fmt(data.dates?.nextClose);
   $("nextCloseNote").textContent="Fechamento em "+fmt(data.dates?.nextClose)+ ".";
   $("commissionRules").textContent=money(data.settings?.commission_subscription)+" por nova assinatura · "+money(data.settings?.commission_renewal)+" por renovação";
