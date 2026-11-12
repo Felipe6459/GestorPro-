@@ -4,7 +4,10 @@ const $=id=>document.getElementById(id),money=v=>'R$ '+Number(v||0).toFixed(2).r
 let org='',uid='',busy=false,stateStart=null,stateInitialized=false,cashHistory=[];
 
 function isoDate(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)}
-function fmtDate(v){if(!v)return'—';const s=String(v).slice(0,10);return s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4)}\nfunction fmtDateTime(v){if(!v)return'—';return new Date(v).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}\nfunction localInput(v){const d=new Date(v);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16)}\nfunction inputIso(v){return new Date(v).toISOString()}
+function fmtDate(v){if(!v)return'—';const s=String(v).slice(0,10);return s.slice(8,10)+'/'+s.slice(5,7)+'/'+s.slice(0,4)}
+function fmtDateTime(v){if(!v)return'—';return new Date(v).toLocaleString('pt-BR',{dateStyle:'short',timeStyle:'short'})}
+function localInput(v){const d=new Date(v);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16)}
+function inputIso(v){return new Date(v).toISOString()}
 function today(){return isoDate(new Date())}
 function defaultStart(){const d=new Date();d.setDate(1);return isoDate(d)}
 function getRangeEnd(){return today()}
